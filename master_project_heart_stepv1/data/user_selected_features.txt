@@ -1,0 +1,880 @@
+location_group
+Home                                                                                                                        1764
+Work                                                                                                                        1058
+Food & Dining                                                                                                                755
+University/School                                                                                                            753
+store,point_of_interest,establishment                                                                                        541
+Parks & Recreation - Outdoor High-Activity                                                                                   424
+electronics_store,store,point_of_interest,establishment                                                                      402
+Healthcare & Personal Care - Indoor Low-Activity                                                                             233
+Auto & Transport - Outdoor Low-Activity                                                                                      175
+Sports & Fitness - Indoor High-Activity                                                                                      108
+clothing_store,store,point_of_interest,establishment                                                                         106
+home_goods_store,store,point_of_interest,establishment                                                                        99
+grocery_or_supermarket,food,store,point_of_interest,establishment                                                             99
+Unknown                                                                                                                       80
+general_contractor,home_goods_store,store,point_of_interest,establishment                                                     74
+store,health,point_of_interest,establishment                                                                                  64
+jewelry_store,store,point_of_interest,establishment                                                                           57
+cemetery,store,point_of_interest,establishment                                                                                56
+furniture_store,hardware_store,home_goods_store,store,point_of_interest,establishment                                         51
+general_contractor,furniture_store,home_goods_store,store,point_of_interest,establishment                                     38
+store,food,point_of_interest,establishment                                                                                    34
+book_store,store,point_of_interest,establishment                                                                              26
+furniture_store,home_goods_store,store,point_of_interest,establishment                                                        26
+food,store,point_of_interest,establishment                                                                                    12
+liquor_store,store,point_of_interest,establishment                                                                            12
+general_contractor,roofing_contractor,home_goods_store,store,point_of_interest,establishment                                  12
+florist,store,point_of_interest,establishment                                                                                 11
+hardware_store,store,point_of_interest,establishment                                                                          10
+furniture_store,general_contractor,home_goods_store,store,point_of_interest,establishment                                     10
+department_store,store,point_of_interest,establishment                                                                         9
+shoe_store,store,point_of_interest,establishment                                                                               8
+Leisure - Indoor Low-Activity                                                                                                  8
+general_contractor,store,point_of_interest,establishment                                                                       6
+convenience_store,food,store,point_of_interest,establishment                                                                   5
+pet_store,store,point_of_interest,establishment                                                                                5
+clothing_store,shoe_store,store,point_of_interest,establishment                                                                4
+home_goods_store,store,general_contractor,point_of_interest,establishment                                                      4
+store,storage,point_of_interest,establishment                                                                                  4
+department_store,furniture_store,clothing_store,electronics_store,home_goods_store,store,point_of_interest,establishment       4
+furniture_store,hardware_store,general_contractor,home_goods_store,store,storage,point_of_interest,establishment               3
+store,finance,point_of_interest,establishment                                                                                  3
+food,home_goods_store,store,point_of_interest,establishment                                                                    3
+pet_store,store,veterinary_care,health,point_of_interest,establishment                                                         3
+laundry,general_contractor,home_goods_store,store,point_of_interest,establishment                                              3
+movie_rental,store,point_of_interest,establishment                                                                             3
+clothing_store,jewelry_store,store,point_of_interest,establishment                                                             2
+grocery_or_supermarket,post_office,finance,food,store,point_of_interest,establishment                                          2
+liquor_store,atm,store,finance,point_of_interest,establishment                                                                 2
+shoe_store,clothing_store,store,point_of_interest,establishment                                                                2
+home_goods_store,store,moving_company,storage,point_of_interest,establishment                                                  2
+food,store,health,point_of_interest,establishment                                                                              2
+home_goods_store,store,moving_company,point_of_interest,establishment                                                          2
+store,accounting,finance,point_of_interest,establishment                                                                       2
+furniture_store,hardware_store,home_goods_store,store,storage,point_of_interest,establishment                                  2
+hardware_store,home_goods_store,store,point_of_interest,establishment                                                          2
+laundry,home_goods_store,store,point_of_interest,establishment                                                                 2
+convenience_store,food,home_goods_store,electronics_store,store,health,point_of_interest,establishment                         2
+store,general_contractor,point_of_interest,establishment                                                                       1
+clothing_store,store,health,point_of_interest,establishment                                                                    1
+painter,store,point_of_interest,establishment                                                                                  1
+painter,general_contractor,home_goods_store,store,point_of_interest,establishment                                              1
+clothing_store,home_goods_store,jewelry_store,store,point_of_interest,establishment                                            1
+florist,food,store,point_of_interest,establishment                                                                             1
+store,locksmith,point_of_interest,establishment                                                                                1
+home_goods_store,hardware_store,store,point_of_interest,establishment                                                          1
+home_goods_store,florist,store,point_of_interest,establishment                                                                 1
+clothing_store,furniture_store,jewelry_store,general_contractor,home_goods_store,store,point_of_interest,establishment         1
+shoe_store,clothing_store,jewelry_store,store,point_of_interest,establishment                                                  1
+general_contractor,pet_store,home_goods_store,store,point_of_interest,establishment                                            1
+clothing_store,shoe_store,department_store,store,point_of_interest,establishment                                               1
+grocery_or_supermarket,finance,food,store,point_of_interest,establishment                                                      1
+furniture_store,electronics_store,general_contractor,home_goods_store,store,point_of_interest,establishment                    1
+shoe_store,clothing_store,home_goods_store,department_store,electronics_store,store,point_of_interest,establishment            1
+liquor_store,food,home_goods_store,store,point_of_interest,establishment                                                       1
+clothing_store,florist,store,point_of_interest,establishment                                                                   1
+shoe_store,general_contractor,clothing_store,furniture_store,home_goods_store,store,point_of_interest,establishment            1
+finance,grocery_or_supermarket,food,store,point_of_interest,establishment                                                      1
+store,laundry,point_of_interest,establishment                                                                                  1
+moving_company,home_goods_store,store,point_of_interest,establishment                                                          1
+night_club,home_goods_store,store,point_of_interest,establishment                                                              1
+liquor_store,food,store,point_of_interest,establishment                                                                        1
+hardware_store,general_contractor,store,point_of_interest,establishment                                                        1
+store,general_contractor,plumber,point_of_interest,establishment                                                               1
+general_contractor,furniture_store,hardware_store,home_goods_store,store,point_of_interest,establishment                       1
+convenience_store,food,electronics_store,store,point_of_interest,establishment                                                 1
+furniture_store,electronics_store,home_goods_store,store,point_of_interest,establishment                                       1
+grocery_or_supermarket,liquor_store,health,florist,store,food,point_of_interest,establishment                                  1
+convenience_store,liquor_store,food,store,point_of_interest,establishment                                                      1
+finance,jewelry_store,store,point_of_interest,establishment                                                                    1
+book_store,clothing_store,store,point_of_interest,establishment                                                                1
+home_goods_store,clothing_store,store,point_of_interest,establishment                                                          1
+bicycle_store,store,point_of_interest,establishment                                                                            1
+clothing_store,store,general_contractor,point_of_interest,establishment                                                        1
+grocery_or_supermarket,store,food,point_of_interest,establishment                                                              1
+grocery_or_supermarket,home_goods_store,food,store,point_of_interest,establishment                                             1
+home_goods_store,store,food,point_of_interest,establishment                                                                    1
+electronics_store,home_goods_store,store,point_of_interest,establishment                                                       1
+plumber,general_contractor,home_goods_store,store,point_of_interest,establishment                                              1
+shoe_store,home_goods_store,clothing_store,store,point_of_interest,establishment                                               1
+furniture_store,department_store,home_goods_store,store,point_of_interest,establishment                                        1
+insurance_agency,store,point_of_interest,establishment                                                                         1
+painter,home_goods_store,store,point_of_interest,establishment                                                                 1
+home_goods_store,liquor_store,store,food,point_of_interest,establishment
+
+
+After dropping rows with NaN in 'decision.index.nogap', the number of rows is: 7883
+[True False]
+After dropping rows with NaN in 'returned.message', the number of rows is: 7235
+user.index                          0
+decision.index                      0
+decision.index.nogap                0
+sugg.select.utime                   0
+sugg.select.slot                    0
+sugg.select.update                  0
+sugg.tz                             0
+sugg.gmtoff                         0
+sugg.decision.utime                 0
+sugg.decision.slot                  0
+sugg.context.utime                  0
+sugg.response.utime              4324
+sugg.device.utime                1899
+sugg.device.since                1899
+interaction.count                4324
+connect                             0
+is.randomized                       0
+snooze.status                       0
+intransit                           0
+avail                               0
+send                                0
+send.active                         0
+send.sedentary                      0
+is.prefetch                         0
+recognized.activity                 0
+recognized.activity.response     5239
+tag.active                       3136
+tag.indoor                       3136
+tag.outdoor                      3136
+tag.outdoor_snow                 3136
+front.end.application            5803
+returned.message                    0
+response                         4324
+dec.city                           33
+dec.location.exact                  0
+dec.location.category               0
+dec.weather.condition              33
+dec.temperature                    80
+dec.windspeed                       0
+dec.precipitation.chance            0
+dec.snow                           80
+response.city                    4336
+response.location.exact          4324
+response.location.category       4324
+response.weather.condition       4336
+response.temperature             4351
+response.windspeed               4324
+response.precipitation.chance    4324
+response.snow                    4351
+jbmins10                          676
+jbsteps10                         676
+jbmins40                          676
+jbsteps40                         676
+jbmins30                          676
+jbsteps30                         676
+jbmins60                          676
+jbsteps60                         676
+jbmins90                          676
+jbsteps90                         676
+jbmins120                         676
+jbsteps120                        676
+jbsteps10.zero                      0
+jbsteps30.zero                      0
+jbsteps40.zero                      0
+jbsteps60.zero                      0
+jbsteps90.zero                      0
+jbsteps120.zero                     0
+jbmins30pre                       648
+jbsteps30pre                      648
+jbmins40pre                       648
+jbsteps40pre                      648
+jbmins60pre                       648
+jbsteps60pre                      648
+jbsteps30pre.zero                   0
+jbsteps40pre.zero                   0
+jbsteps60pre.zero                   0
+gfmins10                         3033
+gfsteps10                        3033
+gfmins30                         3033
+gfsteps30                        3033
+gfmins60                         3033
+gfsteps60                        3033
+gfmins30pre                      3014
+gfsteps30pre                     3014
+gfmins60pre                      3014
+gfsteps60pre                     3014
+datetime                            0
+date                                0
+
+
+
+
+
+user.index                          0
+decision.index.nogap                0
+
+datetime                            0
+date                                0
+sugg.select.utime                   0
+sugg.select.slot                    0
+
+is.randomized                       0
+avail                               0
+send                                0
+send.active                         0
+send.sedentary                      0
+
+returned.message                    0
+sugg.response.utime              4324
+response                         4324
+
+recognized.activity                 0
+
+location_group                      0
+dec.location.category               0
+
+dec.weather.condition              33
+dec.temperature                    80
+
+jbsteps10.zero                      0
+jbsteps30.zero                      0
+jbsteps40.zero                      0
+jbsteps60.zero                      0
+jbsteps90.zero                      0
+jbsteps120.zero                     0
+jbsteps30pre.zero                   0
+jbsteps40pre.zero                   0
+jbsteps60pre.zero                   0
+
+
+
+
+
+
+['user.index', 'intake.survey.utime', 'intake.survey.tz', 'intake.survey.gmtoff', 'first.notif.utime', 'first.steps.utime', 'exit.survey.utime', 'exit.survey.tz', 'exit.survey.gmtoff', 'last.notif.utime', 'last.steps.utime', 'travel.start', 'travel.end', 'dropout.date', 'totaldays', 'own.phone', 'age', 'gender', 'marital', 'marother', 'ethnicity', 'ethother', 'household.size', 'children', 'childhome', 'occupation', 'education', 'vacation', 'screentime', 'sms', 'messaging', 'call', 'email', 'calendar', 'web', 'social', 'other.mobile', 'fitapp', 'fitapp.names', 'fittracker', 'fittracker.names', 'phonecomfort', 'compcomfort', 'office.shops', 'office.pleasant', 'office.sidewalk', 'consc.detail', 'consc.prepared', 'consc.carryplans', 'consc.startwork', 'consc.wastetime', 'consc.duties', 'consc.makeplans', 'consc', 'stairs.intake', 'walk.intake', 'parkfar.intake', 'workoutbreaks.intake', 'stand.intake', 'stairs.exit', 'walk.exit', 'parkfar.exit', 'workoutbreaks.exit', 'stand.exit', 'selfeff.tired.intake', 'selfeff.badmood.intake', 'selfeff.notime.intake', 'selfeff.vaca.intake', 'selfeff.precip.intake', 'selfeff.intake', 'selfeff.tired.exit', 'selfeff.badmood.exit', 'selfeff.notime.exit', 'selfeff.vaca.exit', 'selfeff.precip.exit', 'selfeff.exit', 'house', 'shopshome', 'transithome', 'sidewalkhome', 'canbike', 'recfacilities', 'unsafenight', 'trafficwalk', 'seeactive', 'interest', 'motor', 'intersections', 'sidewalkgood', 'bikegood', 'trafficbike', 'unsafeday', 'placeshome', 'vigact.days.intake', 'modact.days.intake', 'walk10.days.intake', 'sit.time.intake', 'vigact.time.intake', 'modact.time.intake', 'walk.time.intake', 'vigact.metmins.intake', 'modact.metmins.intake', 'walk.metmins.intake', 'metmins.intake', 'ipaq.hepa.intake', 'vigact.days.exit', 'modact.days.exit', 'walk10.days.exit', 'sit.time.exit', 'vigact.time.exit', 'modact.time.exit', 'walk.time.exit', 'vigact.metmins.exit', 'modact.metmins.exit', 'walk.metmins.exit', 'metmins.exit', 'ipaq.hepa.exit']
+
+
+
+
+1.Survey details
+'user.index'
+
+
+2.Demographic
+'age', 'gender', 'occupation'
+
+
+4.Walking environment at work
+'office.shops', 'office.pleasant', 'office.sidewalk'
+
+5.Conscientiousness
+'consc.carryplans', 'consc.startwork', 'consc.wastetime', 'consc.duties', 'consc.makeplans'
+
+6.Activity Choice Index
+'stairs.intake','walk.intake', 'parkfar.intake', 'workoutbreaks.intake', 'stand.intake'
+
+
+7.Self-efficacy for physical activity
+'selfeff.tired.intake', 'selfeff.badmood.intake', 'selfeff.notime.intake', 'selfeff.vaca.intake', 'selfeff.precip.intake', 'selfeff.intake'
+
+
+8.International Prevalence Study (IPS) on Physical Activity
+'house', 'shopshome', 'transithome', 'sidewalkhome', 'canbike', 'recfacilities', 'unsafenight', 'trafficwalk', 'seeactive', 'interest', 'motor', 'intersections', 'sidewalkgood', 'bikegood', 'trafficbike', 'unsafeday', 'placeshome'
+
+
+9.International Physical Activity Questionnaire (IPAQ)
+'ipaq.hepa.intake'
+
+
+
+
+
+=== stairs ===
+    user.index  stairs.intake  stairs.exit  stairs.diff
+0            1              4          3.0         -1.0
+1            2              3          4.0          1.0
+2            3              4          4.0          0.0
+3            4              5          5.0          0.0
+4            5              2          2.0          0.0
+5            6              4          4.0          0.0
+6            7              3          3.0          0.0
+7            8              3          3.0          0.0
+8            9              3          4.0          1.0
+9           10              4          4.0          0.0
+10          11              2          4.0          2.0
+11          12              4          5.0          1.0
+12          13              4          3.0         -1.0
+13          14              5          5.0          0.0
+14          15              4          5.0          1.0
+15          16              4          4.0          0.0
+16          17              3          3.0          0.0
+17          18              4          5.0          1.0
+18          19              5          5.0          0.0
+19          20              3          4.0          1.0
+20          21              2          4.0          2.0
+21          22              4          3.0         -1.0
+22          23              3          4.0          1.0
+23          24              4          5.0          1.0
+24          25              3          4.0          1.0
+25          26              4          4.0          0.0
+26          27              3          3.0          0.0
+27          28              5          5.0          0.0
+28          29              4          NaN          NaN
+29          30              4          4.0          0.0
+30          31              4          NaN          NaN
+31          32              3          3.0          0.0
+32          33              3          3.0          0.0
+33          34              2          4.0          2.0
+34          35              3          4.0          1.0
+35          36              2          2.0          0.0
+36          37              3          3.0          0.0
+
+=== walk ===
+    user.index  walk.intake  walk.exit  walk.diff
+0            1            4        3.0       -1.0
+1            2            3        4.0        1.0
+2            3            4        4.0        0.0
+3            4            5        4.0       -1.0
+4            5            4        4.0        0.0
+5            6            4        4.0        0.0
+6            7            2        2.0        0.0
+7            8            4        3.0       -1.0
+8            9            4        4.0        0.0
+9           10            4        3.0       -1.0
+10          11            3        4.0        1.0
+11          12            3        4.0        1.0
+12          13            3        3.0        0.0
+13          14            5        4.0       -1.0
+14          15            3        4.0        1.0
+15          16            3        3.0        0.0
+16          17            2        3.0        1.0
+17          18            3        3.0        0.0
+18          19            3        4.0        1.0
+19          20            2        2.0        0.0
+20          21            2        3.0        1.0
+21          22            2        3.0        1.0
+22          23            4        4.0        0.0
+23          24            4        4.0        0.0
+24          25            2        3.0        1.0
+25          26            4        4.0        0.0
+26          27            1        3.0        2.0
+27          28            5        5.0        0.0
+28          29            2        NaN        NaN
+29          30            4        4.0        0.0
+30          31            4        NaN        NaN
+31          32            2        3.0        1.0
+32          33            2        2.0        0.0
+33          34            3        2.0       -1.0
+34          35            3        3.0        0.0
+35          36            4        5.0        1.0
+36          37            2        2.0        0.0
+
+=== parkfar ===
+    user.index  parkfar.intake  parkfar.exit  parkfar.diff
+0            1               3           4.0           1.0
+1            2               4           3.0          -1.0
+2            3               4           5.0           1.0
+3            4               4           2.0          -2.0
+4            5               3           3.0           0.0
+5            6               4           4.0           0.0
+6            7               2           3.0           1.0
+7            8               4           3.0          -1.0
+8            9               1           2.0           1.0
+9           10               2           3.0           1.0
+10          11               2           4.0           2.0
+11          12               2           3.0           1.0
+12          13               3           3.0           0.0
+13          14               3           4.0           1.0
+14          15               4           4.0           0.0
+15          16               3           4.0           1.0
+16          17               2           2.0           0.0
+17          18               4           4.0           0.0
+18          19               2           2.0           0.0
+19          20               3           4.0           1.0
+20          21               3           4.0           1.0
+21          22               3           3.0           0.0
+22          23               1           1.0           0.0
+23          24               3           4.0           1.0
+24          25               3           5.0           2.0
+25          26               3           4.0           1.0
+26          27               1           1.0           0.0
+27          28               1           2.0           1.0
+28          29               5           NaN           NaN
+29          30               2           4.0           2.0
+30          31               3           NaN           NaN
+31          32               4           4.0           0.0
+32          33               3           4.0           1.0
+33          34               3           4.0           1.0
+34          35               4           5.0           1.0
+35          36               3           3.0           0.0
+36          37               3           4.0           1.0
+
+=== workoutbreaks ===
+    user.index  workoutbreaks.intake  workoutbreaks.exit  workoutbreaks.diff
+0            1                     3                 4.0                 1.0
+1            2                     2                 3.0                 1.0
+2            3                     3                 3.0                 0.0
+3            4                     5                 5.0                 0.0
+4            5                     2                 2.0                 0.0
+5            6                     2                 3.0                 1.0
+6            7                     3                 3.0                 0.0
+7            8                     4                 3.0                -1.0
+8            9                     2                 3.0                 1.0
+9           10                     2                 3.0                 1.0
+10          11                     1                 2.0                 1.0
+11          12                     3                 4.0                 1.0
+12          13                     3                 2.0                -1.0
+13          14                     2                 3.0                 1.0
+14          15                     2                 3.0                 1.0
+15          16                     3                 4.0                 1.0
+16          17                     2                 2.0                 0.0
+17          18                     2                 3.0                 1.0
+18          19                     4                 4.0                 0.0
+19          20                     2                 3.0                 1.0
+20          21                     1                 3.0                 2.0
+21          22                     2                 3.0                 1.0
+22          23                     4                 3.0                -1.0
+23          24                     4                 4.0                 0.0
+24          25                     2                 3.0                 1.0
+25          26                     4                 4.0                 0.0
+26          27                     2                 4.0                 2.0
+27          28                     2                 3.0                 1.0
+28          29                     2                 NaN                 NaN
+29          30                     4                 4.0                 0.0
+30          31                     3                 NaN                 NaN
+31          32                     3                 4.0                 1.0
+32          33                     1                 2.0                 1.0
+33          34                     3                 3.0                 0.0
+34          35                     4                 5.0                 1.0
+35          36                     1                 3.0                 2.0
+36          37                     2                 4.0                 2.0
+
+=== stand ===
+    user.index  stand.intake  stand.exit  stand.diff
+0            1             3         3.0         0.0
+1            2             2         2.0         0.0
+2            3             3         3.0         0.0
+3            4             5         5.0         0.0
+4            5             3         2.0        -1.0
+5            6             2         3.0         1.0
+6            7             2         3.0         1.0
+7            8             3         2.0        -1.0
+8            9             2         2.0         0.0
+9           10             3         3.0         0.0
+10          11             2         3.0         1.0
+11          12             3         4.0         1.0
+12          13             3         2.0        -1.0
+13          14             4         4.0         0.0
+14          15             2         3.0         1.0
+15          16             3         3.0         0.0
+16          17             3         3.0         0.0
+17          18             2         3.0         1.0
+18          19             3         2.0        -1.0
+19          20             3         3.0         0.0
+20          21             1         3.0         2.0
+21          22             2         2.0         0.0
+22          23             3         3.0         0.0
+23          24             4         4.0         0.0
+24          25             2         3.0         1.0
+25          26             3         3.0         0.0
+26          27             2         4.0         2.0
+27          28             2         2.0         0.0
+28          29             3         NaN         NaN
+29          30             2         3.0         1.0
+30          31             2         NaN         NaN
+31          32             4         4.0         0.0
+32          33             3         3.0         0.0
+33          34             2         2.0         0.0
+34          35             4         4.0         0.0
+35          36             2         3.0         1.0
+36          37             2         3.0         1.0
+
+=== selfeff.tired ===
+    user.index  selfeff.tired.intake  selfeff.tired.exit  selfeff.tired.diff
+0            1                     3                 4.0                 1.0
+1            2                     4                 4.0                 0.0
+2            3                     2                 3.0                 1.0
+3            4                     2                 4.0                 2.0
+4            5                     3                 1.0                -2.0
+5            6                     3                 3.0                 0.0
+6            7                     1                 1.0                 0.0
+7            8                     3                 2.0                -1.0
+8            9                     2                 2.0                 0.0
+9           10                     2                 3.0                 1.0
+10          11                     4                 3.0                -1.0
+11          12                     2                 3.0                 1.0
+12          13                     3                 3.0                 0.0
+13          14                     3                 3.0                 0.0
+14          15                     3                 3.0                 0.0
+15          16                     3                 3.0                 0.0
+16          17                     2                 2.0                 0.0
+17          18                     3                 2.0                -1.0
+18          19                     1                 5.0                 4.0
+19          20                     1                 1.0                 0.0
+20          21                     3                 2.0                -1.0
+21          22                     3                 2.0                -1.0
+22          23                     3                 2.0                -1.0
+23          24                     3                 3.0                 0.0
+24          25                     3                 3.0                 0.0
+25          26                     3                 3.0                 0.0
+26          27                     1                 4.0                 3.0
+27          28                     2                 5.0                 3.0
+28          29                     4                 NaN                 NaN
+29          30                     4                 4.0                 0.0
+30          31                     2                 NaN                 NaN
+31          32                     4                 2.0                -2.0
+32          33                     2                 3.0                 1.0
+33          34                     3                 2.0                -1.0
+34          35                     3                 4.0                 1.0
+35          36                     4                 4.0                 0.0
+36          37                     2                 3.0                 1.0
+
+=== selfeff.badmood ===
+    user.index  selfeff.badmood.intake  selfeff.badmood.exit  \
+0            1                       4                   4.0
+1            2                       4                   3.0
+2            3                       3                   4.0
+3            4                       4                   5.0
+4            5                       4                   3.0
+5            6                       4                   4.0
+6            7                       4                   2.0
+7            8                       3                   2.0
+8            9                       3                   3.0
+9           10                       4                   2.0
+10          11                       4                   4.0
+11          12                       3                   3.0
+12          13                       2                   2.0
+13          14                       5                   1.0
+14          15                       5                   5.0
+15          16                       4                   4.0
+16          17                       4                   3.0
+17          18                       3                   2.0
+18          19                       3                   5.0
+19          20                       3                   1.0
+20          21                       4                   3.0
+21          22                       3                   3.0
+22          23                       2                   3.0
+23          24                       2                   4.0
+24          25                       4                   3.0
+25          26                       4                   3.0
+26          27                       2                   2.0
+27          28                       2                   3.0
+28          29                       4                   NaN
+29          30                       4                   4.0
+30          31                       2                   NaN
+31          32                       3                   4.0
+32          33                       3                   4.0
+33          34                       4                   1.0
+34          35                       4                   4.0
+35          36                       4                   3.0
+36          37                       3                   3.0
+
+    selfeff.badmood.diff
+0                    0.0
+1                   -1.0
+2                    1.0
+3                    1.0
+4                   -1.0
+5                    0.0
+6                   -2.0
+7                   -1.0
+8                    0.0
+9                   -2.0
+10                   0.0
+11                   0.0
+12                   0.0
+13                  -4.0
+14                   0.0
+15                   0.0
+16                  -1.0
+17                  -1.0
+18                   2.0
+19                  -2.0
+20                  -1.0
+21                   0.0
+22                   1.0
+23                   2.0
+24                  -1.0
+25                  -1.0
+26                   0.0
+27                   1.0
+28                   NaN
+29                   0.0
+30                   NaN
+31                   1.0
+32                   1.0
+33                  -3.0
+34                   0.0
+35                  -1.0
+36                   0.0
+
+=== selfeff.notime ===
+    user.index  selfeff.notime.intake  selfeff.notime.exit  \
+0            1                      3                  4.0
+1            2                      2                  1.0
+2            3                      2                  2.0
+3            4                      5                  3.0
+4            5                      2                  2.0
+5            6                      4                  3.0
+6            7                      1                  1.0
+7            8                      3                  2.0
+8            9                      3                  3.0
+9           10                      1                  2.0
+10          11                      2                  3.0
+11          12                      2                  2.0
+12          13                      1                  2.0
+13          14                      3                  3.0
+14          15                      3                  1.0
+15          16                      2                  3.0
+16          17                      1                  2.0
+17          18                      2                  1.0
+18          19                      1                  3.0
+19          20                      2                  2.0
+20          21                      4                  1.0
+21          22                      3                  2.0
+22          23                      3                  1.0
+23          24                      2                  2.0
+24          25                      3                  1.0
+25          26                      3                  1.0
+26          27                      1                  1.0
+27          28                      2                  2.0
+28          29                      1                  NaN
+29          30                      3                  4.0
+30          31                      1                  NaN
+31          32                      1                  2.0
+32          33                      2                  1.0
+33          34                      3                  3.0
+34          35                      3                  4.0
+35          36                      3                  2.0
+36          37                      1                  1.0
+
+    selfeff.notime.diff
+0                   1.0
+1                  -1.0
+2                   0.0
+3                  -2.0
+4                   0.0
+5                  -1.0
+6                   0.0
+7                  -1.0
+8                   0.0
+9                   1.0
+10                  1.0
+11                  0.0
+12                  1.0
+13                  0.0
+14                 -2.0
+15                  1.0
+16                  1.0
+17                 -1.0
+18                  2.0
+19                  0.0
+20                 -3.0
+21                 -1.0
+22                 -2.0
+23                  0.0
+24                 -2.0
+25                 -2.0
+26                  0.0
+27                  0.0
+28                  NaN
+29                  1.0
+30                  NaN
+31                  1.0
+32                 -1.0
+33                  0.0
+34                  1.0
+35                 -1.0
+36                  0.0
+
+=== selfeff.vaca ===
+    user.index  selfeff.vaca.intake  selfeff.vaca.exit  selfeff.vaca.diff
+0            1                    5                4.0               -1.0
+1            2                    1                2.0                1.0
+2            3                    3                4.0                1.0
+3            4                    5                5.0                0.0
+4            5                    4                4.0                0.0
+5            6                    5                4.0               -1.0
+6            7                    4                3.0               -1.0
+7            8                    3                2.0               -1.0
+8            9                    2                1.0               -1.0
+9           10                    2                1.0               -1.0
+10          11                    1                2.0                1.0
+11          12                    2                3.0                1.0
+12          13                    4                2.0               -2.0
+13          14                    2                3.0                1.0
+14          15                    5                4.0               -1.0
+15          16                    4                2.0               -2.0
+16          17                    2                1.0               -1.0
+17          18                    4                4.0                0.0
+18          19                    2                3.0                1.0
+19          20                    3                2.0               -1.0
+20          21                    4                3.0               -1.0
+21          22                    4                4.0                0.0
+22          23                    4                5.0                1.0
+23          24                    4                5.0                1.0
+24          25                    1                3.0                2.0
+25          26                    5                5.0                0.0
+26          27                    3                3.0                0.0
+27          28                    1                2.0                1.0
+28          29                    2                NaN                NaN
+29          30                    4                4.0                0.0
+30          31                    3                NaN                NaN
+31          32                    4                4.0                0.0
+32          33                    3                2.0               -1.0
+33          34                    4                4.0                0.0
+34          35                    3                4.0                1.0
+35          36                    3                3.0                0.0
+36          37                    4                4.0                0.0
+
+=== selfeff.precip ===
+    user.index  selfeff.precip.intake  selfeff.precip.exit  \
+0            1                      4                  4.0
+1            2                      1                  1.0
+2            3                      4                  5.0
+3            4                      5                  5.0
+4            5                      3                  2.0
+5            6                      3                  3.0
+6            7                      1                  1.0
+7            8                      3                  2.0
+8            9                      3                  5.0
+9           10                      3                  2.0
+10          11                      2                  3.0
+11          12                      2                  2.0
+12          13                      2                  1.0
+13          14                      4                  1.0
+14          15                      4                  4.0
+15          16                      4                  4.0
+16          17                      4                  2.0
+17          18                      4                  2.0
+18          19                      1                  2.0
+19          20                      1                  2.0
+20          21                      3                  2.0
+21          22                      2                  3.0
+22          23                      4                  4.0
+23          24                      3                  4.0
+24          25                      3                  2.0
+25          26                      3                  2.0
+26          27                      1                  3.0
+27          28                      3                  5.0
+28          29                      3                  NaN
+29          30                      3                  4.0
+30          31                      2                  NaN
+31          32                      3                  2.0
+32          33                      2                  2.0
+33          34                      4                  2.0
+34          35                      3                  3.0
+35          36                      3                  1.0
+36          37                      4                  2.0
+
+    selfeff.precip.diff
+0                   0.0
+1                   0.0
+2                   1.0
+3                   0.0
+4                  -1.0
+5                   0.0
+6                   0.0
+7                  -1.0
+8                   2.0
+9                  -1.0
+10                  1.0
+11                  0.0
+12                 -1.0
+13                 -3.0
+14                  0.0
+15                  0.0
+16                 -2.0
+17                 -2.0
+18                  1.0
+19                  1.0
+20                 -1.0
+21                  1.0
+22                  0.0
+23                  1.0
+24                 -1.0
+25                 -1.0
+26                  2.0
+27                  2.0
+28                  NaN
+29                  1.0
+30                  NaN
+31                 -1.0
+32                  0.0
+33                 -2.0
+34                  0.0
+35                 -2.0
+36                 -2.0
+
+=== selfeff ===
+    user.index  selfeff.intake  selfeff.exit  selfeff.diff
+0            1              19          20.0           1.0
+1            2              12          11.0          -1.0
+2            3              14          18.0           4.0
+3            4              21          22.0           1.0
+4            5              16          12.0          -4.0
+5            6              19          17.0          -2.0
+6            7              11           8.0          -3.0
+7            8              15          10.0          -5.0
+8            9              13          14.0           1.0
+9           10              12          10.0          -2.0
+10          11              13          15.0           2.0
+11          12              11          13.0           2.0
+12          13              12          10.0          -2.0
+13          14              17          11.0          -6.0
+14          15              20          17.0          -3.0
+15          16              17          16.0          -1.0
+16          17              13          10.0          -3.0
+17          18              16          11.0          -5.0
+18          19               8          18.0          10.0
+19          20              10           8.0          -2.0
+20          21              18          11.0          -7.0
+21          22              15          14.0          -1.0
+22          23              16          15.0          -1.0
+23          24              14          18.0           4.0
+24          25              14          12.0          -2.0
+25          26              18          14.0          -4.0
+26          27               8          13.0           5.0
+27          28              10          17.0           7.0
+28          29              14           NaN           NaN
+29          30              18          20.0           2.0
+30          31              10           NaN           NaN
+31          32              15          14.0          -1.0
+32          33              12          12.0           0.0
+33          34              18          12.0          -6.0
+34          35              16          19.0           3.0
+35          36              17          13.0          -4.0
+36          37              14          13.0          -1.0
+
+=== ipaq.hepa ===
+    user.index  ipaq.hepa.intake  ipaq.hepa.exit  ipaq.hepa.diff
+0            1                 3             3.0             0.0
+1            2                 2             2.0             0.0
+2            3                 3             3.0             0.0
+3            4                 3             3.0             0.0
+4            5                 1             1.0             0.0
+5            6                 2             2.0             0.0
+6            7                 2             1.0            -1.0
+7            8                 2             3.0             1.0
+8            9                 3             3.0             0.0
+9           10                 2             2.0             0.0
+10          11                 2             NaN             NaN
+11          12                 3             3.0             0.0
+12          13                 2             2.0             0.0
+13          14                 1             3.0             2.0
+14          15                 2             2.0             0.0
+15          16                 3             3.0             0.0
+16          17                 1             3.0             2.0
+17          18                 1             3.0             2.0
+18          19                 3             3.0             0.0
+19          20                 1             1.0             0.0
+20          21                 1             3.0             2.0
+21          22                 1             1.0             0.0
+22          23                 1             2.0             1.0
+23          24                 2             2.0             0.0
+24          25                 1             1.0             0.0
+25          26                 2             3.0             1.0
+26          27                 2             3.0             1.0
+27          28                 2             3.0             1.0
+28          29                 2             NaN             NaN
+29          30                 3             3.0             0.0
+30          31                 3             NaN             NaN
+31          32                 1             2.0             1.0
+32          33                 3             3.0             0.0
+33          34                 2             3.0             1.0
+34          35                 3             3.0             0.0
+35          36                 2             3.0             1.0
+36          37                 1             1.0             0.0
+
+
+

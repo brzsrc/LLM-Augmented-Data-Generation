@@ -1,0 +1,29 @@
+1. User Details
+'user.index', 'decision.index', 'decision.index.nogap'
+
+2. Availability and Notification Variables
+'sugg.select.utime', 'sugg.select.slot', 'sugg.select.update', 'sugg.tz', 'sugg.gmtoff', 'sugg.decision.utime', 'sugg.decision.slot'， 'sugg.context.utime', 'sugg.response.utime', 'sugg.device.utime', 'sugg.device.since', 'interaction.count'
+
+3. Decision and Response Context
+'connect', 'is.randomized'
+'snooze.status', 'intransit', 'avail', 'send', 'send.active'
+'send.sedentary', 'is.prefetch'
+
+'recognized.activity', 'recognized.activity.response'
+'tag.active', 'tag.indoor', 'tag.outdoor', 'tag.outdoor_snow'
+'front.end.application', 'returned.message', 'response'
+'dec.city', 'dec.location.exact', 'dec.location.category', 'dec.weather.condition'
+'dec.temperature', 'dec.windspeed', 'dec.precipitation.chance', 'dec.snow'
+
+'response.city', 'response.location.exact'
+'response.location.category', 'response.weather.condition'
+'response.temperature', 'response.windspeed'
+'response.precipitation.chance', 'response.snow'
+
+4. Step counts before and after decision points
+'jbmins10', 'jbsteps10', 'jbmins40', 'jbsteps40', 'jbmins30', 'jbsteps30'
+'jbmins60', 'jbsteps60', 'jbmins90', 'jbsteps90', 'jbmins120', 'jbsteps120'
+'jbsteps10.zero', 'jbsteps30.zero', 'jbsteps40.zero', 'jbsteps60.zero', 'jbsteps90.zero', 'jbsteps120.zero'
+'jbmins30pre', 'jbsteps30pre', 'jbmins40pre', 'jbsteps40pre', 'jbmins60pre', 'jbsteps60pre'
+'jbsteps30pre.zero', 'jbsteps40pre.zero', 'jbsteps60pre.zero'
+'gfmins10', 'gfsteps10', 'gfmins30', 'gfsteps30', 'gfmins60', 'gfsteps60', 'gfmins30pre', 'gfsteps30pre', 'gfmins60pre', 'gfsteps60pre'

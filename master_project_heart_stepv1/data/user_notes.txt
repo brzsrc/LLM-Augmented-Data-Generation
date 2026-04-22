@@ -1,0 +1,46 @@
+1.Survey details
+'user.index'
+
+'intake.survey.utime', 'intake.survey.tz', 'intake.survey.gmtoff'
+
+'first.notif.utime', 'first.steps.utime'
+
+'exit.survey.utime', 'exit.survey.tz', 'exit.survey.gmtoff'
+
+'last.notif.utime', 'last.steps.utime'
+
+'travel.start', 'travel.end', 'dropout.date', 'totaldays'
+
+2.Demographic
+'own.phone', 'age', 'gender', 'marital', 'marother', 'ethnicity', 'ethother', 'household.size', 'children', 'childhome', 'occupation', 'education', 'vacation'
+
+3.Mobile Phone Use
+'screentime', 'sms', 'messaging', 'call', 'email', 'calendar', 'web', 'social', 'other.mobile'
+
+'fitapp', 'fitapp.names', 'fittracker', 'fittracker.names'
+
+'phonecomfort', 'compcomfort'
+
+4.Walking environment at work
+'office.shops', 'office.pleasant', 'office.sidewalk'
+
+5.Conscientiousness
+'consc.detail', 'consc.prepared', 'consc.carryplans', 'consc.startwork', 'consc.wastetime', 'consc.duties', 'consc.makeplans', 'consc'
+
+6.Activity Choice Index
+'stairs.intake','walk.intake', 'parkfar.intake', 'workoutbreaks.intake', 'stand.intake'
+
+'stairs.exit', 'walk.exit', 'parkfar.exit', 'workoutbreaks.exit', 'stand.exit'
+
+7.Self-efficacy for physical activity
+'selfeff.tired.intake', 'selfeff.badmood.intake', 'selfeff.notime.intake', 'selfeff.vaca.intake', 'selfeff.precip.intake', 'selfeff.intake'
+
+'selfeff.tired.exit', 'selfeff.badmood.exit', 'selfeff.notime.exit', 'selfeff.vaca.exit', 'selfeff.precip.exit', 'selfeff.exit'
+
+8.International Prevalence Study (IPS) on Physical Activity
+'house', 'shopshome', 'transithome', 'sidewalkhome', 'canbike', 'recfacilities', 'unsafenight', 'trafficwalk', 'seeactive', 'interest', 'motor', 'intersections', 'sidewalkgood', 'bikegood', 'trafficbike', 'unsafeday', 'placeshome'
+
+9.International Physical Activity Questionnaire (IPAQ)
+'vigact.days.intake', 'modact.days.intake', 'walk10.days.intake', 'sit.time.intake', 'vigact.time.intake', 'modact.time.intake', 'walk.time.intake', 'vigact.metmins.intake', 'modact.metmins.intake', 'walk.metmins.intake', 'metmins.intake', 'ipaq.hepa.intake'
+
+'vigact.days.exit', 'modact.days.exit', 'walk10.days.exit', 'sit.time.exit', 'vigact.time.exit', 'modact.time.exit', 'walk.time.exit', 'vigact.metmins.exit', 'modact.metmins.exit', 'walk.metmins.exit', 'metmins.exit', 'ipaq.hepa.exit'

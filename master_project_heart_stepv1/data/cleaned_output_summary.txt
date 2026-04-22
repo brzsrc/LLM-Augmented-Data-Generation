@@ -1,0 +1,1412 @@
+uid  day_slot  location
+1    1         Home                                                31
+               Food & Dining                                        3
+     2         Work                                                17
+               Home                                                12
+               Food & Dining                                        2
+               Auto & Transport - Outdoor Low-Activity              2
+               Home & Furniture Store                               1
+               University/School                                    1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+     3         Work                                                15
+               Home                                                12
+               Clothing & Fashion Store                             2
+               University/School                                    2
+               Just Store                                           1
+               Food & Dining                                        1
+               Home & Furniture Store                               1
+               Other Specialty Store                                1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+     4         Home                                                28
+               Food & Dining                                        2
+               Just Store                                           1
+               Home & Furniture Store                               1
+               Other Specialty Store                                1
+               Parks & Recreation - Outdoor High-Activity           1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Grocery & Convenience Store                          1
+     5         Home                                                18
+               Food & Dining                                        7
+               Home & Furniture Store                               4
+               Auto & Transport - Outdoor Low-Activity              1
+               Clothing & Fashion Store                             1
+               Grocery & Convenience Store                          1
+               University/School                                    1
+               Other Specialty Store                                1
+               Just Store                                           1
+2    1         University/School                                   33
+               Electronics Store                                    2
+               Food & Dining                                        1
+     2         University/School                                   24
+               Electronics Store                                    4
+     3         University/School                                   24
+               Electronics Store                                    3
+               Healthcare & Personal Care - Indoor Low-Activity     2
+               Clothing & Fashion Store                             1
+               Auto & Transport - Outdoor Low-Activity              1
+               Parks & Recreation - Outdoor High-Activity           1
+     4         University/School                                   28
+               Just Store                                           2
+               Food & Dining                                        2
+               Home & Furniture Store                               1
+               Electronics Store                                    1
+     5         University/School                                   24
+               Electronics Store                                    4
+               Food & Dining                                        2
+               Just Store                                           2
+               Home & Furniture Store                               1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Parks & Recreation - Outdoor High-Activity           1
+3    1         Work                                                17
+               Sports & Fitness - Indoor High-Activity             12
+               University/School                                    5
+               Healthcare & Personal Care - Indoor Low-Activity     2
+               Other Specialty Store                                1
+               Parks & Recreation - Outdoor High-Activity           1
+               Food & Dining                                        1
+               Grocery & Convenience Store                          1
+     2         Work                                                14
+               Sports & Fitness - Indoor High-Activity             13
+               Food & Dining                                        5
+               University/School                                    3
+               Parks & Recreation - Outdoor High-Activity           2
+               Grocery & Convenience Store                          2
+               Auto & Transport - Outdoor Low-Activity              1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+     3         Work                                                14
+               Sports & Fitness - Indoor High-Activity              9
+               Parks & Recreation - Outdoor High-Activity           5
+               University/School                                    3
+               Healthcare & Personal Care - Indoor Low-Activity     2
+               Food & Dining                                        2
+               Clothing & Fashion Store                             1
+               Just Store                                           1
+               Other Specialty Store                                1
+     4         Parks & Recreation - Outdoor High-Activity           6
+               Work                                                 6
+               Sports & Fitness - Indoor High-Activity              6
+               Auto & Transport - Outdoor Low-Activity              4
+               Just Store                                           3
+               Food & Dining                                        3
+               University/School                                    3
+               Home & Furniture Store                               2
+               Grocery & Convenience Store                          2
+               Healthcare & Personal Care - Indoor Low-Activity     2
+               Clothing & Fashion Store                             1
+               Other Specialty Store                                1
+               Electronics Store                                    1
+               Leisure & Entertainment- Indoor Low-Activity         1
+     5         Sports & Fitness - Indoor High-Activity             15
+               Food & Dining                                        9
+               Healthcare & Personal Care - Indoor Low-Activity     3
+               Other Specialty Store                                2
+               Grocery & Convenience Store                          2
+               Clothing & Fashion Store                             2
+               Auto & Transport - Outdoor Low-Activity              2
+               Parks & Recreation - Outdoor High-Activity           2
+               Just Store                                           1
+               Home & Furniture Store                               1
+               University/School                                    1
+4    1         Food & Dining                                       14
+               Home                                                 8
+               Auto & Transport - Outdoor Low-Activity              6
+               Home & Furniture Store                               3
+               Healthcare & Personal Care - Indoor Low-Activity     3
+               Parks & Recreation - Outdoor High-Activity           3
+               University/School                                    2
+               Just Store                                           1
+               Clothing & Fashion Store                             1
+     2         Food & Dining                                       12
+               Home                                                 7
+               University/School                                    5
+               Home & Furniture Store                               4
+               Auto & Transport - Outdoor Low-Activity              4
+               Work                                                 2
+               Healthcare & Personal Care - Indoor Low-Activity     2
+               Parks & Recreation - Outdoor High-Activity           2
+               Electronics Store                                    2
+               Clothing & Fashion Store                             1
+               Other Specialty Store                                1
+     3         Food & Dining                                       13
+               Home                                                 9
+               University/School                                    5
+               Parks & Recreation - Outdoor High-Activity           3
+               Work                                                 2
+               Other Specialty Store                                2
+               Healthcare & Personal Care - Indoor Low-Activity     2
+               Home & Furniture Store                               2
+               Auto & Transport - Outdoor Low-Activity              2
+               Just Store                                           1
+               Electronics Store                                    1
+     4         Home                                                 9
+               Food & Dining                                        7
+               Home & Furniture Store                               4
+               Parks & Recreation - Outdoor High-Activity           4
+               Electronics Store                                    3
+               University/School                                    3
+               Auto & Transport - Outdoor Low-Activity              3
+               Just Store                                           2
+               Other Specialty Store                                2
+               Healthcare & Personal Care - Indoor Low-Activity     2
+               Grocery & Convenience Store                          1
+     5         Food & Dining                                        9
+               Parks & Recreation - Outdoor High-Activity           7
+               University/School                                    6
+               Auto & Transport - Outdoor Low-Activity              4
+               Home                                                 3
+               Clothing & Fashion Store                             3
+               Home & Furniture Store                               2
+               Healthcare & Personal Care - Indoor Low-Activity     2
+               Electronics Store                                    2
+               Other Specialty Store                                1
+5    1         Parks & Recreation - Outdoor High-Activity          21
+               University/School                                   20
+               Work                                                 1
+               Electronics Store                                    1
+     2         Work                                                20
+               University/School                                    8
+               Parks & Recreation - Outdoor High-Activity           8
+               Food & Dining                                        3
+               Auto & Transport - Outdoor Low-Activity              1
+               Other Specialty Store                                1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+     3         University/School                                   15
+               Work                                                13
+               Parks & Recreation - Outdoor High-Activity           8
+               Food & Dining                                        5
+               Home & Furniture Store                               1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Other Specialty Store                                1
+     4         University/School                                   20
+               Parks & Recreation - Outdoor High-Activity          13
+               Work                                                 4
+               Food & Dining                                        2
+               Just Store                                           2
+               Sports & Fitness - Indoor High-Activity              1
+               Other Specialty Store                                1
+               Electronics Store                                    1
+     5         University/School                                   21
+               Parks & Recreation - Outdoor High-Activity          12
+               Food & Dining                                        3
+               Clothing & Fashion Store                             3
+               Just Store                                           2
+               Electronics Store                                    1
+               Auto & Transport - Outdoor Low-Activity              1
+6    1         Home                                                20
+               Just Store                                           5
+               Clothing & Fashion Store                             4
+               Home & Furniture Store                               1
+               Auto & Transport - Outdoor Low-Activity              1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Work                                                 1
+               University/School                                    1
+     2         Clothing & Fashion Store                             7
+               Home                                                 7
+               Just Store                                           5
+               Auto & Transport - Outdoor Low-Activity              5
+               Work                                                 4
+               Food & Dining                                        2
+               Home & Furniture Store                               2
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Unknown                                              1
+               Grocery & Convenience Store                          1
+               University/School                                    1
+     3         Home                                                 7
+               Work                                                 6
+               Clothing & Fashion Store                             5
+               Auto & Transport - Outdoor Low-Activity              5
+               Food & Dining                                        3
+               Just Store                                           2
+               Other Specialty Store                                2
+               University/School                                    2
+               Grocery & Convenience Store                          1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+     4         Home                                                16
+               Just Store                                           8
+               Auto & Transport - Outdoor Low-Activity              3
+               Healthcare & Personal Care - Indoor Low-Activity     2
+               Food & Dining                                        2
+               Electronics Store                                    1
+               Clothing & Fashion Store                             1
+               Grocery & Convenience Store                          1
+     5         Home                                                17
+               Just Store                                           5
+               University/School                                    2
+               Auto & Transport - Outdoor Low-Activity              2
+               Healthcare & Personal Care - Indoor Low-Activity     2
+               Food & Dining                                        2
+               Grocery & Convenience Store                          1
+               Parks & Recreation - Outdoor High-Activity           1
+7    1         Home                                                21
+               Unknown                                              9
+               Auto & Transport - Outdoor Low-Activity              2
+               Work                                                 2
+               Food & Dining                                        1
+               Parks & Recreation - Outdoor High-Activity           1
+               Just Store                                           1
+               Home & Furniture Store                               1
+     2         Home                                                11
+               University/School                                   10
+               Unknown                                              7
+               Work                                                 6
+               Parks & Recreation - Outdoor High-Activity           3
+               Just Store                                           2
+               Auto & Transport - Outdoor Low-Activity              2
+               Home & Furniture Store                               1
+               Clothing & Fashion Store                             1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+     3         Home                                                11
+               University/School                                   11
+               Unknown                                              6
+               Work                                                 5
+               Parks & Recreation - Outdoor High-Activity           2
+               Food & Dining                                        2
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Sports & Fitness - Indoor High-Activity              1
+               Home & Furniture Store                               1
+               Electronics Store                                    1
+               Auto & Transport - Outdoor Low-Activity              1
+               Just Store                                           1
+     4         Home                                                17
+               Unknown                                              6
+               Work                                                 4
+               Food & Dining                                        3
+               Just Store                                           2
+               Other Specialty Store                                2
+               Auto & Transport - Outdoor Low-Activity              2
+               Parks & Recreation - Outdoor High-Activity           1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Home & Furniture Store                               1
+               University/School                                    1
+     5         Home                                                22
+               Unknown                                              6
+               Food & Dining                                        3
+               Healthcare & Personal Care - Indoor Low-Activity     2
+               Auto & Transport - Outdoor Low-Activity              2
+               Work                                                 2
+               Parks & Recreation - Outdoor High-Activity           1
+               Other Specialty Store                                1
+8    1         Food & Dining                                       42
+     2         University/School                                   21
+               Food & Dining                                       13
+               Work                                                 9
+     3         Work                                                30
+               Food & Dining                                       11
+               University/School                                    2
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Parks & Recreation - Outdoor High-Activity           1
+     4         Work                                                33
+               Food & Dining                                        6
+               University/School                                    3
+               Parks & Recreation - Outdoor High-Activity           1
+     5         Food & Dining                                       35
+               Work                                                 7
+               Parks & Recreation - Outdoor High-Activity           1
+9    1         Home                                                17
+               Just Store                                          11
+               Parks & Recreation - Outdoor High-Activity           5
+               University/School                                    5
+     2         Work                                                14
+               University/School                                    6
+               Home                                                 5
+               Food & Dining                                        4
+               Parks & Recreation - Outdoor High-Activity           4
+               Just Store                                           3
+               Clothing & Fashion Store                             1
+               Grocery & Convenience Store                          1
+     3         Work                                                14
+               Parks & Recreation - Outdoor High-Activity           6
+               Just Store                                           6
+               Home                                                 4
+               University/School                                    4
+               Food & Dining                                        4
+               Sports & Fitness - Indoor High-Activity              1
+               Grocery & Convenience Store                          1
+     4         Work                                                 9
+               Food & Dining                                        8
+               Home                                                 7
+               Just Store                                           7
+               Parks & Recreation - Outdoor High-Activity           5
+               University/School                                    2
+               Clothing & Fashion Store                             1
+     5         Home                                                12
+               Parks & Recreation - Outdoor High-Activity           8
+               Just Store                                           8
+               University/School                                    5
+               Work                                                 4
+               Food & Dining                                        4
+               Home & Furniture Store                               1
+10   1         Home                                                27
+               Auto & Transport - Outdoor Low-Activity              9
+               University/School                                    3
+               Food & Dining                                        2
+               Unknown                                              1
+               Just Store                                           1
+     2         Work                                                17
+               Home                                                10
+               University/School                                    7
+               Just Store                                           3
+               Auto & Transport - Outdoor Low-Activity              3
+               Food & Dining                                        2
+               Unknown                                              1
+     3         Work                                                16
+               University/School                                    7
+               Home                                                 6
+               Auto & Transport - Outdoor Low-Activity              4
+               Food & Dining                                        4
+               Unknown                                              2
+               Clothing & Fashion Store                             1
+     4         Home                                                24
+               Food & Dining                                        7
+               Auto & Transport - Outdoor Low-Activity              5
+               Parks & Recreation - Outdoor High-Activity           1
+               Just Store                                           1
+               University/School                                    1
+               Grocery & Convenience Store                          1
+               Home & Furniture Store                               1
+               Unknown                                              1
+     5         Home                                                22
+               Auto & Transport - Outdoor Low-Activity              7
+               Food & Dining                                        7
+               Just Store                                           3
+               University/School                                    1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+11   1         Home                                                27
+               Food & Dining                                       10
+               Just Store                                           4
+               Grocery & Convenience Store                          2
+               Healthcare & Personal Care - Indoor Low-Activity     1
+     2         Work                                                19
+               Home                                                12
+               Food & Dining                                        5
+               University/School                                    4
+               Home & Furniture Store                               2
+               Just Store                                           1
+     3         Work                                                19
+               Home                                                 8
+               Food & Dining                                        7
+               Just Store                                           2
+               University/School                                    2
+               Auto & Transport - Outdoor Low-Activity              2
+               Grocery & Convenience Store                          1
+     4         Food & Dining                                       14
+               Home                                                13
+               Just Store                                           3
+               Parks & Recreation - Outdoor High-Activity           3
+               Work                                                 3
+               University/School                                    3
+               Clothing & Fashion Store                             1
+               Other Specialty Store                                1
+               Home & Furniture Store                               1
+     5         Home                                                17
+               Food & Dining                                       12
+               Just Store                                           3
+               Clothing & Fashion Store                             3
+               Grocery & Convenience Store                          2
+               University/School                                    2
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Other Specialty Store                                1
+               Home & Furniture Store                               1
+12   1         Electronics Store                                   35
+               University/School                                    8
+               Unknown                                              1
+               Just Store                                           1
+               Food & Dining                                        1
+               Auto & Transport - Outdoor Low-Activity              1
+     2         Work                                                21
+               Electronics Store                                   10
+               University/School                                    9
+               Just Store                                           3
+               Food & Dining                                        2
+               Home & Furniture Store                               1
+               Grocery & Convenience Store                          1
+     3         Work                                                20
+               Electronics Store                                    9
+               University/School                                    8
+               Food & Dining                                        2
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Other Specialty Store                                1
+               Home & Furniture Store                               1
+               Parks & Recreation - Outdoor High-Activity           1
+     4         Electronics Store                                   21
+               Work                                                 7
+               Food & Dining                                        6
+               University/School                                    3
+               Just Store                                           2
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Unknown                                              1
+               Home & Furniture Store                               1
+               Parks & Recreation - Outdoor High-Activity           1
+     5         Electronics Store                                   18
+               Food & Dining                                       10
+               University/School                                    4
+               Just Store                                           4
+               Unknown                                              2
+               Parks & Recreation - Outdoor High-Activity           2
+               Sports & Fitness - Indoor High-Activity              1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Home & Furniture Store                               1
+13   1         Home                                                27
+               Food & Dining                                        5
+               Parks & Recreation - Outdoor High-Activity           1
+               Clothing & Fashion Store                             1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+     2         Home                                                12
+               Work                                                 5
+               University/School                                    4
+               Food & Dining                                        3
+               Healthcare & Personal Care - Indoor Low-Activity     3
+               Grocery & Convenience Store                          2
+               Parks & Recreation - Outdoor High-Activity           1
+               Just Store                                           1
+               Other Specialty Store                                1
+               Home & Furniture Store                               1
+               Clothing & Fashion Store                             1
+     3         University/School                                   10
+               Home                                                10
+               Work                                                 7
+               Food & Dining                                        3
+               Home & Furniture Store                               3
+               Just Store                                           2
+               Electronics Store                                    1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+     4         Home                                                20
+               University/School                                    6
+               Food & Dining                                        4
+               Just Store                                           3
+               Clothing & Fashion Store                             1
+               Other Specialty Store                                1
+               Work                                                 1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+     5         Home                                                21
+               Food & Dining                                        3
+               Parks & Recreation - Outdoor High-Activity           3
+               Just Store                                           3
+               Electronics Store                                    2
+               University/School                                    2
+               Other Specialty Store                                1
+               Sports & Fitness - Indoor High-Activity              1
+               Clothing & Fashion Store                             1
+14   1         Healthcare & Personal Care - Indoor Low-Activity    19
+               Home & Furniture Store                               9
+               Home                                                 6
+               Food & Dining                                        3
+               Auto & Transport - Outdoor Low-Activity              2
+               University/School                                    1
+               Parks & Recreation - Outdoor High-Activity           1
+     2         Healthcare & Personal Care - Indoor Low-Activity    17
+               Home & Furniture Store                               7
+               Food & Dining                                        7
+               Just Store                                           3
+               Home                                                 2
+               Clothing & Fashion Store                             2
+               Parks & Recreation - Outdoor High-Activity           2
+               Grocery & Convenience Store                          1
+     3         Healthcare & Personal Care - Indoor Low-Activity    24
+               Just Store                                           4
+               Food & Dining                                        3
+               Home & Furniture Store                               3
+               Parks & Recreation - Outdoor High-Activity           3
+               Grocery & Convenience Store                          2
+               Home                                                 1
+               Electronics Store                                    1
+               Auto & Transport - Outdoor Low-Activity              1
+     4         Home & Furniture Store                              14
+               Food & Dining                                        8
+               Just Store                                           8
+               Home                                                 3
+               Grocery & Convenience Store                          2
+               Auto & Transport - Outdoor Low-Activity              2
+               Healthcare & Personal Care - Indoor Low-Activity     2
+               Clothing & Fashion Store                             1
+               Parks & Recreation - Outdoor High-Activity           1
+     5         Just Store                                          12
+               Food & Dining                                        9
+               Home & Furniture Store                               8
+               Auto & Transport - Outdoor Low-Activity              4
+               Home                                                 3
+               Parks & Recreation - Outdoor High-Activity           2
+               Electronics Store                                    1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Grocery & Convenience Store                          1
+15   1         Home                                                17
+               Electronics Store                                   13
+               University/School                                    4
+               Food & Dining                                        1
+               Auto & Transport - Outdoor Low-Activity              1
+     2         University/School                                   10
+               Other Specialty Store                                6
+               Home                                                 2
+               Just Store                                           2
+               Parks & Recreation - Outdoor High-Activity           2
+               Grocery & Convenience Store                          1
+               Auto & Transport - Outdoor Low-Activity              1
+               Electronics Store                                    1
+               Food & Dining                                        1
+               Leisure & Entertainment- Indoor Low-Activity         1
+     3         University/School                                    6
+               Home                                                 5
+               Other Specialty Store                                5
+               Just Store                                           4
+               Home & Furniture Store                               3
+               Clothing & Fashion Store                             2
+               Electronics Store                                    2
+               Parks & Recreation - Outdoor High-Activity           1
+               Work                                                 1
+               Grocery & Convenience Store                          1
+               Sports & Fitness - Indoor High-Activity              1
+     4         Home                                                12
+               University/School                                    5
+               Electronics Store                                    3
+               Just Store                                           3
+               Parks & Recreation - Outdoor High-Activity           2
+               Home & Furniture Store                               2
+               Other Specialty Store                                2
+               Clothing & Fashion Store                             1
+               Food & Dining                                        1
+     5         Home                                                 6
+               University/School                                    5
+               Grocery & Convenience Store                          3
+               Clothing & Fashion Store                             1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Auto & Transport - Outdoor Low-Activity              1
+               Unknown                                              1
+               Electronics Store                                    1
+               Parks & Recreation - Outdoor High-Activity           1
+               Food & Dining                                        1
+16   1         Work                                                18
+               Home                                                14
+               Sports & Fitness - Indoor High-Activity              1
+               Just Store                                           1
+               Unknown                                              1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+     2         Work                                                19
+               Home                                                13
+               Healthcare & Personal Care - Indoor Low-Activity     3
+               Sports & Fitness - Indoor High-Activity              1
+     3         Work                                                17
+               Home                                                13
+               Healthcare & Personal Care - Indoor Low-Activity     2
+               Sports & Fitness - Indoor High-Activity              1
+               Other Specialty Store                                1
+     4         Work                                                17
+               Home                                                11
+               Just Store                                           2
+               Parks & Recreation - Outdoor High-Activity           1
+               Other Specialty Store                                1
+               Food & Dining                                        1
+     5         Home                                                27
+               Food & Dining                                        3
+               Just Store                                           3
+               Home & Furniture Store                               1
+               Parks & Recreation - Outdoor High-Activity           1
+               Auto & Transport - Outdoor Low-Activity              1
+17   1         Home                                                25
+               Unknown                                             10
+               Parks & Recreation - Outdoor High-Activity           6
+     2         Work                                                14
+               Parks & Recreation - Outdoor High-Activity           7
+               Home                                                 7
+               Unknown                                              3
+               Grocery & Convenience Store                          2
+               Food & Dining                                        2
+               Just Store                                           1
+               University/School                                    1
+     3         Work                                                16
+               Home                                                 9
+               Parks & Recreation - Outdoor High-Activity           5
+               University/School                                    3
+               Food & Dining                                        2
+               Unknown                                              2
+               Grocery & Convenience Store                          1
+               Just Store                                           1
+     4         Work                                                19
+               University/School                                    5
+               Home                                                 4
+               Parks & Recreation - Outdoor High-Activity           4
+               Home & Furniture Store                               2
+               Food & Dining                                        2
+               Unknown                                              2
+               Just Store                                           1
+     5         University/School                                   21
+               Work                                                 7
+               Unknown                                              5
+               Home                                                 3
+               Parks & Recreation - Outdoor High-Activity           2
+               Food & Dining                                        1
+               Grocery & Convenience Store                          1
+               Just Store                                           1
+18   1         Home                                                40
+               Food & Dining                                        2
+     2         Work                                                22
+               Home                                                 7
+               Food & Dining                                        7
+               Healthcare & Personal Care - Indoor Low-Activity     2
+               Other Specialty Store                                1
+               Home & Furniture Store                               1
+               Clothing & Fashion Store                             1
+     3         Work                                                25
+               Home                                                12
+               Food & Dining                                        2
+     4         Food & Dining                                        9
+               Home                                                 9
+               Home & Furniture Store                               6
+               Just Store                                           3
+               Auto & Transport - Outdoor Low-Activity              3
+               Grocery & Convenience Store                          3
+               Clothing & Fashion Store                             3
+               Other Specialty Store                                2
+               Leisure & Entertainment- Indoor Low-Activity         1
+               Sports & Fitness - Indoor High-Activity              1
+               Work                                                 1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+     5         Home                                                17
+               Food & Dining                                       11
+               Just Store                                           4
+               Sports & Fitness - Indoor High-Activity              3
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Home & Furniture Store                               1
+               Clothing & Fashion Store                             1
+19   1         Electronics Store                                   35
+               Grocery & Convenience Store                          3
+               University/School                                    3
+               Work                                                 1
+     2         Electronics Store                                   16
+               University/School                                   11
+               Work                                                 5
+               Food & Dining                                        3
+               Just Store                                           2
+               Parks & Recreation - Outdoor High-Activity           2
+               Grocery & Convenience Store                          1
+     3         Electronics Store                                   18
+               Work                                                16
+               University/School                                    2
+               Grocery & Convenience Store                          2
+               Food & Dining                                        1
+               Clothing & Fashion Store                             1
+               Sports & Fitness - Indoor High-Activity              1
+               Leisure & Entertainment- Indoor Low-Activity         1
+     4         Electronics Store                                   23
+               University/School                                    9
+               Work                                                 4
+               Grocery & Convenience Store                          3
+               Food & Dining                                        1
+               Parks & Recreation - Outdoor High-Activity           1
+               Home                                                 1
+     5         Electronics Store                                   27
+               University/School                                    9
+               Grocery & Convenience Store                          3
+               Food & Dining                                        1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Sports & Fitness - Indoor High-Activity              1
+20   1         Work                                                22
+               Home                                                13
+               University/School                                    5
+               Parks & Recreation - Outdoor High-Activity           2
+               Food & Dining                                        1
+               Just Store                                           1
+               Clothing & Fashion Store                             1
+               Home & Furniture Store                               1
+     2         Work                                                17
+               Home                                                 8
+               University/School                                    7
+               Healthcare & Personal Care - Indoor Low-Activity     4
+               Sports & Fitness - Indoor High-Activity              3
+               Clothing & Fashion Store                             3
+               Food & Dining                                        3
+               Just Store                                           1
+               Home & Furniture Store                               1
+     3         Work                                                28
+               Home                                                 9
+               Clothing & Fashion Store                             3
+               Food & Dining                                        2
+               Home & Furniture Store                               2
+               Just Store                                           1
+               Sports & Fitness - Indoor High-Activity              1
+     4         Home                                                22
+               Clothing & Fashion Store                            10
+               Home & Furniture Store                               4
+               Auto & Transport - Outdoor Low-Activity              2
+               Grocery & Convenience Store                          2
+               Healthcare & Personal Care - Indoor Low-Activity     2
+               Sports & Fitness - Indoor High-Activity              1
+               Just Store                                           1
+               Food & Dining                                        1
+               Electronics Store                                    1
+               Parks & Recreation - Outdoor High-Activity           1
+     5         Home                                                24
+               Clothing & Fashion Store                             7
+               Sports & Fitness - Indoor High-Activity              3
+               Home & Furniture Store                               3
+               Just Store                                           3
+               Food & Dining                                        2
+               Parks & Recreation - Outdoor High-Activity           1
+               Auto & Transport - Outdoor Low-Activity              1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Grocery & Convenience Store                          1
+21   1         University/School                                   28
+               Home                                                10
+               Just Store                                           4
+               Auto & Transport - Outdoor Low-Activity              1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Parks & Recreation - Outdoor High-Activity           1
+               Home & Furniture Store                               1
+               Clothing & Fashion Store                             1
+     2         University/School                                   29
+               Home                                                 6
+               Just Store                                           4
+               Parks & Recreation - Outdoor High-Activity           2
+               Home & Furniture Store                               2
+               Auto & Transport - Outdoor Low-Activity              1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Sports & Fitness - Indoor High-Activity              1
+               Food & Dining                                        1
+     3         University/School                                   26
+               Home                                                 8
+               Just Store                                           3
+               Parks & Recreation - Outdoor High-Activity           2
+               Home & Furniture Store                               2
+               Healthcare & Personal Care - Indoor Low-Activity     2
+               Other Specialty Store                                2
+               Auto & Transport - Outdoor Low-Activity              1
+               Food & Dining                                        1
+     4         Home                                                27
+               Home & Furniture Store                               5
+               Auto & Transport - Outdoor Low-Activity              3
+               University/School                                    3
+               Parks & Recreation - Outdoor High-Activity           2
+               Healthcare & Personal Care - Indoor Low-Activity     2
+               Grocery & Convenience Store                          2
+               Other Specialty Store                                2
+               Food & Dining                                        1
+     5         Home                                                32
+               Food & Dining                                        3
+               Healthcare & Personal Care - Indoor Low-Activity     3
+               Just Store                                           3
+               Home & Furniture Store                               3
+               Auto & Transport - Outdoor Low-Activity              1
+               Clothing & Fashion Store                             1
+               Sports & Fitness - Indoor High-Activity              1
+22   1         Other Specialty Store                               22
+               Just Store                                          12
+               Electronics Store                                    2
+               University/School                                    1
+               Parks & Recreation - Outdoor High-Activity           1
+     2         Work                                                20
+               Just Store                                           7
+               Other Specialty Store                                7
+               Food & Dining                                        2
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Clothing & Fashion Store                             1
+               Home & Furniture Store                               1
+               University/School                                    1
+     3         Work                                                18
+               Other Specialty Store                                8
+               Food & Dining                                        5
+               Just Store                                           4
+               Parks & Recreation - Outdoor High-Activity           2
+               Unknown                                              2
+               Sports & Fitness - Indoor High-Activity              1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+     4         Work                                                16
+               Other Specialty Store                               11
+               Just Store                                           5
+               Clothing & Fashion Store                             4
+               Food & Dining                                        2
+               Auto & Transport - Outdoor Low-Activity              1
+               Sports & Fitness - Indoor High-Activity              1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Electronics Store                                    1
+               Grocery & Convenience Store                          1
+     5         Work                                                10
+               Other Specialty Store                                9
+               Just Store                                           7
+               Food & Dining                                        6
+               Unknown                                              3
+               Home & Furniture Store                               2
+               Clothing & Fashion Store                             2
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Auto & Transport - Outdoor Low-Activity              1
+               Electronics Store                                    1
+               Grocery & Convenience Store                          1
+23   1         Electronics Store                                   34
+               Home & Furniture Store                               5
+               University/School                                    1
+     2         Electronics Store                                   18
+               University/School                                    7
+               Food & Dining                                        5
+               Home & Furniture Store                               4
+               Parks & Recreation - Outdoor High-Activity           2
+               Clothing & Fashion Store                             1
+               Just Store                                           1
+     3         Electronics Store                                   23
+               University/School                                    6
+               Food & Dining                                        5
+               Home & Furniture Store                               4
+               Leisure & Entertainment- Indoor Low-Activity         1
+     4         Electronics Store                                   20
+               Food & Dining                                        5
+               Home & Furniture Store                               3
+               University/School                                    3
+               Clothing & Fashion Store                             1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Other Specialty Store                                1
+     5         Electronics Store                                   28
+               Home & Furniture Store                               5
+               University/School                                    2
+               Food & Dining                                        2
+               Just Store                                           1
+24   1         Home                                                26
+               Just Store                                           3
+               Sports & Fitness - Indoor High-Activity              1
+               Parks & Recreation - Outdoor High-Activity           1
+               University/School                                    1
+               Food & Dining                                        1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Home & Furniture Store                               1
+     2         Home                                                28
+               University/School                                    2
+               Food & Dining                                        2
+               Parks & Recreation - Outdoor High-Activity           1
+               Just Store                                           1
+               Sports & Fitness - Indoor High-Activity              1
+     3         Home                                                26
+               Food & Dining                                        3
+               Clothing & Fashion Store                             2
+               University/School                                    1
+               Home & Furniture Store                               1
+               Just Store                                           1
+               Auto & Transport - Outdoor Low-Activity              1
+     4         Home                                                26
+               Just Store                                           3
+               Home & Furniture Store                               2
+               Food & Dining                                        2
+               Parks & Recreation - Outdoor High-Activity           1
+               University/School                                    1
+     5         Home                                                23
+               Just Store                                           2
+               Sports & Fitness - Indoor High-Activity              2
+               Food & Dining                                        2
+               Home & Furniture Store                               2
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Parks & Recreation - Outdoor High-Activity           1
+               Auto & Transport - Outdoor Low-Activity              1
+               Grocery & Convenience Store                          1
+25   1         Work                                                12
+               Home                                                12
+               Just Store                                           7
+               University/School                                    3
+               Food & Dining                                        2
+               Home & Furniture Store                               2
+               Auto & Transport - Outdoor Low-Activity              2
+               Grocery & Convenience Store                          1
+     2         Work                                                11
+               Home                                                 7
+               University/School                                    7
+               Just Store                                           7
+               Auto & Transport - Outdoor Low-Activity              2
+               Food & Dining                                        1
+               Other Specialty Store                                1
+               Grocery & Convenience Store                          1
+               Clothing & Fashion Store                             1
+     3         Work                                                19
+               Home                                                 9
+               Just Store                                           5
+               Parks & Recreation - Outdoor High-Activity           4
+               Home & Furniture Store                               2
+               University/School                                    1
+               Sports & Fitness - Indoor High-Activity              1
+     4         Home                                                23
+               Just Store                                          13
+               Food & Dining                                        2
+               Home & Furniture Store                               1
+               Parks & Recreation - Outdoor High-Activity           1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+     5         Home                                                21
+               Just Store                                          12
+               Parks & Recreation - Outdoor High-Activity           2
+               Food & Dining                                        1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Grocery & Convenience Store                          1
+               Home & Furniture Store                               1
+26   1         Healthcare & Personal Care - Indoor Low-Activity    16
+               Just Store                                           9
+               Home & Furniture Store                               4
+               Clothing & Fashion Store                             3
+               University/School                                    2
+               Auto & Transport - Outdoor Low-Activity              1
+               Sports & Fitness - Indoor High-Activity              1
+     2         Healthcare & Personal Care - Indoor Low-Activity    18
+               Just Store                                           7
+               Sports & Fitness - Indoor High-Activity              5
+               Home & Furniture Store                               4
+               Food & Dining                                        3
+               Parks & Recreation - Outdoor High-Activity           2
+               University/School                                    2
+     3         Healthcare & Personal Care - Indoor Low-Activity    17
+               Just Store                                          12
+               University/School                                    4
+               Home & Furniture Store                               3
+               Sports & Fitness - Indoor High-Activity              2
+               Grocery & Convenience Store                          1
+               Clothing & Fashion Store                             1
+               Food & Dining                                        1
+     4         Healthcare & Personal Care - Indoor Low-Activity    15
+               Just Store                                           9
+               Home & Furniture Store                               7
+               University/School                                    3
+               Sports & Fitness - Indoor High-Activity              2
+               Other Specialty Store                                2
+               Food & Dining                                        1
+               Auto & Transport - Outdoor Low-Activity              1
+               Clothing & Fashion Store                             1
+     5         Just Store                                          31
+               Home & Furniture Store                               5
+               Other Specialty Store                                1
+               Clothing & Fashion Store                             1
+27   1         Parks & Recreation - Outdoor High-Activity          28
+               Home & Furniture Store                               5
+               Just Store                                           3
+               Other Specialty Store                                2
+               Food & Dining                                        1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+     2         Parks & Recreation - Outdoor High-Activity          13
+               Work                                                 7
+               Food & Dining                                        6
+               Home & Furniture Store                               5
+               Just Store                                           3
+               University/School                                    2
+               Healthcare & Personal Care - Indoor Low-Activity     2
+               Electronics Store                                    1
+     3         Work                                                12
+               Parks & Recreation - Outdoor High-Activity           7
+               Just Store                                           6
+               Food & Dining                                        5
+               Home & Furniture Store                               3
+               Clothing & Fashion Store                             1
+               Sports & Fitness - Indoor High-Activity              1
+     4         Parks & Recreation - Outdoor High-Activity           9
+               Work                                                 9
+               Food & Dining                                        6
+               Home & Furniture Store                               3
+               Just Store                                           2
+               University/School                                    1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Other Specialty Store                                1
+               Clothing & Fashion Store                             1
+     5         Parks & Recreation - Outdoor High-Activity          14
+               Food & Dining                                        8
+               Home & Furniture Store                               4
+               Just Store                                           3
+               Work                                                 2
+               University/School                                    2
+               Clothing & Fashion Store                             2
+               Leisure & Entertainment- Indoor Low-Activity         1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Auto & Transport - Outdoor Low-Activity              1
+28   1         Home                                                17
+               Home & Furniture Store                              13
+               Parks & Recreation - Outdoor High-Activity           4
+               Food & Dining                                        2
+               University/School                                    2
+     2         University/School                                   13
+               Work                                                10
+               Food & Dining                                        6
+               Home                                                 3
+               Home & Furniture Store                               3
+               Healthcare & Personal Care - Indoor Low-Activity     2
+               Just Store                                           1
+     3         Work                                                13
+               University/School                                   10
+               Home                                                 6
+               Home & Furniture Store                               4
+               Food & Dining                                        3
+               Clothing & Fashion Store                             1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Parks & Recreation - Outdoor High-Activity           1
+     4         Home                                                13
+               Home & Furniture Store                              12
+               University/School                                    4
+               Parks & Recreation - Outdoor High-Activity           3
+               Food & Dining                                        2
+               Other Specialty Store                                2
+               Clothing & Fashion Store                             1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+     5         Home                                                12
+               Parks & Recreation - Outdoor High-Activity           9
+               Home & Furniture Store                               9
+               Food & Dining                                        3
+               Healthcare & Personal Care - Indoor Low-Activity     2
+               Auto & Transport - Outdoor Low-Activity              1
+               University/School                                    1
+               Clothing & Fashion Store                             1
+               Leisure & Entertainment- Indoor Low-Activity         1
+               Just Store                                           1
+29   1         Home                                                34
+               Auto & Transport - Outdoor Low-Activity              3
+               Unknown                                              1
+               Work                                                 1
+               Parks & Recreation - Outdoor High-Activity           1
+               Home & Furniture Store                               1
+               Electronics Store                                    1
+     2         Work                                                19
+               Home                                                10
+               Food & Dining                                        4
+               Just Store                                           4
+               Other Specialty Store                                1
+               Auto & Transport - Outdoor Low-Activity              1
+               Home & Furniture Store                               1
+               Electronics Store                                    1
+               University/School                                    1
+     3         Work                                                14
+               Home                                                 5
+               Clothing & Fashion Store                             4
+               Food & Dining                                        3
+               Grocery & Convenience Store                          2
+               University/School                                    2
+               Just Store                                           2
+               Leisure & Entertainment- Indoor Low-Activity         1
+               Other Specialty Store                                1
+               Home & Furniture Store                               1
+               Auto & Transport - Outdoor Low-Activity              1
+               Electronics Store                                    1
+     4         Food & Dining                                        8
+               Just Store                                           7
+               Work                                                 7
+               Parks & Recreation - Outdoor High-Activity           3
+               Clothing & Fashion Store                             3
+               Home                                                 3
+               University/School                                    2
+               Home & Furniture Store                               2
+               Grocery & Convenience Store                          1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Auto & Transport - Outdoor Low-Activity              1
+     5         Home                                                 8
+               Just Store                                           8
+               Food & Dining                                        7
+               Auto & Transport - Outdoor Low-Activity              5
+               Work                                                 3
+               University/School                                    3
+               Clothing & Fashion Store                             3
+               Grocery & Convenience Store                          1
+               Electronics Store                                    1
+               Home & Furniture Store                               1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+30   1         Home                                                23
+               Grocery & Convenience Store                          9
+               University/School                                    3
+               Healthcare & Personal Care - Indoor Low-Activity     1
+     2         Home                                                14
+               Work                                                 8
+               Grocery & Convenience Store                          4
+               Food & Dining                                        3
+               University/School                                    2
+               Just Store                                           1
+               Clothing & Fashion Store                             1
+               Other Specialty Store                                1
+               Home & Furniture Store                               1
+               Parks & Recreation - Outdoor High-Activity           1
+     3         Home                                                11
+               Work                                                 6
+               Food & Dining                                        6
+               Grocery & Convenience Store                          4
+               University/School                                    3
+               Clothing & Fashion Store                             3
+               Home & Furniture Store                               2
+               Parks & Recreation - Outdoor High-Activity           1
+               Just Store                                           1
+     4         Home                                                 9
+               Food & Dining                                        8
+               Grocery & Convenience Store                          6
+               Work                                                 5
+               Just Store                                           1
+               Sports & Fitness - Indoor High-Activity              1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               University/School                                    1
+               Parks & Recreation - Outdoor High-Activity           1
+     5         Food & Dining                                       11
+               Home                                                 9
+               University/School                                    5
+               Grocery & Convenience Store                          4
+               Other Specialty Store                                4
+               Work                                                 1
+31   1         Home                                                15
+               Home & Furniture Store                               3
+               Work                                                 2
+               Sports & Fitness - Indoor High-Activity              2
+               Food & Dining                                        1
+     2         Work                                                10
+               Home                                                 6
+               Food & Dining                                        4
+               Home & Furniture Store                               3
+               Just Store                                           2
+               Grocery & Convenience Store                          1
+               Parks & Recreation - Outdoor High-Activity           1
+               Clothing & Fashion Store                             1
+     3         Work                                                12
+               Home                                                 5
+               Food & Dining                                        4
+               Home & Furniture Store                               2
+               Auto & Transport - Outdoor Low-Activity              2
+               Parks & Recreation - Outdoor High-Activity           2
+               Sports & Fitness - Indoor High-Activity              2
+               University/School                                    1
+               Other Specialty Store                                1
+     4         Work                                                 8
+               Food & Dining                                        7
+               Home                                                 5
+               Just Store                                           2
+               University/School                                    1
+               Home & Furniture Store                               1
+               Other Specialty Store                                1
+     5         Home                                                14
+               Food & Dining                                        7
+               Work                                                 4
+               Clothing & Fashion Store                             2
+               Home & Furniture Store                               1
+               Parks & Recreation - Outdoor High-Activity           1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Electronics Store                                    1
+32   1         Food & Dining                                       14
+               Home & Furniture Store                              12
+               Just Store                                           5
+               Grocery & Convenience Store                          5
+               Auto & Transport - Outdoor Low-Activity              1
+               University/School                                    1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Unknown                                              1
+     2         Home & Furniture Store                              10
+               Food & Dining                                       10
+               Just Store                                           8
+               Grocery & Convenience Store                          5
+               Clothing & Fashion Store                             3
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Parks & Recreation - Outdoor High-Activity           1
+               University/School                                    1
+               Electronics Store                                    1
+               Unknown                                              1
+     3         Food & Dining                                       15
+               Just Store                                          10
+               Home & Furniture Store                               9
+               Clothing & Fashion Store                             3
+               Grocery & Convenience Store                          3
+               Auto & Transport - Outdoor Low-Activity              1
+               Other Specialty Store                                1
+               Electronics Store                                    1
+     4         Home & Furniture Store                              10
+               Just Store                                           9
+               Food & Dining                                        6
+               Clothing & Fashion Store                             5
+               Auto & Transport - Outdoor Low-Activity              3
+               Grocery & Convenience Store                          3
+               Parks & Recreation - Outdoor High-Activity           2
+               Healthcare & Personal Care - Indoor Low-Activity     2
+               Other Specialty Store                                1
+               Unknown                                              1
+               University/School                                    1
+     5         Home & Furniture Store                              16
+               Just Store                                           8
+               Food & Dining                                        4
+               Clothing & Fashion Store                             3
+               Auto & Transport - Outdoor Low-Activity              2
+               Healthcare & Personal Care - Indoor Low-Activity     2
+               Other Specialty Store                                2
+               Grocery & Convenience Store                          2
+               Unknown                                              2
+               Electronics Store                                    1
+               University/School                                    1
+33   1         Home                                                16
+               Clothing & Fashion Store                             8
+               Just Store                                           4
+               Parks & Recreation - Outdoor High-Activity           3
+               Auto & Transport - Outdoor Low-Activity              1
+               Home & Furniture Store                               1
+               Grocery & Convenience Store                          1
+               Food & Dining                                        1
+     2         Home                                                16
+               Food & Dining                                        8
+               Clothing & Fashion Store                             7
+               Parks & Recreation - Outdoor High-Activity           2
+               Just Store                                           2
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Home & Furniture Store                               1
+               Auto & Transport - Outdoor Low-Activity              1
+     3         Home                                                13
+               Clothing & Fashion Store                             7
+               Food & Dining                                        5
+               Just Store                                           4
+               Auto & Transport - Outdoor Low-Activity              3
+               Home & Furniture Store                               2
+               Other Specialty Store                                2
+               Parks & Recreation - Outdoor High-Activity           1
+               Sports & Fitness - Indoor High-Activity              1
+               Electronics Store                                    1
+     4         Parks & Recreation - Outdoor High-Activity           9
+               Home                                                 7
+               Clothing & Fashion Store                             7
+               Just Store                                           5
+               Auto & Transport - Outdoor Low-Activity              3
+               Grocery & Convenience Store                          1
+               Home & Furniture Store                               1
+               Food & Dining                                        1
+               Other Specialty Store                                1
+               Electronics Store                                    1
+     5         Home                                                16
+               Clothing & Fashion Store                             9
+               Just Store                                           4
+               Home & Furniture Store                               3
+               Food & Dining                                        2
+               Auto & Transport - Outdoor Low-Activity              2
+               Parks & Recreation - Outdoor High-Activity           2
+               Other Specialty Store                                1
+34   1         Home                                                18
+               Grocery & Convenience Store                          6
+               Food & Dining                                        6
+               Clothing & Fashion Store                             3
+               Just Store                                           3
+               Healthcare & Personal Care - Indoor Low-Activity     2
+               Parks & Recreation - Outdoor High-Activity           1
+               Electronics Store                                    1
+               Auto & Transport - Outdoor Low-Activity              1
+     2         Home                                                16
+               Food & Dining                                        9
+               Just Store                                           6
+               Healthcare & Personal Care - Indoor Low-Activity     4
+               Grocery & Convenience Store                          3
+               Electronics Store                                    1
+               Home & Furniture Store                               1
+               Clothing & Fashion Store                             1
+               Auto & Transport - Outdoor Low-Activity              1
+     3         Home                                                12
+               Food & Dining                                        7
+               Grocery & Convenience Store                          5
+               Healthcare & Personal Care - Indoor Low-Activity     4
+               Just Store                                           4
+               Clothing & Fashion Store                             2
+               Other Specialty Store                                2
+               Unknown                                              1
+               Sports & Fitness - Indoor High-Activity              1
+               Auto & Transport - Outdoor Low-Activity              1
+     4         Home                                                30
+               Food & Dining                                        3
+               Grocery & Convenience Store                          3
+               Clothing & Fashion Store                             2
+               Electronics Store                                    2
+               Healthcare & Personal Care - Indoor Low-Activity     2
+               Just Store                                           1
+     5         Home                                                27
+               Food & Dining                                        4
+               Healthcare & Personal Care - Indoor Low-Activity     4
+               Home & Furniture Store                               2
+               Just Store                                           2
+               Grocery & Convenience Store                          2
+               Clothing & Fashion Store                             1
+               Electronics Store                                    1
+35   1         Parks & Recreation - Outdoor High-Activity          20
+               Home                                                17
+               Auto & Transport - Outdoor Low-Activity              3
+               Clothing & Fashion Store                             1
+               Grocery & Convenience Store                          1
+     2         Work                                                15
+               Parks & Recreation - Outdoor High-Activity           8
+               Just Store                                           5
+               Home                                                 4
+               Food & Dining                                        4
+               Auto & Transport - Outdoor Low-Activity              3
+               Grocery & Convenience Store                          2
+               Home & Furniture Store                               1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+     3         Work                                                18
+               Parks & Recreation - Outdoor High-Activity          11
+               Home                                                 6
+               Just Store                                           4
+               Auto & Transport - Outdoor Low-Activity              3
+               Food & Dining                                        1
+     4         Work                                                16
+               Parks & Recreation - Outdoor High-Activity          10
+               Just Store                                           5
+               Food & Dining                                        4
+               Home                                                 3
+               Auto & Transport - Outdoor Low-Activity              2
+               Other Specialty Store                                1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Home & Furniture Store                               1
+     5         Just Store                                          17
+               Parks & Recreation - Outdoor High-Activity          15
+               Auto & Transport - Outdoor Low-Activity              4
+               Clothing & Fashion Store                             1
+               Home                                                 1
+               Leisure & Entertainment- Indoor Low-Activity         1
+               Other Specialty Store                                1
+               Healthcare & Personal Care - Indoor Low-Activity     1
+               Grocery & Convenience Store                          1
+36   1         Home                                                13
+               Grocery & Convenience Store                          9
+               University/School                                    4
+               Parks & Recreation - Outdoor High-Activity           3
+               Food & Dining                                        2
+               Home & Furniture Store                               2
+               Just Store                                           1
+     2         University/School                                    7
+               Home                                                 6
+               Grocery & Convenience Store                          6
+               Work                                                 5
+               Home & Furniture Store                               5
+               Food & Dining                                        1
+     3         Work                                                 8
+               University/School                                    7
+               Grocery & Convenience Store                          7
+               Food & Dining                                        5
+               Home                                                 4
+               Home & Furniture Store                               3
+               Just Store                                           1
+               Parks & Recreation - Outdoor High-Activity           1
+     4         University/School                                   10
+               Home                                                 8
+               Grocery & Convenience Store                          5
+               Work                                                 4
+               Food & Dining                                        4
+               Parks & Recreation - Outdoor High-Activity           3
+               Just Store                                           3
+               Home & Furniture Store                               1
+     5         Home                                                12
+               Grocery & Convenience Store                          9
+               Food & Dining                                        6
+               Parks & Recreation - Outdoor High-Activity           4
+               University/School                                    4
+               Healthcare & Personal Care - Indoor Low-Activity     1
+37   1         Home                                                13
+               Work                                                 9
+               Healthcare & Personal Care - Indoor Low-Activity     8
+               Just Store                                           4
+               Food & Dining                                        1
+               Home & Furniture Store                               1
+     2         Work                                                18
+               Home                                                12
+               Healthcare & Personal Care - Indoor Low-Activity     7
+               Just Store                                           4
+               Parks & Recreation - Outdoor High-Activity           1
+               Grocery & Convenience Store                          1
+     3         Work                                                16
+               Home                                                11
+               Healthcare & Personal Care - Indoor Low-Activity     9
+               Sports & Fitness - Indoor High-Activity              3
+               Just Store                                           3
+               Grocery & Convenience Store                          1
+               Auto & Transport - Outdoor Low-Activity              1
+               Food & Dining                                        1
+     4         Home                                                21
+               Work                                                 8
+               Just Store                                           5
+               Healthcare & Personal Care - Indoor Low-Activity     5
+               Clothing & Fashion Store                             2
+               Food & Dining                                        2
+               Parks & Recreation - Outdoor High-Activity           1
+     5         Home                                                24
+               Just Store                                           6
+               Healthcare & Personal Care - Indoor Low-Activity     5
+               Work                                                 3
+               Food & Dining                                        2
+               Electronics Store                                    1
+               Home & Furniture Store                               1
+               Parks & Recreation - Outdoor High-Activity           1
