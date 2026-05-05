@@ -221,9 +221,10 @@ class Qwen3BLLM:
     通过 vLLM 离线推理调用 Qwen3-8B-AWQ
     使用 constrained decoding 保证输出为 1-5 的整数
     """
+
     def __init__(self, model_path: str = "Qwen/Qwen3-8B-AWQ"):
         from vllm import LLM, SamplingParams
-        from vllm.sampling_params import GuidedDecodingParams
+        from vllm.sampling_params import StructuredOutputsParams
         
         print(f"Loading model: {model_path}")
         print("This may take 1-2 minutes on first load...")
@@ -239,7 +240,7 @@ class Qwen3BLLM:
         )
         
         # 评分任务：constrained decoding，只能输出 1-5
-        self.score_guided = GuidedDecodingParams(choice=["1", "2", "3", "4", "5"])
+        self.score_guided = StructuredOutputsParams(choice=["1", "2", "3", "4", "5"])
         self.score_params = SamplingParams(
             temperature=0.3,
             max_tokens=1,
@@ -247,7 +248,7 @@ class Qwen3BLLM:
         )
         
         # 重要性评分：constrained decoding，1-10
-        self.importance_guided = GuidedDecodingParams(
+        self.importance_guided = StructuredOutputsParams(
             choice=["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"]
         )
         self.importance_params = SamplingParams(

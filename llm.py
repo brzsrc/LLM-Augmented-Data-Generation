@@ -18,20 +18,20 @@ warnings.filterwarnings('ignore')
 # ================================================================
 
 class Qwen3BLLM:
-    def __init__(self, model_path: str = "Qwen/Qwen3-8B-AWQ"):
+    def __init__(self, model_path: str = "models/Qwen3-8B-AWQ"):
         from vllm import LLM, SamplingParams
-        from vllm.sampling_params import GuidedDecodingParams
+        from vllm.sampling_params import StructuredOutputsParams
         print(f"Loading model: {model_path}")
         self.llm = LLM(model=model_path, quantization="awq",
                        gpu_memory_utilization=0.90, max_model_len=4096,
                        trust_remote_code=True)
-        self.score_guided = GuidedDecodingParams(choice=["1", "2", "3", "4", "5"])
+        self.score_guided = StructuredOutputsParams(choice=["1", "2", "3", "4", "5"])
         self.score_params = SamplingParams(temperature=0.3, max_tokens=1, guided_decoding=self.score_guided)
-        self.importance_guided = GuidedDecodingParams(choice=[str(i) for i in range(1, 11)])
+        self.importance_guided = StructuredOutputsParams(choice=[str(i) for i in range(1, 11)])
         self.importance_params = SamplingParams(temperature=0.1, max_tokens=2, guided_decoding=self.importance_guided)
         self.text_params = SamplingParams(temperature=0.3, max_tokens=200)
         adj_choices = [str(i) for i in range(-50, 101)]
-        self.adj_guided = GuidedDecodingParams(choice=adj_choices)
+        self.adj_guided = StructuredOutputsParams(choice=adj_choices)
         self.adj_params = SamplingParams(temperature=0.3, max_tokens=4, guided_decoding=self.adj_guided)
         self.call_count = 0
         print("Model loaded!")
