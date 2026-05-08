@@ -43,9 +43,37 @@ class V1DataExtractor:
     【修改2】所有列名适配 cleaned 格式
     """
 
-    def __init__(self, users_path: str, cleaned_path: str):
-        self.users = pd.read_csv(users_path)
-        self.sugg = pd.read_csv(cleaned_path)  # 【修改1】
+    def __init__(self, users_path: str, cleaned_path: str,
+                 train_uids_path: str = 'data/train_uids.json',
+                 test_uids_path: str = 'data/test_uids.json'):
+        import json
+
+        users_full = pd.read_csv(users_path)
+        sugg_full  = pd.read_csv(cleaned_path)
+
+        # ── Train/test split：所有种子统计只在 train 上算 ──
+        with open(train_uids_path) as f:
+            train_uids = set(json.load(f))
+        with open(test_uids_path) as f:
+            test_uids = set(json.load(f))
+        self.train_uids = train_uids
+        self.test_uids  = test_uids
+
+        # users.csv 里 uid 列名是 user.index（来自原始 mHealth 数据）
+        uid_col = 'user.index' if 'user.index' in users_full.columns else 'uid'
+
+        # train split：用来 fit 所有种子统计
+        self.sugg  = sugg_full[sugg_full['uid'].isin(train_uids)].reset_index(drop=True)
+        self.users = users_full[users_full[uid_col].isin(train_uids)].reset_index(drop=True)
+
+        # test split：留给后面 fidelity / FQE 评估时用，
+        # generator 的训练阶段绝不能碰
+        self.sugg_test  = sugg_full[sugg_full['uid'].isin(test_uids)].reset_index(drop=True)
+        self.users_test = users_full[users_full[uid_col].isin(test_uids)].reset_index(drop=True)
+
+        print(f"[split] train: {len(train_uids)} users / {len(self.sugg)} rows  |  "
+              f"test: {len(test_uids)} users / {len(self.sugg_test)} rows")
+
         self._compute_user_profiles()
         self._compute_context_params()
         self._compute_step_params()
@@ -316,6 +344,19 @@ def main():
 
     # 【修改1】用 cleaned_output.csv
     ext = V1DataExtractor(users_csv, cleaned_csv)
+
+    # 健全性检查：种子统计绝不能见过 test 用户
+    assert ext.sugg['uid'].isin(ext.test_uids).sum() == 0, \
+        "LEAKAGE: test uids found in training sugg!"
+    assert len(ext.train_uids & ext.test_uids) == 0, \
+        "LEAKAGE: train and test uids overlap!"
+    # 同时检查 cluster_config 没有 test uids（防止忘了重跑 cluster_analysis.py）
+    all_cluster_uids = set(uid for lst in CLUSTER_UIDS.values() for uid in lst)
+    leaked = ext.test_uids & all_cluster_uids
+    assert not leaked, \
+        f"LEAKAGE: test uids {leaked} appear in CLUSTER_UIDS — " \
+        f"rerun cluster_analysis.py after split_users.py!"
+    print(f"[sanity] no leakage detected ✓")
 
 
     baseline_df = generate_baseline_vectors(ext, 10)

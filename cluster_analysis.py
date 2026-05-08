@@ -410,6 +410,17 @@ def build_cluster_config(c: pd.DataFrame, feat_df: pd.DataFrame, output_path: st
 def main():
     c = pd.read_csv('./data/cleaned_output.csv')
     u = pd.read_csv('./data/users.csv')
+
+    # ── Train/test split：聚类只在 train 用户上跑 ──
+    # 先跑过 data/split_users.py 才能找到这个文件
+    with open('./data/train_uids.json') as f:
+        train_uids = set(json.load(f))
+    n_before = c['uid'].nunique()
+    c = c[c['uid'].isin(train_uids)].copy()
+    if 'user.index' in u.columns:
+        u = u[u['user.index'].isin(train_uids)].copy()
+    print(f"[split] using {c['uid'].nunique()}/{n_before} train users only")
+
     print(f"数据: {len(c)} decisions, {c['uid'].nunique()} users, {c['location'].nunique()} locations")
 
     # Step 1: 构建特征矩阵
