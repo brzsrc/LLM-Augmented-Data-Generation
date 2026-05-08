@@ -1,0 +1,543 @@
+"""
+Policy Utility Evaluation — DDQN training + bootstrapped FQE
+============================================================
+
+Following Haas (2025) thesis, Section 4.5 / 5.3:
+- DDQN with gamma=0.9, soft target update tau=1e-4
+- FQE: 3-layer MLP, lr=4e-3, gamma=0.9, soft target tau=0.009
+- Bootstrap: B=150 episode-level resamples; one-sided Wilcoxon signed-rank tests
+
+Usage:
+    python policy_utility.py
+        --orig_csv /path/to/cleaned_output.csv
+        --sim_csv  /path/to/all_trajectories.csv
+        --out_dir  ./outputs
+        [--device cuda]
+        [--ddqn_iters 30000]      # thesis used 30001
+        [--fqe_iters 60000]       # thesis used 60000
+        [--bootstrap_B 150]       # thesis used 150
+        [--seed 42]
+
+Setup
+-----
+States (9 features, per the user's table):
+    slot, study_day, weekend, avail, dosage, temperature,
+    jbsteps30pre, location (encoded), activity (encoded)
+
+Action: send ∈ {0, 1, 2}
+Reward: log(jbsteps30 + 0.5)
+
+Train/val split: by patient, stratified.
+Test set: held-out original patients (~25% of unique uids), used for ALL
+          policy evaluations (including those trained on synthetic data).
+"""
+import argparse
+import json
+import os
+import pickle
+import time
+from collections import defaultdict
+
+import numpy as np
+import pandas as pd
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from scipy import stats as sstats
+from sklearn.preprocessing import MinMaxScaler
+
+
+# ============================================================================
+# CLI
+# ============================================================================
+def get_args():
+    p = argparse.ArgumentParser()
+    p.add_argument("--orig_csv", required=True)
+    p.add_argument("--sim_csv", required=True)
+    p.add_argument("--out_dir", default="./outputs")
+    p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    p.add_argument("--ddqn_iters", type=int, default=30000)
+    p.add_argument("--ddqn_eval_every", type=int, default=6000)
+    p.add_argument("--fqe_iters", type=int, default=60000)
+    p.add_argument("--bootstrap_B", type=int, default=150)
+    p.add_argument("--seed", type=int, default=42)
+    return p.parse_args()
+
+
+# ============================================================================
+# Data loading & MDP construction
+# ============================================================================
+STATE_COLS = ["slot", "study_day", "weekend", "avail", "dosage",
+              "temperature", "jbsteps30pre", "loc_enc", "act_enc"]
+NUM_ACTIONS = 3       # send ∈ {0, 1, 2}
+GAMMA = 0.9
+
+
+def load_and_preprocess(orig_csv, sim_csv):
+    """Load original and synthetic data, derive missing columns, encode categoricals
+    using a JOINT vocabulary so encodings are comparable across datasets."""
+    orig = pd.read_csv(orig_csv)
+    sim = pd.read_csv(sim_csv)
+
+    # ---- ORIGINAL: derive study_day, weekend, slot, dosage ----
+    orig["avail"] = orig["avail"].astype(int)
+    orig["date_dt"] = pd.to_datetime(orig["date"])
+    orig["study_day"] = orig.groupby("uid")["date_dt"].transform(
+        lambda s: (s - s.min()).dt.days + 1)
+    orig["weekend"] = (orig["date_dt"].dt.dayofweek >= 5).astype(int)
+    orig["slot"] = orig["day_slot"]
+
+    # Dosage: X_{t+1} = 0.95 * X_t + 1{A_t > 0}
+    orig = orig.sort_values(["uid", "datetime"]).reset_index(drop=True)
+    dosages = []
+    for _, g in orig.groupby("uid", sort=False):
+        d, prev_a = 0.0, 0
+        out = []
+        for a in g["send"].values:
+            d = 0.95 * d + (1 if prev_a > 0 else 0)
+            out.append(d)
+            prev_a = a
+        dosages.extend(out)
+    orig["dosage"] = dosages
+
+    # ---- SYNTHETIC ----
+    # 'weekday' is bool in the sim CSV; treat it as 'weekend' indicator
+    sim["weekend"] = sim["weekday"].astype(int)
+    sim = sim.sort_values(["user_id", "study_day", "slot"]).reset_index(drop=True)
+    sim["avail"] = sim["avail"].astype(int)
+
+    # ---- Reward: log(jbsteps30 + 0.5) ----
+    orig["reward_calc"] = np.log(orig["jbsteps30"].astype(float) + 0.5)
+    sim["reward_calc"] = np.log(sim["jbsteps30"].astype(float) + 0.5)
+
+    # ---- Joint encoding for categorical state vars ----
+    loc_cats = sorted(set(orig["location"].astype(str)) | set(sim["location"].astype(str)))
+    act_cats = sorted(set(orig["activity"].astype(str)) | set(sim["activity"].astype(str)))
+    loc_map = {c: i for i, c in enumerate(loc_cats)}
+    act_map = {c: i for i, c in enumerate(act_cats)}
+    orig["loc_enc"] = orig["location"].astype(str).map(loc_map).astype(int)
+    sim["loc_enc"] = sim["location"].astype(str).map(loc_map).astype(int)
+    orig["act_enc"] = orig["activity"].astype(str).map(act_map).astype(int)
+    sim["act_enc"] = sim["activity"].astype(str).map(act_map).astype(int)
+
+    return orig, sim, {"loc_cats": loc_cats, "act_cats": act_cats}
+
+
+def build_transitions(df, user_col, sort_cols):
+    """For each user, build (s_t, a_t, r_t, s_{t+1}, done_t) tuples in order."""
+    df = df.sort_values([user_col] + sort_cols).reset_index(drop=True)
+    transitions = []
+    for uid, g in df.groupby(user_col, sort=False):
+        g = g.reset_index(drop=True)
+        S = g[STATE_COLS].astype(float).values
+        A = g["send"].astype(int).values
+        R = g["reward_calc"].astype(float).values
+        n = len(g)
+        for t in range(n):
+            ns = S[t + 1] if t < n - 1 else S[t]
+            done = 0.0 if t < n - 1 else 1.0
+            transitions.append({
+                "patient_id": uid,
+                "s": S[t], "a": int(A[t]), "r": float(R[t]),
+                "ns": ns, "done": done,
+            })
+    return transitions
+
+
+def to_arrays(trans):
+    s = np.array([t["s"] for t in trans], dtype=np.float32)
+    a = np.array([t["a"] for t in trans], dtype=np.int64)
+    r = np.array([t["r"] for t in trans], dtype=np.float32)
+    ns = np.array([t["ns"] for t in trans], dtype=np.float32)
+    d = np.array([t["done"] for t in trans], dtype=np.float32)
+    pid = np.array([t["patient_id"] for t in trans])
+    return s, a, r, ns, d, pid
+
+
+def make_splits(orig_trans, sim_trans, seed=42):
+    """By-patient splits.
+       - Test  = ~25% original patients (held out from ALL training)
+       - Original train/val: from the remaining originals (75/25)
+       - Synthetic full: 75/25 train/val on all 100 sim patients
+       - Synthetic n=60: take first 60 sim patients, 75/25 train/val
+       - Merged: original train+val patients ∪ synthetic train+val patients
+    """
+    rng = np.random.default_rng(seed)
+
+    orig_pats = sorted(set(t["patient_id"] for t in orig_trans))
+    rng.shuffle(orig_pats)
+    n_test = max(7, len(orig_pats) // 4)
+    test_pats = set(orig_pats[:n_test])
+    rest = orig_pats[n_test:]
+    n_val = max(3, len(rest) // 4)
+    orig_val_pats = set(rest[:n_val])
+    orig_train_pats = set(rest[n_val:])
+
+    sim_pats = sorted(set(t["patient_id"] for t in sim_trans))
+    rng.shuffle(sim_pats)
+    n_sim_val = len(sim_pats) // 4
+    sim_val_pats = set(sim_pats[:n_sim_val])
+    sim_train_pats = set(sim_pats[n_sim_val:])
+
+    sim_subset_pats = sim_pats[:60]
+    n_sub_val = len(sim_subset_pats) // 4
+    sim_sub_val = set(sim_subset_pats[:n_sub_val])
+    sim_sub_train = set(sim_subset_pats[n_sub_val:])
+
+    def f(trans, pats):
+        return [t for t in trans if t["patient_id"] in pats]
+
+    datasets = {
+        "original": {"train": f(orig_trans, orig_train_pats),
+                     "val":   f(orig_trans, orig_val_pats)},
+        "synthetic_60": {"train": f(sim_trans, sim_sub_train),
+                          "val":   f(sim_trans, sim_sub_val)},
+        "synthetic_100": {"train": f(sim_trans, sim_train_pats),
+                          "val":   f(sim_trans, sim_val_pats)},
+        "merged": {"train": f(orig_trans, orig_train_pats) + f(sim_trans, sim_train_pats),
+                   "val":   f(orig_trans, orig_val_pats)   + f(sim_trans, sim_val_pats)},
+    }
+    test_set = f(orig_trans, test_pats)
+    return datasets, test_set, test_pats
+
+
+# ============================================================================
+# Networks
+# ============================================================================
+class QNet(nn.Module):
+    def __init__(self, state_dim, num_actions, hidden=128):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(state_dim, hidden), nn.ReLU(),
+            nn.Linear(hidden, hidden), nn.ReLU(),
+            nn.Linear(hidden, num_actions),
+        )
+
+    def forward(self, x):
+        return self.net(x)
+
+
+# ============================================================================
+# DDQN training
+# ============================================================================
+def train_ddqn(train_trans, val_trans, scaler, device,
+               n_iters=30000, eval_every=6000,
+               batch=64, lr=1e-4, hidden=128, gamma=GAMMA, tau=1e-4,
+               verbose=True):
+    """Train DDQN. Returns the network with best validation FQE-style score
+    (proxy: average max-Q over val states; we pick the highest)."""
+    s, a, r, ns, d, _ = to_arrays(train_trans)
+    s = scaler.transform(s); ns = scaler.transform(ns)
+    s = torch.tensor(s, dtype=torch.float32, device=device)
+    a = torch.tensor(a, dtype=torch.long, device=device)
+    r = torch.tensor(r, dtype=torch.float32, device=device)
+    ns = torch.tensor(ns, dtype=torch.float32, device=device)
+    d = torch.tensor(d, dtype=torch.float32, device=device)
+
+    vs, _, _, _, _, _ = to_arrays(val_trans)
+    vs = torch.tensor(scaler.transform(vs), dtype=torch.float32, device=device)
+
+    state_dim = s.shape[1]
+    online = QNet(state_dim, NUM_ACTIONS, hidden).to(device)
+    target = QNet(state_dim, NUM_ACTIONS, hidden).to(device)
+    target.load_state_dict(online.state_dict())
+    opt = torch.optim.Adam(online.parameters(), lr=lr)
+
+    N = len(s)
+    best_val_q = -np.inf
+    best_state = {k: v.detach().clone() for k, v in online.state_dict().items()}
+
+    for it in range(n_iters):
+        idx = torch.randint(0, N, (batch,), device=device)
+        sb, ab, rb, nsb, db = s[idx], a[idx], r[idx], ns[idx], d[idx]
+        with torch.no_grad():
+            next_a = online(nsb).argmax(dim=1, keepdim=True)
+            next_q = target(nsb).gather(1, next_a).squeeze(1)
+            y = rb + gamma * (1.0 - db) * next_q
+        q_sa = online(sb).gather(1, ab.unsqueeze(1)).squeeze(1)
+        loss = F.smooth_l1_loss(q_sa, y)
+        opt.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(online.parameters(), 10.0)
+        opt.step()
+        # soft target update
+        with torch.no_grad():
+            for tp, op in zip(target.parameters(), online.parameters()):
+                tp.data.mul_(1.0 - tau).add_(tau * op.data)
+
+        if (it + 1) % eval_every == 0:
+            with torch.no_grad():
+                v = online(vs).max(dim=1).values.mean().item()
+            if v > best_val_q:
+                best_val_q = v
+                best_state = {k: vv.detach().clone() for k, vv in online.state_dict().items()}
+            if verbose:
+                print(f"    iter {it+1:6d}  loss={loss.item():.4f}  val_max_q={v:.4f}")
+
+    online.load_state_dict(best_state)
+    return online
+
+
+# ============================================================================
+# FQE
+# ============================================================================
+def train_fqe(policy_fn, eval_trans, scaler, state_dim, device,
+              n_iters=60000, batch=128, lr=4e-3, gamma=GAMMA, tau=0.009,
+              hidden=64):
+    """Fitted-Q-Evaluation for the target policy `policy_fn`."""
+    s, a, r, ns, d, _ = to_arrays(eval_trans)
+    s = scaler.transform(s); ns = scaler.transform(ns)
+    s = torch.tensor(s, dtype=torch.float32, device=device)
+    a = torch.tensor(a, dtype=torch.long, device=device)
+    r = torch.tensor(r, dtype=torch.float32, device=device)
+    ns = torch.tensor(ns, dtype=torch.float32, device=device)
+    d = torch.tensor(d, dtype=torch.float32, device=device)
+
+    online = QNet(state_dim, NUM_ACTIONS, hidden).to(device)
+    target = QNet(state_dim, NUM_ACTIONS, hidden).to(device)
+    target.load_state_dict(online.state_dict())
+    opt = torch.optim.Adam(online.parameters(), lr=lr)
+
+    N = len(s)
+    for it in range(n_iters):
+        idx = torch.randint(0, N, (batch,), device=device)
+        sb, ab, rb, nsb, db = s[idx], a[idx], r[idx], ns[idx], d[idx]
+        with torch.no_grad():
+            ns_a = policy_fn(nsb)                          # action chosen by target policy at s'
+            next_q = target(nsb).gather(1, ns_a.unsqueeze(1)).squeeze(1)
+            y = rb + gamma * (1.0 - db) * next_q
+        q_sa = online(sb).gather(1, ab.unsqueeze(1)).squeeze(1)
+        loss = F.smooth_l1_loss(q_sa, y)
+        opt.zero_grad()
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(online.parameters(), 10.0)
+        opt.step()
+        with torch.no_grad():
+            for tp, op in zip(target.parameters(), online.parameters()):
+                tp.data.mul_(1.0 - tau).add_(tau * op.data)
+    return online
+
+
+def value_estimate(qnet_eval, policy_fn, init_states_scaled, device):
+    """V_pi ≈ E_{s ~ initial states}[Q(s, pi(s))]"""
+    s = torch.tensor(init_states_scaled, dtype=torch.float32, device=device)
+    with torch.no_grad():
+        a = policy_fn(s)
+        q = qnet_eval(s).gather(1, a.unsqueeze(1)).squeeze(1)
+    return q.mean().item()
+
+
+def get_initial_states(trans):
+    """First-step state for each patient = initial-state distribution."""
+    by_pid = defaultdict(list)
+    for t in trans:
+        by_pid[t["patient_id"]].append(t)
+    return np.array([ts[0]["s"] for ts in by_pid.values()], dtype=np.float32)
+
+
+# ============================================================================
+# Main
+# ============================================================================
+def main():
+    args = get_args()
+    os.makedirs(args.out_dir, exist_ok=True)
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
+    device = torch.device(args.device)
+    print(f"\n>>> Using device: {device}")
+
+    # ----- Load + preprocess -----
+    print("\n>>> Loading data ...")
+    orig, sim, vocabs = load_and_preprocess(args.orig_csv, args.sim_csv)
+    print(f"    orig: {len(orig)} rows, {orig['uid'].nunique()} patients")
+    print(f"    sim:  {len(sim)} rows, {sim['user_id'].nunique()} patients")
+
+    print("\n>>> Building transitions ...")
+    orig_trans = build_transitions(orig, "uid", ["datetime"])
+    sim_trans = build_transitions(sim, "user_id", ["study_day", "slot"])
+    print(f"    orig transitions: {len(orig_trans)}")
+    print(f"    sim transitions:  {len(sim_trans)}")
+
+    print("\n>>> Splitting ...")
+    datasets, test_set, test_pats = make_splits(orig_trans, sim_trans, seed=args.seed)
+    print(f"    test patients: {len(test_pats)}, test transitions: {len(test_set)}")
+    for k, d in datasets.items():
+        print(f"    {k:14s}  train={len(d['train']):>6d}  val={len(d['val']):>6d}")
+
+    # ----- Train one DDQN per dataset -----
+    HPARAMS = {
+        "original":      dict(lr=5.5e-5, hidden=128, batch=64),
+        "synthetic_60":  dict(lr=1.3e-4, hidden=64,  batch=32),
+        "synthetic_100": dict(lr=6.1e-5, hidden=128, batch=32),
+        "merged":        dict(lr=4.5e-5, hidden=128, batch=64),
+    }
+    state_dim = len(STATE_COLS)
+    scalers, trained = {}, {}
+    print("\n>>> Step 1 — Train DDQN on each dataset")
+    for name, d in datasets.items():
+        print(f"\n--- DDQN on '{name}' ---")
+        s_tr, _, _, _, _, _ = to_arrays(d["train"])
+        sc = MinMaxScaler().fit(s_tr)
+        scalers[name] = sc
+        t0 = time.time()
+        qnet = train_ddqn(d["train"], d["val"], sc, device,
+                           n_iters=args.ddqn_iters, eval_every=args.ddqn_eval_every,
+                           **HPARAMS[name], verbose=True)
+        print(f"    done in {time.time() - t0:.1f}s")
+        trained[name] = qnet
+
+    # Save trained networks
+    for name, q in trained.items():
+        torch.save(q.state_dict(), os.path.join(args.out_dir, f"ddqn_{name}.pt"))
+
+    # ----- Build the policy set: 4 learnt + 4 fixed baselines -----
+    def learnt(qnet):
+        def f(s_tensor):
+            with torch.no_grad():
+                return qnet(s_tensor).argmax(dim=1)
+        return f
+
+    def fixed(action_idx):
+        def f(s_tensor):
+            return torch.full((s_tensor.shape[0],), action_idx,
+                              dtype=torch.long, device=s_tensor.device)
+        return f
+
+    policies = {
+        "Original":         learnt(trained["original"]),
+        "Synthetic n=60":   learnt(trained["synthetic_60"]),
+        "Synthetic n=100":  learnt(trained["synthetic_100"]),
+        "Merged":           learnt(trained["merged"]),
+        "No message":       fixed(0),
+        "Send a=1":         fixed(1),
+        "Send a=2":         fixed(2),
+    }
+
+    # All policies are evaluated on the SAME held-out test set,
+    # using the ORIGINAL-data scaler (test set comes from orig).
+    fqe_scaler = scalers["original"]
+
+    # ----- Step 2a: Point estimates on full test set -----
+    print("\n>>> Step 2a — Point estimates on full test set")
+    point_estimates = {}
+    init_full = fqe_scaler.transform(get_initial_states(test_set))
+    for name, pi in policies.items():
+        t0 = time.time()
+        qe = train_fqe(pi, test_set, fqe_scaler, state_dim, device,
+                       n_iters=args.fqe_iters)
+        v = value_estimate(qe, pi, init_full, device)
+        point_estimates[name] = v
+        print(f"    {name:20s}  V_hat = {v:.4f}   ({time.time()-t0:.1f}s)")
+
+    # ----- Step 2b: Bootstrap (B=150) -----
+    print(f"\n>>> Step 2b — Bootstrapping (B={args.bootstrap_B})")
+    test_by_pid = defaultdict(list)
+    for t in test_set:
+        test_by_pid[t["patient_id"]].append(t)
+    test_pids_list = list(test_by_pid.keys())
+
+    rng = np.random.default_rng(args.seed)
+    boot_values = {name: [] for name in policies}
+    t_start = time.time()
+
+    for b in range(args.bootstrap_B):
+        sampled_pids = rng.choice(test_pids_list, size=len(test_pids_list), replace=True)
+        boot_trans = []
+        for pid in sampled_pids:
+            boot_trans.extend(test_by_pid[pid])
+        if len(boot_trans) < 32:
+            for name in policies:
+                boot_values[name].append(np.nan)
+            continue
+        init_b = fqe_scaler.transform(get_initial_states(boot_trans))
+        for name, pi in policies.items():
+            qe = train_fqe(pi, boot_trans, fqe_scaler, state_dim, device,
+                           n_iters=args.fqe_iters)
+            v = value_estimate(qe, pi, init_b, device)
+            boot_values[name].append(v)
+        if (b + 1) % 5 == 0:
+            elapsed = time.time() - t_start
+            eta = elapsed / (b + 1) * (args.bootstrap_B - b - 1)
+            print(f"    boot {b+1}/{args.bootstrap_B}  elapsed={elapsed:.0f}s  ETA={eta:.0f}s")
+
+    # Save raw bootstrap values
+    with open(os.path.join(args.out_dir, "boot_values.pkl"), "wb") as f:
+        pickle.dump({"boot_values": boot_values, "point_estimates": point_estimates,
+                     "test_patients": list(test_pats)}, f)
+
+    # ----- Summary CIs (thesis-style, eq. 6/7) -----
+    print("\n>>> Bootstrap summary (eq. 6/7 of the thesis)")
+    rows = []
+    for name in policies:
+        Vhat = point_estimates[name]
+        vals = np.array(boot_values[name], dtype=float)
+        vals = vals[~np.isnan(vals)]
+        median = float(np.median(vals)) if len(vals) else float("nan")
+        if len(vals) >= 2:
+            errors = vals - Vhat
+            ci_lo = Vhat - np.quantile(errors, 0.975)
+            ci_hi = Vhat - np.quantile(errors, 0.025)
+        else:
+            ci_lo = ci_hi = float("nan")
+        # also report the simpler percentile CI on V_b directly (more interpretable
+        # when B is small and the basic-bootstrap CI flips outside V_hat)
+        if len(vals) >= 2:
+            pct_lo = float(np.quantile(vals, 0.025))
+            pct_hi = float(np.quantile(vals, 0.975))
+        else:
+            pct_lo = pct_hi = float("nan")
+        rows.append({"policy": name, "point_estimate": Vhat,
+                     "median": median, "ci_low": ci_lo, "ci_high": ci_hi,
+                     "pct_ci_low": pct_lo, "pct_ci_high": pct_hi,
+                     "n_boot_valid": int(len(vals))})
+        print(f"    {name:20s}  Vhat={Vhat:7.4f}  median={median:7.4f}  "
+              f"CI(thesis)=[{ci_lo:7.4f}, {ci_hi:7.4f}]  "
+              f"CI(pct)=[{pct_lo:7.4f}, {pct_hi:7.4f}]")
+    pd.DataFrame(rows).to_csv(os.path.join(args.out_dir, "fqe_summary.csv"), index=False)
+
+    # ----- One-sided Wilcoxon: best policy vs each other -----
+    print("\n>>> Wilcoxon signed-rank tests (best vs others, one-sided 'greater')")
+    medians = {n: np.nanmedian(boot_values[n]) for n in policies}
+    best = max(medians, key=medians.get)
+    print(f"    Best policy by bootstrap median: '{best}' (median={medians[best]:.4f})")
+
+    wilc_rows = []
+    for name in policies:
+        if name == best:
+            continue
+        a = np.array(boot_values[best], dtype=float)
+        b = np.array(boot_values[name], dtype=float)
+        m = ~(np.isnan(a) | np.isnan(b))
+        diff = a[m] - b[m]
+        try:
+            W, p = sstats.wilcoxon(diff, alternative="greater")
+        except ValueError:
+            W, p = float("nan"), float("nan")
+        wilc_rows.append({"best": best, "compared_to": name, "W": W, "p": p})
+        print(f"    H1: '{best}' > '{name}'   W={W:.0f}   p={p:.4g}")
+    pd.DataFrame(wilc_rows).to_csv(os.path.join(args.out_dir, "wilcoxon.csv"), index=False)
+
+    # ----- Action distributions of learnt policies on full test set -----
+    print("\n>>> Action distribution of learnt policies on full test set")
+    ts, _, _, _, _, _ = to_arrays(test_set)
+    ts_t = torch.tensor(fqe_scaler.transform(ts), dtype=torch.float32, device=device)
+    action_dists = {}
+    for name in ["original", "synthetic_60", "synthetic_100", "merged"]:
+        with torch.no_grad():
+            ac = trained[name](ts_t).argmax(dim=1).cpu().numpy()
+        dist = {f"a={k}": float((ac == k).mean()) for k in range(NUM_ACTIONS)}
+        action_dists[name] = dist
+        print(f"    {name:18s}  {dist}")
+    with open(os.path.join(args.out_dir, "action_distributions.json"), "w") as f:
+        json.dump(action_dists, f, indent=2)
+
+    print(f"\n✅ DONE. Outputs in: {args.out_dir}")
+    print("    - ddqn_*.pt              (trained networks)")
+    print("    - boot_values.pkl        (raw bootstrap values + point estimates)")
+    print("    - fqe_summary.csv        (V_hat, median, 95% CI per policy)")
+    print("    - wilcoxon.csv           (one-sided signed-rank vs best)")
+    print("    - action_distributions.json")
+
+
+if __name__ == "__main__":
+    main()
