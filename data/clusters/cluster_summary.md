@@ -34,22 +34,22 @@ UIDs: [14, 26, 32, 33]
 
 ### Steps
 
-- Mean: 155, Median: 68
+- Mean: 159, Median: 73
 
-- Zero rate: 32.1%
+- Zero rate: 30.5%
 
-- Treatment effect: +19
+- Treatment effect: +18
 
-- Weekday mean: 157, Weekend mean: 147
+- Weekday mean: 160, Weekend mean: 156
 
 - Response rate: good=40%, bad=9%
 
 
 ### Per-user
 
-- User 14 (age=54, female): mean=213, zero=23%
+- User 14 (age=54, female): mean=224, zero=19%
 
-- User 26 (age=53, female): mean=149, zero=29%
+- User 26 (age=53, female): mean=155, zero=28%
 
 - User 32 (age=41, female): mean=71, zero=51%
 
@@ -89,34 +89,34 @@ UIDs: [1, 4, 7, 8, 9, 10, 11, 13, 15, 16, 17, 18, 20, 21, 22, 25, 29, 30, 31, 34
 
 ### Steps
 
-- Mean: 244, Median: 54
+- Mean: 249, Median: 64
 
-- Zero rate: 39.4%
+- Zero rate: 36.6%
 
-- Treatment effect: +10
+- Treatment effect: +7
 
-- Weekday mean: 249, Weekend mean: 230
+- Weekday mean: 255, Weekend mean: 234
 
 - Response rate: good=38%, bad=13%
 
 
 ### Per-user
 
-- User 1 (age=48, female): mean=383, zero=32%
+- User 1 (age=48, female): mean=384, zero=28%
 
 - User 4 (age=21, male): mean=373, zero=38%
 
-- User 7 (age=41, female): mean=194, zero=40%
+- User 7 (age=41, female): mean=198, zero=38%
 
 - User 8 (age=24, male): mean=342, zero=27%
 
-- User 9 (age=22, male): mean=192, zero=47%
+- User 9 (age=22, male): mean=192, zero=46%
 
-- User 10 (age=20, female): mean=209, zero=37%
+- User 10 (age=20, female): mean=210, zero=34%
 
 - User 11 (age=19, female): mean=179, zero=35%
 
-- User 13 (age=22, female): mean=145, zero=56%
+- User 13 (age=22, female): mean=148, zero=52%
 
 - User 15 (age=23, female): mean=170, zero=50%
 
@@ -124,19 +124,19 @@ UIDs: [1, 4, 7, 8, 9, 10, 11, 13, 15, 16, 17, 18, 20, 21, 22, 25, 29, 30, 31, 34
 
 - User 17 (age=29, female): mean=279, zero=43%
 
-- User 18 (age=52, female): mean=125, zero=42%
+- User 18 (age=52, female): mean=142, zero=39%
 
 - User 20 (age=46, female): mean=134, zero=34%
 
-- User 21 (age=28, male): mean=253, zero=33%
+- User 21 (age=28, male): mean=258, zero=29%
 
-- User 22 (age=60, female): mean=127, zero=48%
+- User 22 (age=60, female): mean=127, zero=47%
 
 - User 25 (age=46, female): mean=298, zero=10%
 
-- User 29 (age=28, male): mean=64, zero=76%
+- User 29 (age=28, male): mean=151, zero=37%
 
-- User 30 (age=28, male): mean=655, zero=47%
+- User 30 (age=28, male): mean=655, zero=46%
 
 - User 31 (age=26, male): mean=307, zero=45%
 
@@ -180,20 +180,20 @@ UIDs: [3]
 
 ### Steps
 
-- Mean: 168, Median: 0
+- Mean: 177, Median: 6
 
-- Zero rate: 51.2%
+- Zero rate: 47.6%
 
-- Treatment effect: -61
+- Treatment effect: -45
 
-- Weekday mean: 146, Weekend mean: 213
+- Weekday mean: 160, Weekend mean: 213
 
 - Response rate: good=44%, bad=11%
 
 
 ### Per-user
 
-- User 3 (age=20, female): mean=168, zero=51%
+- User 3 (age=20, female): mean=177, zero=48%
 
 
 ## Cluster 3 (3 users)
@@ -229,21 +229,21 @@ UIDs: [2, 12, 23]
 
 ### Steps
 
-- Mean: 223, Median: 30
+- Mean: 225, Median: 31
 
-- Zero rate: 45.8%
+- Zero rate: 44.7%
 
-- Treatment effect: +22
+- Treatment effect: +24
 
-- Weekday mean: 242, Weekend mean: 177
+- Weekday mean: 245, Weekend mean: 177
 
 - Response rate: good=34%, bad=7%
 
 
 ### Per-user
 
-- User 2 (age=28, male): mean=243, zero=44%
+- User 2 (age=28, male): mean=243, zero=43%
 
-- User 12 (age=25, male): mean=256, zero=45%
+- User 12 (age=25, male): mean=259, zero=44%
 
-- User 23 (age=24, female): mean=170, zero=48%
+- User 23 (age=24, female): mean=174, zero=46%
