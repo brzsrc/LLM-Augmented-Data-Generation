@@ -150,13 +150,7 @@ class V1DataExtractor:
               f"{len(self.location_categories)} location types")
 
     def _compute_step_params(self):
-        """generate_context / generate_base_steps 消费:
-        slot 统计 + 全局统计 + location 步数 + 每 (slot, loc_group) 桶的零膨胀对数正态参数
-
-        【新增】per-bin (slot, loc_group) 的 ZI-lognormal 参数:
-            zero_prob, log_mu, log_sd
-        prior 直接从该桶采样, baseline 在 prior 基础上做修正。
-        """
+        """generate_base_steps 消费：slot统计 + 全局统计 + location步数"""
         s = self.sugg
 
         # 每 slot 统计
@@ -171,51 +165,14 @@ class V1DataExtractor:
         # 全局统计
         self.global_mean_steps = s['jbsteps30'].mean()
         self.global_zero_rate = (s['jbsteps30'] == 0).mean()
-        self.global_log_steps = float(np.log(s.loc[s['jbsteps30'] > 0, 'jbsteps30']).mean())
 
         # 每 location 的平均步数
         self.steps_by_location = s.groupby('location')['jbsteps30'].mean().to_dict()
 
-        # ─── 【新增】per-bin ZI-lognormal 参数 ──────────────────────────
-        # 把 location 折成 top-8 + 'Other' 防止稀疏桶
-        top_locs = s['location'].value_counts().head(8).index.tolist()
-        self.top_locations = set(top_locs)
-        s_loc_g = s['location'].where(s['location'].isin(top_locs), 'Other')
-
-        # 全局 fallback
-        nz_all = s.loc[s['jbsteps30'] > 0, 'jbsteps30']
-        self.global_log_mu = float(np.log(nz_all).mean())
-        self.global_log_sd = float(min(np.log(nz_all).std(), 1.2))
-
-        # 桶内拟合
-        self.step_bin_params = {}
-        df = s.copy()
-        df['_loc_g'] = s_loc_g
-        for (slot, loc_g), grp in df.groupby(['day_slot', '_loc_g']):
-            n = len(grp)
-            zp = float((grp['jbsteps30'] == 0).mean())
-            nz = grp.loc[grp['jbsteps30'] > 0, 'jbsteps30']
-            if len(nz) >= 5:
-                log_mu = float(np.log(nz).mean())
-                log_sd = float(min(np.log(nz).std(), 1.2))  # 截断防长尾爆炸
-            else:
-                log_mu, log_sd = self.global_log_mu, self.global_log_sd
-            self.step_bin_params[(int(slot), str(loc_g))] = (zp, log_mu, log_sd, n)
-
         slot_means = [f"{self.slot_stats[i]['mean']:.0f}" for i in range(1, 6)]
         print(f"[step_params] global_mean={self.global_mean_steps:.1f}, "
               f"zero_rate={self.global_zero_rate:.1%}, "
-              f"slot_means={slot_means}, "
-              f"step_bins={len(self.step_bin_params)} fitted")
-
-    def get_step_bin(self, slot: int, location: str):
-        """取 (slot, location) 桶的 (zero_prob, log_mu, log_sd) 参数。
-        location 不在 top-8 时映射到 'Other'; 桶找不到时回退到全局参数。"""
-        loc_g = location if location in self.top_locations else 'Other'
-        params = self.step_bin_params.get((int(slot), loc_g))
-        if params is None:
-            return self.global_zero_rate, self.global_log_mu, self.global_log_sd
-        return params[0], params[1], params[2]
+              f"slot_means={slot_means}")
 
 
 def generate_baseline_vectors(ext: V1DataExtractor, n: int) -> pd.DataFrame:
@@ -270,8 +227,6 @@ def generate_baseline_vectors(ext: V1DataExtractor, n: int) -> pd.DataFrame:
 def generate_context(ext: V1DataExtractor, params: dict, day: int, slot: int, traj: list) -> dict:
     """
     【修改14】location 从该用户所属 cluster 的 weekday/weekend × slot 分布中采样
-    【重构】prior_30min_steps 改为按 (slot, location) 桶的零膨胀对数正态采样,
-            与 generate_base_steps 中 baseline 的形状统一。
     """
     is_weekday = (day - 1) % 7 < 5
     cluster_id = int(params.get('cluster', 0))
@@ -297,20 +252,12 @@ def generate_context(ext: V1DataExtractor, params: dict, day: int, slot: int, tr
     weather = np.random.choice(weather_options, p=[0.3, 0.3, 0.2, 0.1, 0.1])
     temperature = round(np.random.normal(22, 8), 1)
 
-    # ── 前 30 分钟步数: 零膨胀对数正态, 桶参数来自真实数据 ───────────
-    zp_p, log_mu_p, log_sd_p = ext.get_step_bin(slot, location)
-    user_offset = np.log(max(params['predicted_mean_steps'], 1.0)
-                         / max(ext.global_mean_steps, 1.0))
-    weekend_offset = 0.0 if is_weekday else np.log(0.9)
-    if np.random.random() < zp_p:
-        prior = 0
-    else:
-        prior = max(0, min(6000,
-                    int(np.exp(np.random.normal(
-                        log_mu_p + user_offset + weekend_offset, log_sd_p)))))
+    # 前30分钟步数
+    user_scale = params['predicted_mean_steps'] / max(ext.global_mean_steps, 1)
+    ss = ext.slot_stats.get(slot, {'mean': 200})
+    prior = max(0, int(np.random.exponential(ss['mean'] * user_scale * 0.8)))
 
-    yesterday = (sum(t['jbsteps30'] for t in traj[-5:]) if len(traj) >= 5
-                 else int(params['predicted_mean_steps'] * 5))
+    yesterday = sum(t['jbsteps30'] for t in traj[-5:]) if len(traj) >= 5 else int(params['predicted_mean_steps'] * 5)
 
     # activity
     if prior > 200:
@@ -349,74 +296,41 @@ def generate_context(ext: V1DataExtractor, params: dict, day: int, slot: int, tr
 
 def generate_base_steps(params: dict, ctx: dict, action: int, dosage: float, ext: V1DataExtractor) -> int:
     """
-    【重构】baseline 直接基于 ctx['prior_30min_steps'] 计算, 不再独立采样。
-
-    思路:
-      prior 已经从真实桶采过样, 同时携带了"前 30 分钟人在做什么"的信息。
-      baseline 要预测紧接着的 30 分钟, 应当与 prior 强相关 (真实数据 corr ≈ 0.4)。
-      于是把 prior 映射到 log 空间作为锚, 上面叠加:
-          (a) slot 切换偏移   (从 prior_slot → 当前 slot 的桶 log_mu 之差)
-          (b) location 切换偏移 (同上)
-          (c) action / dosage 治疗效应 (log-加性)
-          (d) IN_VEHICLE 强制零率
-      再叠加一个 log_sd 的随机扰动表示 30 分钟内的自然波动。
-
-    保留: 治疗效应、weekend 微调、IN_VEHICLE 零率上调。
-    去掉: slot_ratios 硬编码、(0.5+0.5×loc_ratio) 平滑、独立 lognormal(0, 0.5)。
+    【修改3】action=1 和 action=2 都有治疗效果，但可能不同
+    【修改6】用 cleaned 的 global_mean=246.5
+    【修改7】零值率用 cleaned 的 0.371
     """
-    # IN_VEHICLE 时强制零率
-    if ctx.get('activity') == 'IN_VEHICLE' and np.random.random() < 0.7:
-        return 0
+    # slot 比例（从 cleaned 数据计算：141/247, 307/247, 260/247, 268/247, 256/247）
+    slot_ratios = {1: 0.57, 2: 1.24, 3: 1.06, 4: 1.09, 5: 1.04}
+    baseline = params['predicted_mean_steps'] * slot_ratios.get(ctx['slot'], 1.0)
 
-    # 当前桶参数
-    zp_b, log_mu_b, log_sd_b = ext.get_step_bin(ctx['slot'], ctx['location'])
+    # 地点效应（从 cleaned 的 location 平均步数）
+    loc_mean = ext.steps_by_location.get(ctx['location'], ext.global_mean_steps)
+    loc_ratio = loc_mean / max(ext.global_mean_steps, 1)
+    baseline *= (0.5 + 0.5 * loc_ratio)  # 地点效应混合
 
-    # 当前 slot 自身的零膨胀: 但 prior=0 的人继续 0 的概率应该更高
-    # P(curr=0 | prior=0) ≈ 0.57 真实数据, 这里取 max(zp_b, 0.55) 当 prior=0 时
-    prior = ctx.get('prior_30min_steps', 0)
-    if prior == 0:
-        zero_prob_eff = max(zp_b, 0.55)  # prior=0 时 zero 倾向上调
-    else:
-        zero_prob_eff = zp_b * 0.6        # prior>0 时 zero 倾向下调
-    if np.random.random() < zero_prob_eff:
-        return 0
+    if not ctx['weekday']:
+        baseline *= 0.9
 
-    # ── log-空间 anchoring ────────────────────────────────────────
-    # prior 提供"当前活动水平"的锚: 把 prior 转 log, 与桶内 log_mu 做混合,
-    # 混合系数 ρ 近似真实 corr(log prior, log curr) ≈ 0.4。
-    # 具体:  log_curr = log_mu_b + ρ * (log_prior - log_mu_p) + offsets + noise
-    rho = 0.4
-    if prior > 0:
-        log_prior = np.log(prior)
-        # 用 prior 当时所处桶的 log_mu 做差 (这一桶在 generate_context 里已经被采过)
-        # 这里用当前桶 log_mu_b 当代理也行——目的只是把 prior 的偏离量加权传进来
-        zp_p, log_mu_p, _ = ext.get_step_bin(ctx['slot'], ctx['location'])
-        prior_dev = log_prior - log_mu_p
-    else:
-        prior_dev = 0.0  # prior=0 但通过零率筛选, 视为没有偏离信息
-
-    # 用户尺度偏移 (log)
-    user_offset = np.log(max(params['predicted_mean_steps'], 1.0)
-                         / max(ext.global_mean_steps, 1.0))
-
-    # 周末微调
-    weekend_offset = 0.0 if ctx['weekday'] else np.log(0.9)
-
-    # 治疗效应 (log 加性, dosage 衰减)
-    te_offset = 0.0
+    # 【修改3】治疗效果：send=1 和 send=2 都有效
+    week = ctx['study_day'] // 7
+    decay = max(0, 1.0 - 0.22 * week)
+    # 【修改12】send=1 和 send=2 都算发送
     if action > 0:
-        te_pct = params.get('predicted_te', 0.0) / max(ext.global_mean_steps, 1.0)
-        te_decayed = te_pct * max(0.0, 1.0 - 0.05 * dosage)
-        te_offset = np.log1p(max(te_decayed, -0.99))
+        te = params['predicted_te'] * decay * max(0, 1.0 - 0.05 * dosage)
         if action == 2:
-            te_offset *= 0.8  # sedentary 略弱
+            te *= 0.8  # sedentary suggestion 效果略弱
+    else:
+        te = 0
 
-    mu = log_mu_b + user_offset + weekend_offset + te_offset + rho * prior_dev
+    raw = max(0, (baseline + te) * np.random.lognormal(0, 0.5))
 
-    # 30 分钟内的随机扰动: 用桶的 log_sd, 再缩一点 (一部分方差已被 prior_dev 锁定)
-    sd = log_sd_b * np.sqrt(1 - rho ** 2)
+    # 【修改7】零值率从 cleaned 数据
+    zero_prob = ext.global_zero_rate + 0.01 * max(0, ctx['study_day'] - 20)
+    if ctx['activity'] == 'IN_VEHICLE':
+        zero_prob = 0.7
 
-    return max(0, min(6000, int(np.exp(np.random.normal(mu, sd)))))
+    return 0 if np.random.random() < zero_prob else int(raw)
 
 
 # ================================================================

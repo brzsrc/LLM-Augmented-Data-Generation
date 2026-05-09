@@ -29,7 +29,7 @@ class Qwen3BLLM:
         self.score_params = SamplingParams(temperature=0.3, max_tokens=1, structured_outputs=self.score_guided)
         self.importance_guided = StructuredOutputsParams(choice=[str(i) for i in range(1, 11)])
         self.importance_params = SamplingParams(temperature=0.1, max_tokens=2, structured_outputs=self.importance_guided)
-        self.text_params = SamplingParams(temperature=0.3, max_tokens=200)
+        self.text_params = SamplingParams(temperature=0.3, max_tokens=500)
         adj_choices = [str(i) for i in range(-50, 101)]
         self.adj_guided = StructuredOutputsParams(choice=adj_choices)
         self.adj_params = SamplingParams(temperature=0.3, max_tokens=4, structured_outputs=self.adj_guided)

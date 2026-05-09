@@ -42,6 +42,44 @@ from prompts import REFLECTION_GEN_PROMPT, MOTIVATION_PROMPT, HABIT_PROMPT, RECE
 warnings.filterwarnings('ignore')
 
 
+import re
+
+def _strip_think_tags(text: str) -> str:
+    """Remove <think>...</think> blocks and any stray tags from LLM output."""
+    # 移除完整的 <think>...</think> 块（包括跨行）
+    text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    # 移除残留的孤立标签
+    text = text.replace('<think>', '').replace('</think>', '')
+    return text.strip()
+
+
+def _parse_questions(raw: str, max_n: int = 3) -> List[str]:
+    """
+    Robustly parse a list of questions out of LLM output.
+    Handles: leading </think> tags, blank lines, numbered list prefixes
+    like '1.', '1)', '- ', '* '. Only keeps lines that look like real questions.
+    """
+    cleaned = _strip_think_tags(raw)
+    questions = []
+    for line in cleaned.split('\n'):
+        line = line.strip()
+        if not line:
+            continue
+        # 去掉行首的列表序号: "1.", "1)", "1:", "- ", "* ", "Q1:", etc.
+        line = re.sub(r'^\s*(?:Q\s*\d+[.):]?|\d+[.):]|[-*•])\s*', '', line, flags=re.IGNORECASE).strip()
+        if not line:
+            continue
+        # 只保留像问题的行：有一定长度，且形式上像一句话/问句
+        # 排除明显不是问题的残留标签或元注释
+        if len(line) < 15:
+            continue
+        if line.lower().startswith(('<think', '</think', 'note:', 'here are', 'list ')):
+            continue
+        questions.append(line)
+        if len(questions) >= max_n:
+            break
+    return questions
+
 
 # ================================================================
 # 第六部分：单用户模拟（逐步串行，结构不变）
@@ -84,24 +122,7 @@ def simulate_user(
         for slot in range(1, slots_per_day + 1):
             step_idx += 1
             ctx = generate_context(ext, user_params, day, slot, trajectory)
-            action = ctx.pop('action', 0) if 'action' in ctx else (
-                # action 已在 generate_context 中通过 send_probs 决定
-                0  # fallback
-            )
-            # 实际上 action 需要从 ctx 外部获取——修正：
-            # generate_context 返回的 ctx 不包含 action，action 需要单独处理
-            # 但在上面的 generate_context 中我们已经计算了 action 但没返回
-            # 这里重新用 ctx 的信息计算
-            
-            # 重新计算 action（和 generate_context 中一致的逻辑）
-            if ctx['avail'] and np.random.random() < ext.randomization_rate:
-                send_vals = list(ext.send_probs.keys())
-                send_ps = list(ext.send_probs.values())
-                action = int(np.random.choice(send_vals, p=send_ps))
-            else:
-                action = 0
-            if not ctx['avail']:
-                action = 0
+            action = ctx['action']
             
             # 生成步数
             if ctx['avail']:
@@ -144,14 +165,14 @@ def simulate_user(
                 recent_text = stream.format_memories(recent)
                 q_prompt_text = REFLECTION_Q_PROMPT.format(recent_memories=recent_text)
                 q_response = llm.generate_text("You are a behavioral analysis system.", q_prompt_text)
-                questions = [q.strip() for q in q_response.strip().split('\n') if q.strip()][:3]
+                questions = _parse_questions(q_response, max_n=3)
                 reflection_details = []
                 for q in questions:
-                    if len(q) < 5: continue
                     ref_gen_prompt = REFLECTION_GEN_PROMPT.format(question=q, relevant_memories=recent_text)
                     ref_text = llm.generate_text("You are a behavioral analysis system. Write concise inferences.", ref_gen_prompt)
-                    stream.add(Memory(f"Day{day}_Slot{slot}", ref_text.strip(), "reflection", 8))
-                    reflection_details.append({"question": q, "prompt": ref_gen_prompt[:500], "response": ref_text.strip()})
+                    ref_text_clean = _strip_think_tags(ref_text)
+                    stream.add(Memory(f"Day{day}_Slot{slot}", ref_text_clean, "reflection", 8))
+                    reflection_details.append({"question": q, "prompt": ref_gen_prompt, "response": ref_text_clean})
                 stream.reset_reflection_counter()
                 
                 cur_state = {
@@ -344,15 +365,7 @@ def simulate_parallel(
             
             for u in users:
                 ctx = generate_context(ext, u.params, day, slot, u.trajectory)
-                # action 需要在 generator 侧重新计算（generate_context 没返回 action）
-                if ctx['avail'] and np.random.random() < ext.randomization_rate:
-                    send_vals = list(ext.send_probs.keys())
-                    send_ps = list(ext.send_probs.values())
-                    action = int(np.random.choice(send_vals, p=send_ps))
-                else:
-                    action = 0
-                if not ctx['avail']:
-                    action = 0
+                action = ctx['action']
                 
                 base = generate_base_steps(u.params, ctx, action, u.dosage, ext) if ctx['avail'] else 0
                 all_ctx.append(ctx)
@@ -430,7 +443,7 @@ def simulate_parallel(
                 
                 for j, i in enumerate(reflect_users):
                     recent_text = users[i].stream.format_memories(users[i].stream.get_recent(15))
-                    questions = [q.strip() for q in q_responses[j].strip().split('\n') if q.strip() and len(q.strip()) >= 5][:3]
+                    questions = _parse_questions(q_responses[j], max_n=3)
                     for q in questions:
                         inf_prompts.append({
                             "system": "You are a behavioral analysis system. Write concise inferences.",
@@ -443,9 +456,9 @@ def simulate_parallel(
                 # 写入记忆流
                 for k, (j, i, q) in enumerate(inf_map):
                     resp = inf_responses[k] if k < len(inf_responses) else ""
-                    # 清洗 think 标签
-                    resp = resp.replace('<think>', '').replace('</think>', '').strip()
-                    users[i].stream.add(Memory(f"Day{day}_S{slot}", resp[:200], "reflection", 8))
+                    # 清洗 think 标签（包括完整 <think>...</think> 块）
+                    resp = _strip_think_tags(resp)
+                    users[i].stream.add(Memory(f"Day{day}_S{slot}", resp, "reflection", 8))
                 
                 for i in reflect_users:
                     users[i].stream.reset_reflection_counter()
