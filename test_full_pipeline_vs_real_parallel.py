@@ -6,14 +6,14 @@ test_full_pipeline_vs_real.py 的批量并行版本。
 跟 serial 版本相比的差异:
   - serial: 30 个用户挨个跑, 每行 1 个 LLM 调用
   - parallel: 跨用户同步推进, 同一 step 所有 active 用户的 LLM 调用合成一个大 batch
-              用 llm.batch_adjustment() 一次提交 → vLLM 上能拿到 5-15× 加速
+              用 llm.batch_steps() 一次提交 → vLLM 上能拿到 5-15× 加速
 
 并行设计 (与 simulate_parallel 一致, 适配真实数据):
   - 每个用户 N_u 个真实行, 按 (date, day_slot) 排序成 personal timeline
   - 全局推进 step k = 0, 1, 2, ..., max_N_u
   - 在 step k, active users = [u for u in users if k < N_u]:
       * 每个抽 n_runs 次 base
-      * 这批 active_users × n_runs 个 prompt 一起 batch_adjustment
+      * 这批 active_users × n_runs 个 prompt 一起 batch_steps
       * 把结果填回各用户的第 k 行
       * 用真实 jbsteps30 构造 observation, 加入各用户 memory stream
 
@@ -200,8 +200,8 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
     """跑完所有用户, 返回 runtimes 字典。"""
     Memory = MS_module.Memory
     create_observation = MS_module.create_observation
-    PROMPT_ADJUSTMENT = prompts_module.PROMPT_ADJUSTMENT
-    SYS_ADJUSTMENT = prompts_module.SYS_ADJUSTMENT
+    PROMPT_STEPS = prompts_module.PROMPT_STEPS
+    SYS_STEPS = prompts_module.SYS_STEPS
 
     if with_reflection:
         REFLECTION_Q_PROMPT = prompts_module.REFLECTION_Q_PROMPT
@@ -226,13 +226,10 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
         }
         persona = make_persona(params)
         # ── 方法 3: rich persona (从前 5 天 derive 出来的, 见 data_extractor) ──
-        # if hasattr(ext, 'user_persona_text') and int(uid) in ext.user_persona_text:
-        #     prompt_persona = ext.user_persona_text[int(uid)]
-        # else:
-        #     prompt_persona = persona  # fallback
-
-        assert hasattr(ext, 'user_persona_text') and int(uid) in ext.user_persona_text
-        prompt_persona = ext.user_persona_text[int(uid)]
+        if hasattr(ext, 'user_persona_text') and int(uid) in ext.user_persona_text:
+            prompt_persona = ext.user_persona_text[int(uid)]
+        else:
+            prompt_persona = persona  # fallback
         runtimes[uid] = UserRuntime(uid, params, persona, ud, MS_module,
                                     prompt_persona=prompt_persona)
 
@@ -257,8 +254,7 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
         t_step_start = time.time()
         llm_calls_at_step_start = llm.call_count
 
-        # ── Phase A: 每个 active 用户抽 n_runs 次 base + 构造 prompts ─
-        base_buffers = {}    # uid -> list of n_runs base values
+        # ── Phase A: 给每个 active 用户构造 n_runs 个 prompt ─
         all_prompts = []     # 全部 prompt
         prompt_meta = []     # 同长 (uid, run_idx)
         active_ctx = {}      # uid -> (ctx, action, dosage, row, recent_obs)
@@ -287,10 +283,6 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
             action = int(row['send'])
             dosage = float(row['dosage'])
 
-            bases = [DE.generate_base_steps(rt.params, ctx, action, dosage, ext)
-                     for _ in range(n_runs)]
-            base_buffers[uid] = bases
-
             obs_text = rt.stream.format_memories(rt.stream.get_recent(10))
             recent_obs = obs_text if obs_text else "No prior observations."
             active_ctx[uid] = (ctx, action, dosage, row, recent_obs)
@@ -299,7 +291,7 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
                            2: "Sedentary stand-up suggestion"}.get(action, "No suggestion")
             weekday_desc = "weekday" if ctx['weekday'] else "weekend"
 
-            # ── 方法 1: reference points ───────────────────────────────
+            # reference points
             if hasattr(ext, 'get_user_bin_mean'):
                 u_bin, u_src = ext.get_user_bin_mean(
                     int(uid), int(row['day_slot']), ctx['location'])
@@ -311,7 +303,7 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
                 pop_bin = float(ext.global_mean_steps) if hasattr(ext, 'global_mean_steps') else 250.0
                 u_overall = float(rt.params['predicted_mean_steps'])
 
-            # ── 方法 2: slot-matched history (严格用 row.date 之前) ────
+            # slot-matched history (strict before row.date)
             if hasattr(ext, 'get_user_slot_history'):
                 hist = ext.get_user_slot_history(
                     int(uid), int(row['day_slot']),
@@ -324,47 +316,43 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
             else:
                 slot_history = "(no prior data for this slot before today)"
 
-            for run_idx, base_val in enumerate(bases):
-                if base_val > 0:
-                    p = PROMPT_ADJUSTMENT.format(
-                        persona=rt.prompt_persona,  # 方法 3: rich persona
-                        study_day=int(row['day_slot']),
-                        slot=int(row['day_slot']),
-                        weekday_desc=weekday_desc,
-                        location=ctx['location'], activity=ctx['activity'],
-                        weather=ctx['weather'], temperature=ctx['temperature'],
-                        prior_30min_steps=ctx['prior_30min_steps'],
-                        action_desc=action_desc, base_steps=base_val,
-                        user_bin_mean=int(u_bin), user_bin_source=u_src,
-                        pop_bin_mean=int(pop_bin), user_overall_mean=int(u_overall),
-                        slot_history=slot_history,
-                        recent_obs=recent_obs)
-                    all_prompts.append({"system": SYS_ADJUSTMENT, "user": p})
-                    prompt_meta.append((uid, run_idx))
-                # else: base==0 → adj 直接 0, 不发 LLM
+            # n_runs prompts for this row — all identical (memory stream is the same
+            # at this step); n_runs only captures LLM stochasticity (temperature=0.3)
+            for run_idx in range(n_runs):
+                p = PROMPT_STEPS.format(
+                    persona=rt.prompt_persona,
+                    study_day=int(row['day_slot']),
+                    slot=int(row['day_slot']),
+                    weekday_desc=weekday_desc,
+                    location=ctx['location'], activity=ctx['activity'],
+                    weather=ctx['weather'], temperature=ctx['temperature'],
+                    prior_30min_steps=ctx['prior_30min_steps'],
+                    action_desc=action_desc,
+                    user_bin_mean=int(u_bin), user_bin_source=u_src,
+                    pop_bin_mean=int(pop_bin), user_overall_mean=int(u_overall),
+                    slot_history=slot_history,
+                    recent_obs=recent_obs)
+                all_prompts.append({"system": SYS_STEPS, "user": p})
+                prompt_meta.append((uid, run_idx))
 
         # ── Phase B: 一次大 batch ─────────────────────────────────
-        adj_results = llm.batch_adjustment(all_prompts) if all_prompts else []
+        steps_results = llm.batch_steps(all_prompts) if all_prompts else []
 
-        # ── Phase C: 把 adj 填回 + 写 results ─────────────────────
-        adj_buffers = {uid: [0] * n_runs for uid in active_uids}
+        # ── Phase C: 把 steps 填回 + 写 results ─────────────────────
+        steps_buffers = {uid: [0] * n_runs for uid in active_uids}
         for k_p, (uid, run_idx) in enumerate(prompt_meta):
-            adj = max(-50, min(100, adj_results[k_p]))
-            adj_buffers[uid][run_idx] = adj
+            s = max(0, int(steps_results[k_p]))
+            steps_buffers[uid][run_idx] = s
 
         for uid in active_uids:
             rt = runtimes[uid]
             ctx, action, _, row, _ = active_ctx[uid]
-            bases = np.array(base_buffers[uid])
-            adjs  = np.array(adj_buffers[uid])
-            steps_arr = np.maximum(0, (bases * (1 + adjs / 100.0)).astype(int))
+            steps_arr = np.array(steps_buffers[uid])
             rt.results[k] = {
-                'base_mean':  float(bases.mean()),
-                'adj_mean':   float(adjs.mean()),
                 'steps_mean': float(steps_arr.mean()),
                 'steps_one':  int(steps_arr[0]),
+                'steps_std':  float(steps_arr.std()),
             }
-            # rolling MAE/bias
             err = float(steps_arr.mean()) - float(row['jbsteps30'])
             accum_abs_err += abs(err)
             accum_signed_err += err
@@ -467,14 +455,13 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
 
 
 def assemble_output(real_df: pd.DataFrame, runtimes: dict) -> pd.DataFrame:
-    """把 runtimes.results 拼回 real_df, 加 base_mean/adj_mean/steps_mean/steps_one。"""
+    """把 runtimes.results 拼回 real_df, 加 steps_mean/steps_one/steps_std。"""
     real_df = real_df.copy()
     real_df = real_df.sort_values(['uid', 'date', 'day_slot']).reset_index(drop=True)
 
-    base_col = np.zeros(len(real_df), dtype=float)
-    adj_col  = np.zeros(len(real_df), dtype=float)
     sm_col   = np.zeros(len(real_df), dtype=float)
     so_col   = np.zeros(len(real_df), dtype=int)
+    sstd_col = np.zeros(len(real_df), dtype=float)
 
     cursor = 0
     for uid, ud in real_df.groupby('uid', sort=False):
@@ -483,18 +470,16 @@ def assemble_output(real_df: pd.DataFrame, runtimes: dict) -> pd.DataFrame:
             print(f'[warn] uid={uid}: real_df slice n={len(ud)} != runtime.N={rt.N}')
         for k_local in range(len(ud)):
             r = rt.results[k_local] if k_local < rt.N and rt.results[k_local] is not None \
-                else {'base_mean': 0.0, 'adj_mean': 0.0, 'steps_mean': 0.0, 'steps_one': 0}
+                else {'steps_mean': 0.0, 'steps_one': 0, 'steps_std': 0.0}
             i = cursor + k_local
-            base_col[i] = r['base_mean']
-            adj_col[i]  = r['adj_mean']
             sm_col[i]   = r['steps_mean']
             so_col[i]   = r['steps_one']
+            sstd_col[i] = r.get('steps_std', 0.0)
         cursor += len(ud)
 
-    real_df['base_mean']  = base_col
-    real_df['adj_mean']   = adj_col
     real_df['steps_mean'] = sm_col
     real_df['steps_one']  = so_col
+    real_df['steps_std']  = sstd_col
     real_df['err_mean']   = real_df['steps_mean'] - real_df['jbsteps30']
     real_df['abs_err']    = real_df['err_mean'].abs()
     return real_df
@@ -533,35 +518,30 @@ def report(out_df, save_dir: Path):
     print(f"  Wasserstein / mean(real)     = "
           f"{wasserstein_distance(real, one)/real.mean()*100:.1f}%")
 
-    adj = out_df['adj_mean']
     print()
-    print(f"  LLM adj_mean             mean: {adj.mean():>+7.1f},  "
-          f"std: {adj.std():>6.1f},  range: [{adj.min():.0f}, {adj.max():.0f}]")
-    base = out_df['base_mean']
-    print(f"  base_mean (no LLM)       mean: {base.mean():>7.1f}")
-    print(f"  steps_mean (with LLM)    mean: {pm.mean():>7.1f}  "
-          f"(LLM 净影响: {pm.mean()-base.mean():+.1f} 步)")
+    print(f"  LLM steps_mean over rows mean: {pm.mean():>7.1f},  "
+          f"std (per-row var) mean: {out_df['steps_std'].mean():>6.1f}")
+    print(f"  P(steps_mean == 0)         : {(pm == 0).mean()*100:>6.1f}%")
+    print(f"  P(real == 0)               : {(real == 0).mean()*100:>6.1f}%")
 
     print(); print('=' * 72); print('按 send 分组'); print('=' * 72)
-    print(f"  {'send':>5} | {'n':>5} | {'real':>7} | {'base':>7} | "
+    print(f"  {'send':>5} | {'n':>5} | {'real':>7} | "
           f"{'steps':>7} | {'bias':>7} | {'MAE':>6}")
-    print('  ' + '-' * 65)
+    print('  ' + '-' * 60)
     for s in sorted(out_df['send'].unique()):
         sub = out_df[out_df['send'] == s]
         print(f"  {int(s):>5} | {len(sub):>5} | {sub['jbsteps30'].mean():>7.1f} | "
-              f"{sub['base_mean'].mean():>7.1f} | "
               f"{sub['steps_mean'].mean():>7.1f} | "
               f"{(sub['steps_mean']-sub['jbsteps30']).mean():>+7.1f} | "
               f"{sub['abs_err'].mean():>6.1f}")
 
     print(); print('=' * 72); print('按 day_slot 分组'); print('=' * 72)
-    print(f"  {'slot':>5} | {'n':>5} | {'real':>7} | {'base':>7} | "
+    print(f"  {'slot':>5} | {'n':>5} | {'real':>7} | "
           f"{'steps':>7} | {'bias':>7} | {'MAE':>6}")
-    print('  ' + '-' * 65)
+    print('  ' + '-' * 60)
     for s in sorted(out_df['day_slot'].unique()):
         sub = out_df[out_df['day_slot'] == s]
         print(f"  {int(s):>5} | {len(sub):>5} | {sub['jbsteps30'].mean():>7.1f} | "
-              f"{sub['base_mean'].mean():>7.1f} | "
               f"{sub['steps_mean'].mean():>7.1f} | "
               f"{(sub['steps_mean']-sub['jbsteps30']).mean():>+7.1f} | "
               f"{sub['abs_err'].mean():>6.1f}")
@@ -625,12 +605,12 @@ def report(out_df, save_dir: Path):
     ax.hist(real, bins=bins, alpha=0.55, density=True,
             color='steelblue', edgecolor='black', linewidth=0.4,
             label=f'real jbsteps30 (mean={real.mean():.0f})')
-    ax.hist(out_df['base_mean'], bins=bins, alpha=0.45, density=True,
-            color='lightgreen', edgecolor='black', linewidth=0.4,
-            label=f'base_mean (no LLM, mean={out_df["base_mean"].mean():.0f})')
     ax.hist(one, bins=bins, alpha=0.55, density=True,
             color='salmon', edgecolor='black', linewidth=0.4,
             label=f'pipeline steps_one (mean={one.mean():.0f})')
+    ax.hist(pm, bins=bins, alpha=0.35, density=True,
+            color='gold', edgecolor='black', linewidth=0.4,
+            label=f'pipeline steps_mean (mean={pm.mean():.0f})')
     ax.set_xlabel('steps'); ax.set_ylabel('density')
     ax.set_title(f'(c) Distribution overlay (truncated 1500)\n'
                  f'W(real, steps_one)={wasserstein_distance(real, one):.1f}')
@@ -638,22 +618,21 @@ def report(out_df, save_dir: Path):
 
     ax = axes[1, 1]
     grp = out_df.groupby(['day_slot', 'send']).agg(
-        real=('jbsteps30', 'mean'), base=('base_mean', 'mean'),
+        real=('jbsteps30', 'mean'),
         steps=('steps_mean', 'mean'), n=('jbsteps30', 'size')
     ).reset_index()
     grp = grp[grp['n'] >= 10]
-    x = np.arange(len(grp)); w = 0.27
-    ax.bar(x - w, grp['real'], w, color='steelblue', edgecolor='black', label='real')
-    ax.bar(x, grp['base'], w, color='lightgreen', edgecolor='black', label='base')
-    ax.bar(x + w, grp['steps'], w, color='salmon', edgecolor='black', label='pipeline')
+    x = np.arange(len(grp)); w = 0.4
+    ax.bar(x - w/2, grp['real'], w, color='steelblue', edgecolor='black', label='real')
+    ax.bar(x + w/2, grp['steps'], w, color='salmon', edgecolor='black', label='pipeline')
     ax.set_xticks(x)
     ax.set_xticklabels([f"s{int(r.day_slot)}/k{int(r.send)}" for r in grp.itertuples()],
                        rotation=45, ha='right', fontsize=8)
     ax.set_ylabel('mean steps')
-    ax.set_title('(d) Per-(slot, send): real / base / pipeline')
+    ax.set_title('(d) Per-(slot, send): real vs pipeline')
     ax.legend(fontsize=8); ax.grid(alpha=0.3, axis='y')
 
-    plt.suptitle('Plan A pipeline (PARALLEL, real prior fed in)  vs  real jbsteps30 — train set',
+    plt.suptitle('Plan B pipeline (PARALLEL, LLM predicts absolute steps)  vs  real jbsteps30 — train set',
                  fontsize=12, fontweight='bold', y=1.0)
     plt.tight_layout()
     fig_path = save_dir / 'full_pipeline_vs_real.png'
@@ -664,7 +643,7 @@ def report(out_df, save_dir: Path):
     csv_path = save_dir / 'full_pipeline_vs_real_rows.csv'
     keep = ['uid', 'date', 'day_slot', 'location', 'activity', 'weekday',
             'send', 'dosage', 'jbsteps30pre', 'jbsteps30',
-            'base_mean', 'adj_mean', 'steps_mean', 'steps_one',
+            'steps_mean', 'steps_one', 'steps_std',
             'err_mean', 'abs_err']
     out_df[keep].to_csv(csv_path, index=False)
     print(f'  逐行结果保存: {csv_path}')

@@ -30,9 +30,10 @@ class Qwen3BLLM:
         self.importance_guided = StructuredOutputsParams(choice=[str(i) for i in range(1, 11)])
         self.importance_params = SamplingParams(temperature=0.1, max_tokens=2, structured_outputs=self.importance_guided)
         self.text_params = SamplingParams(temperature=0.3, max_tokens=500)
-        adj_choices = [str(i) for i in range(-50, 101)]
-        self.adj_guided = StructuredOutputsParams(choice=adj_choices)
-        self.adj_params = SamplingParams(temperature=0.3, max_tokens=4, structured_outputs=self.adj_guided)
+        # Plan B: absolute step prediction. No structured choice (too many options).
+        # Just plain int parsing with conservative max_tokens.
+        # Real jbsteps30 99th percentile ≈ 2500, but we allow up to 9999.
+        self.steps_params = SamplingParams(temperature=0.3, max_tokens=6)
         self.call_count = 0
         print("Model loaded!")
 
@@ -57,13 +58,10 @@ class Qwen3BLLM:
         self.call_count += len(prompts);
         return [o.outputs[0].text.strip() for o in out]
 
-    def judge_adjustment(self, system, user):
-        out = self.llm.generate([self._prompt(system, user)], self.adj_params)
+    def judge_steps(self, system, user):
+        out = self.llm.generate([self._prompt(system, user)], self.steps_params)
         self.call_count += 1
-        try:
-            return int(out[0].outputs[0].text.strip())
-        except:
-            return 0
+        return self._parse_steps(out[0].outputs[0].text)
 
     def batch_importance(self, prompts):
         fmt = [self._prompt(p["system"], p["user"]) for p in prompts]
@@ -71,11 +69,26 @@ class Qwen3BLLM:
         self.call_count += len(prompts);
         return [o.outputs[0].text.strip() for o in out]
 
-    def batch_adjustment(self, prompts):
+    def batch_steps(self, prompts):
         fmt = [self._prompt(p["system"], p["user"]) for p in prompts]
-        out = self.llm.generate(fmt, self.adj_params)
+        out = self.llm.generate(fmt, self.steps_params)
         self.call_count += len(prompts)
-        return [int(o.outputs[0].text.strip()) if o.outputs[0].text.strip().lstrip('-').isdigit() else 0 for o in out]
+        return [self._parse_steps(o.outputs[0].text) for o in out]
+
+    @staticmethod
+    def _parse_steps(text: str) -> int:
+        """Robust parse: take leading digits, clip to [0, 9999]."""
+        s = text.strip()
+        # leading digits only (may be followed by garbage)
+        n = 0
+        for ch in s:
+            if ch.isdigit():
+                n = n * 10 + int(ch)
+                if n > 9999:
+                    return 9999
+            else:
+                break
+        return min(n, 9999)
 
     def batch_text(self, prompts):
         fmt = [self._prompt(p["system"], p["user"]) for p in prompts]
@@ -93,10 +106,10 @@ class SimulatedLLM:
 
     def batch_score(self, p): self.call_count += len(p); return [str(np.random.randint(1, 6)) for _ in p]
 
-    def judge_adjustment(self, s, u): self.call_count += 1; return np.random.randint(-20, 30)
+    def judge_steps(self, s, u): self.call_count += 1; return int(np.random.lognormal(4.5, 1.2))
 
     def batch_importance(self, p): self.call_count += len(p); return [str(np.random.randint(3, 8)) for _ in p]
 
-    def batch_adjustment(self, p): self.call_count += len(p); return [np.random.randint(-20, 30) for _ in p]
+    def batch_steps(self, p): self.call_count += len(p); return [int(np.random.lognormal(4.5, 1.2)) for _ in p]
 
     def batch_text(self, p): self.call_count += len(p); return ["Simulated inference." for _ in p]
