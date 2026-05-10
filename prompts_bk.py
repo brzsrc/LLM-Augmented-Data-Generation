@@ -109,24 +109,14 @@ Output ONLY a single digit (1-5)."""
 SYS_ADJUSTMENT = "You are a behavioral simulation module. Output ONLY a single integer from -50 to 100."
 
 PROMPT_ADJUSTMENT = """User: {persona}
-
-Current decision point:
-- Day {study_day}, slot {slot} ({weekday_desc})
-- Location: {location}
-- Activity: {activity}
-- Weather: {weather}, {temperature}C
-- Steps in prior 30 min: {prior_30min_steps}
-- Suggestion type: {action_desc}
-
-Statistical baseline prediction (typical user in this context): {base_steps} steps.
+Psychological state: motivation={motivation}/5, habit={habit}/5, receptivity={receptivity}/5
+Context: Day {study_day}, slot {slot}, location={location}. Suggestion type: {action_desc}.
+Base predicted steps: {base_steps}.
 
 Recent behavior:
 {recent_obs}
 
-Given the persona, current context, and recent behavior, how does this specific
-user's actual step count deviate from the baseline prediction?
-
-Output an integer from -50 (much fewer steps than baseline) to +100 (much more
-steps than baseline), expressed as a percentage adjustment.
+How does psychology adjust actual steps vs base prediction?
+Output integer from -50 to +100 (percentage).
 Output ONLY a single integer."""
 

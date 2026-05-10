@@ -515,8 +515,8 @@ def report(out_df, save_dir: Path):
 # =============================================================================
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument('--cleaned', default='/data/cleaned_output.csv')
-    p.add_argument('--train',   default='/data/train_uids.json')
+    p.add_argument('--cleaned', default='./data/cleaned_output.csv')
+    p.add_argument('--train',   default='./data/train_uids.json')
     p.add_argument('--test_uids', default=None)
     p.add_argument('--users_csv', default=None)
     p.add_argument('--data_extractor_dir', default='.')
