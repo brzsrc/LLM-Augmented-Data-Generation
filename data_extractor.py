@@ -9,29 +9,6 @@ from data.cluster_config import (CLUSTER_UIDS, CLUSTER_WEIGHTS, CLUSTER_NAMES,
 
 
 warnings.filterwarnings('ignore')
-"""
-synthetic_user_generator_v3_cleaned.py
-======================================
-基于 cleaned_output.csv 重写的合成用户生成器。
-
-与 v3 原版相比的所有修改：
-  【修改1】输入数据：suggestions.csv + users.csv → cleaned_output.csv + users.csv
-  【修改2】列名映射：user.index→uid, sugg.select.slot→day_slot, 
-           dec.temperature→temperature, recognized.activity→activity,
-           dec.location.category→location, dec.weather.condition→weather
-  【修改3】send 编码：True/False → 0/1/2 (0=no_send, 1=active, 2=sedentary)
-  【修改4】location 分类：3类(home/work/other) → 16类(直接用cleaned的分类)
-  【修改5】avail 率：硬编码(70%/83%) → 从数据按slot提取实际值
-  【修改6】步数统计：global_mean=276 → 从cleaned计算=246.5
-  【修改7】零值率：0.27 → 从cleaned计算=0.371
-  【修改8】activity 名称：WALKING → ON_FOOT
-  【修改9】发送概率：固定π_b=0.3 → 基于is_randomized的三值概率
-  【修改10】TE 计算：send==True vs False → send>0 vs send==0
-  【修改11】response 列：新增 good/bad/no_response/snoozed 信息用于观察记录
-  【修改12】dosage 计算：适配 send=1 和 send=2 都算发送
-  【修改13】create_observation：区分 active suggestion 和 sedentary suggestion
-"""
-
 
 # ================================================================
 # 第一部分：从 cleaned_output.csv + users.csv 提取参数
@@ -77,6 +54,7 @@ class V1DataExtractor:
         self._compute_user_profiles()
         self._compute_context_params()
         self._compute_step_params()
+        self._compute_user_context_stats()
 
     def _compute_user_profiles(self):
         """generate_baseline_vectors 消费：Cholesky基线 + 步数/TE经验分布 + 性别 + 聚类"""
@@ -225,6 +203,218 @@ class V1DataExtractor:
         if params is None:
             return self.global_zero_rate, self.global_log_mu, self.global_log_sd
         return params[0], params[1], params[2]
+
+    # =========================================================================
+    # 【新增】per-user 个体级统计 + rich persona generator
+    # 给 Plan A 的三个 prompt 增强方法服务:
+    #   方法 1: population/user reference points  → get_user_bin_mean, step_bin_params
+    #   方法 2: slot-matched history              → get_user_slot_history
+    #   方法 3: rich persona                       → get_rich_persona
+    # =========================================================================
+    def _compute_user_context_stats(self):
+        """对 train 上的每个用户, 算:
+          - user_slot_loc_mean[uid][(slot, loc_g)]: 该用户在 (slot, loc_g) 桶的真实步数均值
+          - user_slot_mean[uid][slot]: 该用户在 slot 的均值
+          - user_slot_zero[uid][slot]: 该用户在 slot 的零率
+          - user_slot_history[uid][slot]: chronological list of (date, jbsteps30) for that slot
+          - user_persona_text[uid]: rich persona (从前 5 个 study_day derive)
+
+        注: 用 train 上该用户的全部行 derive (跟 generator 在 production 的口径一致)
+            persona 单独用前 5 个 study_day 的数据 derive, 模拟 "study 跑了 5 天后我们知道这个人是怎样的"
+        """
+        s = self.sugg
+        # location 折叠到 top-8 + Other (跟 step_bin_params 一致)
+        loc_g_series = s['location'].where(s['location'].isin(self.top_locations), 'Other')
+        s_loc_g = s.assign(_loc_g=loc_g_series)
+
+        self.user_slot_loc_mean = {}    # uid -> {(slot, loc_g): mean_steps}
+        self.user_slot_mean = {}        # uid -> {slot: mean_steps}
+        self.user_slot_zero = {}        # uid -> {slot: zero_rate}
+        self.user_slot_history = {}     # uid -> {slot: [(date, steps), ...]}
+        self.user_overall_mean = {}     # uid -> overall jbsteps30 mean
+        self.user_te = {}               # uid -> send vs no-send mean diff
+
+        s_sorted = s_loc_g.sort_values(['uid', 'date', 'day_slot'])
+        for uid, ud in s_sorted.groupby('uid'):
+            # per (slot, loc_g)
+            bin_means = {}
+            for (slot, loc_g), grp in ud.groupby(['day_slot', '_loc_g']):
+                bin_means[(int(slot), str(loc_g))] = float(grp['jbsteps30'].mean())
+            self.user_slot_loc_mean[uid] = bin_means
+
+            # per slot
+            slot_means, slot_zeros, slot_hist = {}, {}, {}
+            for slot, grp in ud.groupby('day_slot'):
+                slot_means[int(slot)] = float(grp['jbsteps30'].mean())
+                slot_zeros[int(slot)] = float((grp['jbsteps30'] == 0).mean())
+                slot_hist[int(slot)] = [
+                    (str(r['date']), int(r['jbsteps30']))
+                    for _, r in grp[['date', 'jbsteps30']].iterrows()
+                ]
+            self.user_slot_mean[uid] = slot_means
+            self.user_slot_zero[uid] = slot_zeros
+            self.user_slot_history[uid] = slot_hist
+
+            # overall
+            self.user_overall_mean[uid] = float(ud['jbsteps30'].mean())
+            avail = ud[ud['avail'] == True] if 'avail' in ud.columns else ud
+            if len(avail) > 0:
+                sent = avail[avail['send'] > 0]['jbsteps30']
+                nosent = avail[avail['send'] == 0]['jbsteps30']
+                if len(sent) > 0 and len(nosent) > 0:
+                    self.user_te[uid] = float(sent.mean() - nosent.mean())
+                else:
+                    self.user_te[uid] = 0.0
+            else:
+                self.user_te[uid] = 0.0
+
+        # ── 构造 rich persona (方法 3): 用每个用户前 5 个 study_day derive ──
+        # study_day 真实数据里没有列, 我们用 date 排序后取前 5 个 unique date 当作 "first 5 days"
+        self.user_persona_text = {}
+        for uid, ud in s_sorted.groupby('uid'):
+            uniq_dates = sorted(ud['date'].unique())
+            warmup_dates = set(uniq_dates[:5])
+            warmup = ud[ud['date'].isin(warmup_dates)]
+            self.user_persona_text[uid] = self._build_rich_persona(uid, warmup, ud)
+
+        print(f"[user_context_stats] {len(self.user_slot_loc_mean)} users, "
+              f"avg bins/user={np.mean([len(v) for v in self.user_slot_loc_mean.values()]):.1f}")
+
+    def _build_rich_persona(self, uid, warmup_df, all_df):
+        """从前 5 天数据 derive 一段自然语言 persona, 用于 LLM prompt.
+
+        warmup_df: 前 5 天的数据 (用于 derive); all_df 仅用于备份当 warmup 数据不足时.
+        """
+        # 用 warmup_df derive; 不足 (<20 行) 时退到 all_df
+        ref = warmup_df if len(warmup_df) >= 20 else all_df
+
+        # 基本面: 真实步数均值 (over all rows, including unavail)
+        overall_mean = float(ref['jbsteps30'].mean()) if len(ref) > 0 else 0.0
+
+        # 各 slot 的均值, 找最活跃 / 最不活跃
+        slot_means = {}
+        for s in [1, 2, 3, 4, 5]:
+            sub = ref[ref['day_slot'] == s]
+            if len(sub) > 0:
+                slot_means[s] = float(sub['jbsteps30'].mean())
+        if slot_means:
+            most_active_slot = max(slot_means, key=slot_means.get)
+            least_active_slot = min(slot_means, key=slot_means.get)
+            slot_desc_map = {1: "early morning", 2: "morning", 3: "midday",
+                             4: "afternoon", 5: "evening"}
+            most_desc = slot_desc_map.get(most_active_slot, f"slot {most_active_slot}")
+            least_desc = slot_desc_map.get(least_active_slot, f"slot {least_active_slot}")
+            most_steps = int(slot_means[most_active_slot])
+            least_steps = int(slot_means[least_active_slot])
+        else:
+            most_desc, least_desc, most_steps, least_steps = "midday", "early morning", 0, 0
+
+        # 整体零率
+        zero_rate = float((ref['jbsteps30'] == 0).mean()) if len(ref) > 0 else 0.0
+
+        # TE estimate from warmup (often unstable from few rows, mark as ~)
+        if 'avail' in ref.columns:
+            avail = ref[ref['avail'] == True]
+        else:
+            avail = ref
+        if len(avail) >= 10:
+            sent = avail[avail['send'] > 0]['jbsteps30']
+            nosent = avail[avail['send'] == 0]['jbsteps30']
+            if len(sent) > 0 and len(nosent) > 0:
+                te = float(sent.mean() - nosent.mean())
+            else:
+                te = 0.0
+        else:
+            te = 0.0
+
+        # location 分布
+        loc_counts = ref['location'].value_counts(normalize=True)
+        top3_locs = loc_counts.head(3)
+        loc_strs = [f"{l} ({p*100:.0f}%)" for l, p in top3_locs.items()]
+        loc_desc = ", ".join(loc_strs) if loc_strs else "various"
+
+        # 拼成自然语言
+        te_desc = "responds positively to active walking suggestions" if te > 30 else \
+                  "weakly responds to suggestions" if te > 5 else \
+                  "shows little response to suggestions" if te > -5 else \
+                  "tends to walk less when prompted"
+
+        text = (
+            f"Behavioral profile (from first 5 days of study):\n"
+            f"- Walks ~{int(overall_mean)} steps per 30-min slot on average; "
+            f"{int(zero_rate*100)}% of slots have zero steps.\n"
+            f"- Most active in the {most_desc} (slot {most_active_slot if slot_means else '?'}, "
+            f"~{most_steps} steps); least active in the {least_desc} "
+            f"(slot {least_active_slot if slot_means else '?'}, ~{least_steps} steps).\n"
+            f"- Locations visited: {loc_desc}.\n"
+            f"- {te_desc} (TE ~{te:+.0f} steps from warmup data)."
+        )
+        return text
+
+    def get_user_bin_mean(self, uid, slot: int, location: str):
+        """返回该 user 在 (slot, location) 桶的真实步数均值.
+        若桶样本不足或不存在, fallback 到 user_slot_mean[slot], 再 fallback 到 user_overall_mean.
+        返回 (value, source) 元组, source ∈ {'user_bin', 'user_slot', 'user_overall', 'global'}.
+        """
+        loc_g = location if location in self.top_locations else 'Other'
+        # 1. user (slot, loc_g) 桶
+        if uid in self.user_slot_loc_mean:
+            v = self.user_slot_loc_mean[uid].get((int(slot), str(loc_g)))
+            if v is not None:
+                return v, 'user_bin'
+            # 2. user slot
+            v = self.user_slot_mean.get(uid, {}).get(int(slot))
+            if v is not None:
+                return v, 'user_slot'
+            # 3. user overall
+            v = self.user_overall_mean.get(uid)
+            if v is not None:
+                return v, 'user_overall'
+        # 4. global
+        return float(self.global_mean_steps), 'global'
+
+    def get_pop_bin_mean(self, slot: int, location: str):
+        """返回 (slot, location) 桶的人群真实步数均值 (含零步).
+        从 step_bin_params 的 (zp, log_mu, log_sd) 反推:
+            mean = (1 - zp) * exp(log_mu + 0.5 * log_sd^2)
+        """
+        loc_g = location if location in self.top_locations else 'Other'
+        params = self.step_bin_params.get((int(slot), loc_g))
+        if params is None:
+            return float(self.global_mean_steps)
+        zp, log_mu, log_sd, _ = params
+        return float((1 - zp) * np.exp(log_mu + 0.5 * log_sd * log_sd))
+
+    def get_user_slot_history(self, uid, slot: int, before_date=None,
+                              max_items: int = 5):
+        """返回该 user 在 slot 的最近 max_items 个真实步数 (按日期降序).
+        若 before_date (pd.Timestamp 或 str) 给了, 只返回早于该日期的 (避免泄漏).
+        """
+        if uid not in self.user_slot_history:
+            return []
+        hist = self.user_slot_history[uid].get(int(slot), [])
+        if before_date is not None:
+            bd_str = str(pd.to_datetime(before_date).date()) if hasattr(before_date, 'date') \
+                else str(pd.to_datetime(before_date))[:10]
+            filtered = []
+            for d, steps in hist:
+                d_str = str(d)[:10]  # YYYY-MM-DD
+                if d_str < bd_str:
+                    filtered.append((d_str, steps))
+            hist = filtered
+        else:
+            hist = [(str(d)[:10], steps) for d, steps in hist]
+        return hist[-max_items:][::-1]  # newest first
+
+    def get_rich_persona(self, uid):
+        """返回该 user 的 rich persona 文本 (从前 5 个 study_day derive).
+        若用户没 derive 过 (e.g. test user), 返回简短的通用 fallback."""
+        if uid in self.user_persona_text:
+            return self.user_persona_text[uid]
+        return (
+            f"Behavioral profile (no warmup data available):\n"
+            f"- Walks ~{int(self.global_mean_steps)} steps per 30-min slot on average."
+        )
 
 
 def generate_baseline_vectors(ext: V1DataExtractor, n: int) -> pd.DataFrame:

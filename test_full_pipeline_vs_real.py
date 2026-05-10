@@ -210,10 +210,19 @@ def evaluate_one_user(user_rows: pd.DataFrame, params: dict, ext, llm,
     PROMPT_ADJUSTMENT = prompts_module.PROMPT_ADJUSTMENT
     SYS_ADJUSTMENT = prompts_module.SYS_ADJUSTMENT
 
-    persona = make_persona(params)
+    # ── 方法 3: rich persona, 从前 5 天 derive ────────────────────────────
+    # ext 已经在 _compute_user_context_stats 里给每个 train uid 都 derive 好了
+    # fallback: 如果 ext 没找到该用户 (例如 test user), 用 make_persona 的简短版本
+    uid_for_persona = int(user_rows['uid'].iloc[0]) if len(user_rows) > 0 else -1
+    if hasattr(ext, 'user_persona_text') and uid_for_persona in ext.user_persona_text:
+        persona = ext.user_persona_text[uid_for_persona]
+    else:
+        persona = make_persona(params)
+    # seed 还是用 make_persona 的短版本 split 成几条 background memory (跟之前一致),
+    # rich persona 单独放进 prompt 里, 不污染 memory stream
+    seed_text = make_persona(params)
     stream = MemoryStream()
-    # seed: persona 拆成几条 background memory (跟 simulate_user 一致)
-    for line in persona.strip().split('. '):
+    for line in seed_text.strip().split('. '):
         if line.strip():
             stream.add(Memory("study_start", line.strip() + ".", "background", 7))
 
@@ -255,14 +264,40 @@ def evaluate_one_user(user_rows: pd.DataFrame, params: dict, ext, llm,
             base_mat[i, r] = base
             if base > 0:
                 obs_text = stream.format_memories(stream.get_recent(10))
+                # ── 方法 1: 计算 reference points ────────────────────────
+                if hasattr(ext, 'get_user_bin_mean'):
+                    u_bin, u_src = ext.get_user_bin_mean(
+                        uid_for_persona, int(row.day_slot), ctx['location'])
+                    pop_bin = ext.get_pop_bin_mean(int(row.day_slot), ctx['location'])
+                    u_overall = ext.user_overall_mean.get(uid_for_persona,
+                                                          float(ext.global_mean_steps))
+                else:
+                    u_bin, u_src = float(params['predicted_mean_steps']), 'fallback'
+                    pop_bin = float(ext.global_mean_steps) if hasattr(ext, 'global_mean_steps') else 250.0
+                    u_overall = float(params['predicted_mean_steps'])
+                # ── 方法 2: slot-matched history (严格用 row.date 之前) ──
+                if hasattr(ext, 'get_user_slot_history'):
+                    hist = ext.get_user_slot_history(
+                        uid_for_persona, int(row.day_slot),
+                        before_date=row.date, max_items=5)
+                else:
+                    hist = []
+                if hist:
+                    slot_history = "\n".join(
+                        f"- {d} (slot {int(row.day_slot)}): {s} steps" for d, s in hist)
+                else:
+                    slot_history = "(no prior data for this slot before today)"
                 adj_prompt = PROMPT_ADJUSTMENT.format(
                     persona=persona,
-                    study_day=int(row.day_slot),  # not actual study day, but row's slot ID — same as Plan A
+                    study_day=int(row.day_slot),  # row's slot ID, same convention as before
                     slot=int(row.day_slot), weekday_desc=weekday_desc,
                     location=ctx['location'], activity=ctx['activity'],
                     weather=ctx['weather'], temperature=ctx['temperature'],
                     prior_30min_steps=ctx['prior_30min_steps'],
                     action_desc=action_desc, base_steps=base,
+                    user_bin_mean=int(u_bin), user_bin_source=u_src,
+                    pop_bin_mean=int(pop_bin), user_overall_mean=int(u_overall),
+                    slot_history=slot_history,
                     recent_obs=obs_text if obs_text else "No prior observations.")
                 adj = llm.judge_adjustment(SYS_ADJUSTMENT, adj_prompt)
                 adj = max(-50, min(100, adj))
@@ -554,7 +589,7 @@ def main():
                    help='打开后会做 importance scoring + reflection (慢)')
     p.add_argument('--max-users', type=int, default=None,
                    help='只跑前 N 个 train user (smoke test 用)')
-    p.add_argument('--llm', choices=['simulated', 'qwen'], default='qwen',
+    p.add_argument('--llm', choices=['simulated', 'qwen'], default='simulated',
                    help='simulated: SimulatedLLM (随机), qwen: Qwen3BLLM (真模型)')
     p.add_argument('--qwen-path', default='../models/Qwen3-8B-AWQ')
     p.add_argument('--progress-every', type=int, default=50,

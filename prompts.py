@@ -108,7 +108,7 @@ Output ONLY a single digit (1-5)."""
 
 SYS_ADJUSTMENT = "You are a behavioral simulation module. Output ONLY a single integer from -50 to 100."
 
-PROMPT_ADJUSTMENT = """User: {persona}
+PROMPT_ADJUSTMENT = """{persona}
 
 Current decision point:
 - Day {study_day}, slot {slot} ({weekday_desc})
@@ -118,15 +118,27 @@ Current decision point:
 - Steps in prior 30 min: {prior_30min_steps}
 - Suggestion type: {action_desc}
 
-Statistical baseline prediction (typical user in this context): {base_steps} steps.
+Reference points (real averages from training data):
+- This user, same slot + location: ~{user_bin_mean} steps (source: {user_bin_source})
+- Population average at this slot + location: ~{pop_bin_mean} steps
+- This user, overall: ~{user_overall_mean} steps
 
-Recent behavior:
+This user's recent steps at the same slot (newest first):
+{slot_history}
+
+Other recent behavior:
 {recent_obs}
 
-Given the persona, current context, and recent behavior, how does this specific
-user's actual step count deviate from the baseline prediction?
+Statistical baseline prediction for this row: {base_steps} steps.
 
-Output an integer from -50 (much fewer steps than baseline) to +100 (much more
-steps than baseline), expressed as a percentage adjustment.
+The baseline above is a stochastic sample from the population distribution for
+this context; it does not know who this user is or what they have been doing
+recently. Compare the baseline to the reference points above to see if it is
+likely too high or too low for THIS user in THIS context. Use the slot history
+and recent behavior to refine your judgment.
+
+Output an integer percentage adjustment from -50 (the user will walk much fewer
+steps than the baseline predicts) to +100 (much more steps). 0 means the
+baseline is already right.
 Output ONLY a single integer."""
 
