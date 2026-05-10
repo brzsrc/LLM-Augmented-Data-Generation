@@ -226,10 +226,13 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
         }
         persona = make_persona(params)
         # ── 方法 3: rich persona (从前 5 天 derive 出来的, 见 data_extractor) ──
-        if hasattr(ext, 'user_persona_text') and int(uid) in ext.user_persona_text:
-            prompt_persona = ext.user_persona_text[int(uid)]
-        else:
-            prompt_persona = persona  # fallback
+        # if hasattr(ext, 'user_persona_text') and int(uid) in ext.user_persona_text:
+        #     prompt_persona = ext.user_persona_text[int(uid)]
+        # else:
+        #     prompt_persona = persona  # fallback
+
+        assert hasattr(ext, 'user_persona_text') and int(uid) in ext.user_persona_text
+        prompt_persona = ext.user_persona_text[int(uid)]
         runtimes[uid] = UserRuntime(uid, params, persona, ud, MS_module,
                                     prompt_persona=prompt_persona)
 
