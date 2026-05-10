@@ -95,6 +95,9 @@ class V1DataExtractor:
         user_stats = s.groupby('uid').agg(mean_steps=('jbsteps30', 'mean')).reset_index()
         self.real_mean_steps = user_stats['mean_steps'].values
 
+        user_stats = s.groupby('uid').agg(mean_steps=('jbsteps30pre', 'mean')).reset_index()
+        self.real_mean_steps_pre = user_stats['mean_steps'].values
+
         avail = s[s['avail'] == True]
         te_list = []
         for uid in avail['uid'].unique():
@@ -164,6 +167,8 @@ class V1DataExtractor:
             slot: {
                 'mean': s[s['day_slot'] == slot]['jbsteps30'].mean(),
                 'zero_rate': (s[s['day_slot'] == slot]['jbsteps30'] == 0).mean(),
+                'mean_pre': s[s['day_slot'] == slot]['jbsteps30pre'].mean(),
+                'zero_rate_pre': (s[s['day_slot'] == slot]['jbsteps30pre'] == 0).mean(),
             }
             for slot in [1, 2, 3, 4, 5]
         }
@@ -172,6 +177,10 @@ class V1DataExtractor:
         self.global_mean_steps = s['jbsteps30'].mean()
         self.global_zero_rate = (s['jbsteps30'] == 0).mean()
         self.global_log_steps = float(np.log(s.loc[s['jbsteps30'] > 0, 'jbsteps30']).mean())
+
+        self.global_mean_steps_pre = s['jbsteps30pre'].mean()
+        self.global_zero_rate_pre = (s['jbsteps30pre'] == 0).mean()
+        self.global_log_steps_pre = float(np.log(s.loc[s['jbsteps30pre'] > 0, 'jbsteps30pre']).mean())
 
         # 每 location 的平均步数
         self.steps_by_location = s.groupby('location')['jbsteps30'].mean().to_dict()
@@ -245,6 +254,7 @@ def generate_baseline_vectors(ext: V1DataExtractor, n: int) -> pd.DataFrame:
 
     # 直接从 V1 的 37 人经验分布采样（不用回归）
     df['predicted_mean_steps'] = np.random.choice(ext.real_mean_steps, n, replace=True)
+    df['predicted_mean_steps_pre'] = np.random.choice(ext.real_mean_steps_pre, n, replace=True)
     df['predicted_te'] = np.random.choice(ext.real_te, n, replace=True)
 
     # 按聚类比例分配 cluster
@@ -299,8 +309,8 @@ def generate_context(ext: V1DataExtractor, params: dict, day: int, slot: int, tr
 
     # ── 前 30 分钟步数: 零膨胀对数正态, 桶参数来自真实数据 ───────────
     zp_p, log_mu_p, log_sd_p = ext.get_step_bin(slot, location)
-    user_offset = np.log(max(params['predicted_mean_steps'], 1.0)
-                         / max(ext.global_mean_steps, 1.0))
+    user_offset = np.log(max(params['predicted_mean_steps_pre'], 1.0)
+                         / max(ext.global_mean_steps_pre, 1.0))
     weekend_offset = 0.0 if is_weekday else np.log(0.9)
     if np.random.random() < zp_p:
         prior = 0
