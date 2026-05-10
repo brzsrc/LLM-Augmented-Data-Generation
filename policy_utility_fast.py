@@ -65,7 +65,7 @@ def get_args():
     p.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
 
     # DDQN
-    p.add_argument("--ddqn_iters", type=int, default=30000)
+    p.add_argument("--ddqn_iters", type=int, default=80000)
     p.add_argument("--ddqn_eval_every", type=int, default=6000)
     p.add_argument("--ddqn_batch", type=int, default=512,
                    help="DDQN batch size — increased from 64 for GPU throughput.")
@@ -75,10 +75,10 @@ def get_args():
                    help="FQE iters for the point estimate. 20k usually suffices.")
 
     # FQE — bootstrap (smaller samples → fewer iters)
-    p.add_argument("--fqe_iters_boot", type=int, default=8000,
+    p.add_argument("--fqe_iters_boot", type=int, default=20000,
                    help="FQE iters per bootstrap. With batch=1024 on ~1700 rows, "
                         "this is near-full-batch — 8k more than enough.")
-    p.add_argument("--fqe_batch", type=int, default=1024)
+    p.add_argument("--fqe_batch", type=int, default=512)
 
     p.add_argument("--bootstrap_B", type=int, default=150)
     p.add_argument("--seed", type=int, default=42)

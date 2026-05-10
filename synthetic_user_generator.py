@@ -556,10 +556,10 @@ def simulate_parallel(
         df['receptivity'] = smooth(u.receptivity_raw)
         all_dfs.append(df)
         
-        # 保存单用户
-        udir = os.path.join(output_dir, f"user{u.uid}")
-        os.makedirs(udir, exist_ok=True)
-        df.to_csv(os.path.join(udir, f"user{u.uid}_trajectory.csv"), index=False)
+        # # 保存单用户
+        # udir = os.path.join(output_dir, f"user{u.uid}")
+        # os.makedirs(udir, exist_ok=True)
+        # df.to_csv(os.path.join(udir, f"user{u.uid}_trajectory.csv"), index=False)
     
     combined = pd.concat(all_dfs, ignore_index=True)
     combined.to_csv(os.path.join(output_dir, "all_trajectories.csv"), index=False)
