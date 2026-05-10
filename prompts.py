@@ -30,6 +30,82 @@ Relevant evidence:
 
 Write a 1-2 sentence high-level inference based on the evidence above. Be specific and cite patterns you observe."""
 
+MOTIVATION_PROMPT = """## Participant Background
+{seed_memory}
+
+## Recent Reflections
+{recent_reflections}
+
+## Recent Behavior Records (newest first)
+{recent_observations}
+
+## Current State
+Study day: {study_day}, time slot {slot}
+Steps in prior 30min: {pre30_steps}
+Suggestion sent: {action_desc}
+Steps in following 30min: {post_steps}
+
+## Task
+On a 1-5 scale, rate this participant's current INTRINSIC MOTIVATION — the self-directed drive to walk, independent of external prompts.
+
+1 = Very low. Participant only walks when prompted, or shows declining activity over days.
+2 = Low. Mostly sedentary without prompts, occasional activity.
+3 = Moderate. Some self-initiated walking but inconsistent.
+4 = High. Regularly walks without prompts, stable or increasing trend.
+5 = Very high. Consistently active regardless of suggestions, increasing self-initiated activity.
+
+IMPORTANT: Compare steps at prompted vs unprompted decision points. If participant walks 200+ steps WITHOUT a suggestion, motivation is likely HIGH.
+
+Output ONLY a single digit (1-5)."""
+
+HABIT_PROMPT = """## Participant Background
+{seed_memory}
+
+## Recent Behavior Records (newest first)
+{recent_observations}
+
+## Behavioral Regularity Indicators
+Steps in past 7 days by slot: {slot_pattern}
+Day-to-day consistency: {consistency_desc}
+
+## Current State
+Study day: {study_day}
+
+## Task
+On a 1-5 scale, rate this participant's current HABIT STRENGTH — how automatic and regular their walking behavior has become.
+
+1 = No habit. Walking is entirely effortful and irregular.
+2 = Weak. Occasionally walks at similar times but mostly inconsistent.
+3 = Forming. Some regular patterns emerging (e.g., walks at same slot most days).
+4 = Moderate. Consistent patterns across multiple days, walks at predictable times.
+5 = Strong. Highly regular, walks at same times daily regardless of context.
+
+Output ONLY a single digit (1-5)."""
+
+RECEPTIVITY_PROMPT = """## Participant Background
+{seed_memory}
+
+## Recent Reflections
+{recent_reflections}
+
+## Recent Behavior Records (newest first)
+{recent_observations}
+
+## Current State
+Study day: {study_day}, time slot {slot}
+Current dosage: {dosage:.2f}
+
+## Task
+On a 1-5 scale, how likely is this participant to open and respond to an activity suggestion RIGHT NOW by walking in the next 30 minutes?
+
+1 = Very unlikely. Participant has a pattern of ignoring suggestions, or recent response rate is very low.
+2 = Unlikely. Participant occasionally responds but mostly ignores.
+3 = Uncertain. Not enough information, or response pattern is inconsistent.
+4 = Likely. Participant has been responding positively to suggestions recently.
+5 = Very likely. Participant actively responds and shows positive attitude.
+
+Output ONLY a single digit (1-5)."""
+
 SYS_STEPS = (
     "You are a behavioral simulation module predicting the actual step count "
     "of a specific user in the next 30 minutes. Different users behave very "
@@ -78,3 +154,11 @@ slot+location can differ by 10× in steps. Stay anchored to this user.
 
 Output ONLY a single non-negative integer (predicted step count)."""
 
+
+# ================================================================
+# 兼容: 保留 PROMPT_ADJUSTMENT / SYS_ADJUSTMENT 让旧 simulator 仍能 import.
+# 测试脚本已迁到 Plan B (PROMPT_STEPS), 不再使用这两个变量.
+# Simulator 也建议尽快迁移; 这里留个 stub 是为了不阻塞测试运行.
+# ================================================================
+SYS_ADJUSTMENT = SYS_STEPS  # 兼容别名
+PROMPT_ADJUSTMENT = PROMPT_STEPS  # 兼容别名 (旧 simulator 跑步骤会出错, 但能 import)

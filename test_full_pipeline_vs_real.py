@@ -201,6 +201,28 @@ def evaluate_one_user(user_rows: pd.DataFrame, params: dict, ext, llm,
     PROMPT_STEPS = prompts_module.PROMPT_STEPS
     SYS_STEPS = prompts_module.SYS_STEPS
 
+    # 复用 simulator 的稳健 reflection 解析 (处理 <think> 块 / 杂质行 / 多种 list 前缀)
+    # 关键: 不能跟 simulator 走偏, 否则 with-reflection 时质量不一致
+    if with_reflection:
+        try:
+            from synthetic_user_generator import _parse_questions, _strip_think_tags
+        except ImportError:
+            # fallback: 简陋版 (不该走到这里 — simulator 应该可 import)
+            import re as _re
+            def _strip_think_tags(t):
+                t = _re.sub(r'<think>.*?</think>', '', t, flags=_re.DOTALL)
+                return t.replace('<think>', '').replace('</think>', '').strip()
+            def _parse_questions(raw, max_n=3):
+                out = []
+                for line in _strip_think_tags(raw).split('\n'):
+                    line = _re.sub(r'^\s*(?:Q\s*\d+[.):]?|\d+[.):]|[-*•])\s*', '',
+                                   line.strip(), flags=_re.IGNORECASE).strip()
+                    if len(line) < 15: continue
+                    if line.lower().startswith(('<think','</think','note:','here are','list ')): continue
+                    out.append(line)
+                    if len(out) >= max_n: break
+                return out
+
     # ── 方法 3: rich persona, 从前 5 天 derive ────────────────────────────
     # ext 已经在 _compute_user_context_stats 里给每个 train uid 都 derive 好了
     # fallback: 如果 ext 没找到该用户 (例如 test user), 用 make_persona 的简短版本
@@ -290,8 +312,11 @@ def evaluate_one_user(user_rows: pd.DataFrame, params: dict, ext, llm,
 
         # 把这一行的真实 observation 加入 memory stream
         # 用真实 jbsteps30 (不是合成 steps_mat[i].mean()), 这样 memory 始终反映真实历史
+        # 用 i (row 序号) 当 "day" 占位, slot 是真实的, 跟 simulator 的 key 格式一致
+        day_for_key = i + 1
+        slot_for_key = int(row.day_slot)
         observation = create_observation(
-            day=1, slot=int(row.day_slot),
+            day=day_for_key, slot=slot_for_key,
             ctx=ctx, action=action, steps=int(row.jbsteps30))
 
         if with_reflection:
@@ -304,29 +329,26 @@ def evaluate_one_user(user_rows: pd.DataFrame, params: dict, ext, llm,
         else:
             importance = 5  # 如果不做反思, importance 是常数 (反正 should_reflect 不被检查)
 
-        stream.add(Memory(f"D1S{int(row.day_slot)}_row{i}", observation,
-                          "observation", importance))
+        stream.add(Memory(f"Day{day_for_key}_Slot{slot_for_key}",
+                          observation, "observation", importance))
 
-        # 反思触发 (可选)
+        # 反思触发 — 完整复用 synthetic_user_generator.simulate_user 的逻辑
         if with_reflection and stream.should_reflect():
-            # 简化的反思流程: 借用 synthetic_user_generator 的逻辑会引入文件解析等,
-            # 这里手工直跑, 跟原版逻辑等价
-            recent = stream.get_recent(20)
+            recent = stream.get_recent(15)  # 跟 simulator 一致
             recent_text = stream.format_memories(recent)
-            q_prompt = REFLECTION_Q_PROMPT.format(recent_memories=recent_text)
-            q_response = llm.generate_text("You are a behavioral analysis system.", q_prompt)
-            # 简单解析 (按行切, 取前 3 个非空)
-            questions = [q.strip().lstrip('-*0123456789. )')
-                         for q in q_response.split('\n')
-                         if q.strip()][:3]
+            q_prompt_text = REFLECTION_Q_PROMPT.format(recent_memories=recent_text)
+            q_response = llm.generate_text(
+                "You are a behavioral analysis system.", q_prompt_text)
+            questions = _parse_questions(q_response, max_n=3)
             for q in questions:
-                ref_prompt = REFLECTION_GEN_PROMPT.format(
+                ref_gen_prompt = REFLECTION_GEN_PROMPT.format(
                     question=q, relevant_memories=recent_text)
                 ref_text = llm.generate_text(
                     "You are a behavioral analysis system. Write concise inferences.",
-                    ref_prompt)
-                stream.add(Memory(f"D1S{int(row.day_slot)}_ref{i}",
-                                  ref_text, "reflection", 8))
+                    ref_gen_prompt)
+                ref_text_clean = _strip_think_tags(ref_text)
+                stream.add(Memory(f"Day{day_for_key}_Slot{slot_for_key}",
+                                  ref_text_clean, "reflection", 8))
             stream.reset_reflection_counter()
 
         # ── 行级进度 (rolling MAE / bias / 每行延迟) ─────────────────

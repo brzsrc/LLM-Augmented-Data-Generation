@@ -208,6 +208,8 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
         REFLECTION_GEN_PROMPT = prompts_module.REFLECTION_GEN_PROMPT
         IMPORTANCE_SYSTEM = prompts_module.IMPORTANCE_SYSTEM
         IMPORTANCE_USER = prompts_module.IMPORTANCE_USER
+        # 完整复用 simulator 的反思解析逻辑 (处理 <think> 块/列表前缀/杂质行)
+        from synthetic_user_generator import _parse_questions, _strip_think_tags
 
     # ── Step 1: 给每个用户初始化 runtime ────────────────────────────
     runtimes = {}
@@ -357,76 +359,78 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
             accum_abs_err += abs(err)
             accum_signed_err += err
 
-        # ── Phase D: importance + 加入 memory stream ─────────────
-        if with_reflection:
-            imp_prompts = []
-            imp_meta = []
-            for uid in active_uids:
-                rt = runtimes[uid]
-                ctx, action, _, row, _ = active_ctx[uid]
-                obs = create_observation(
-                    day=1, slot=int(row['day_slot']),
-                    ctx=ctx, action=action, steps=int(row['jbsteps30']))
-                imp_prompts.append({
-                    "system": IMPORTANCE_SYSTEM,
-                    "user": IMPORTANCE_USER.format(observation=obs)
-                })
-                imp_meta.append((uid, obs, int(row['day_slot'])))
-            imp_results = llm.batch_importance(imp_prompts) if imp_prompts else []
-            for k_imp, (uid, obs, slot_n) in enumerate(imp_meta):
-                try:
-                    importance = max(1, min(10, int(imp_results[k_imp])))
-                except Exception:
-                    importance = 5
-                runtimes[uid].stream.add(Memory(
-                    f"step{k}_S{slot_n}", obs, "observation", importance))
-        else:
-            for uid in active_uids:
-                rt = runtimes[uid]
-                ctx, action, _, row, _ = active_ctx[uid]
-                obs = create_observation(
-                    day=1, slot=int(row['day_slot']),
-                    ctx=ctx, action=action, steps=int(row['jbsteps30']))
-                rt.stream.add(Memory(
-                    f"step{k}_S{int(row['day_slot'])}", obs, "observation", 5))
+        # ── Phase D: importance + 加入 observation memory  ─────────
+        # 完整对应 synthetic_user_generator.simulate_parallel 的 Phase C+D.
+        # 用 step k+1 当 "day" 占位 (我们这里没有真正的 study day, 用步号代替)
+        day_for_key = k + 1
+        all_obs = []  # uid 顺序与 active_uids 对齐
+        for uid in active_uids:
+            rt = runtimes[uid]
+            ctx, action, _, row, _ = active_ctx[uid]
+            obs = create_observation(
+                day=day_for_key, slot=int(row['day_slot']),
+                ctx=ctx, action=action, steps=int(row['jbsteps30']))
+            all_obs.append(obs)
 
-        # ── Phase E: 反思 (可选) ─────────────────────────────────
+        if with_reflection:
+            imp_prompts = [{"system": IMPORTANCE_SYSTEM,
+                            "user": IMPORTANCE_USER.format(observation=obs)}
+                           for obs in all_obs]
+            imp_results = llm.batch_importance(imp_prompts) if imp_prompts else []
+            all_imp = []
+            for r in imp_results:
+                try: all_imp.append(max(1, min(10, int(r))))
+                except: all_imp.append(5)
+        else:
+            all_imp = [5] * len(active_uids)
+
+        for idx_u, uid in enumerate(active_uids):
+            rt = runtimes[uid]
+            _, _, _, row, _ = active_ctx[uid]
+            rt.stream.add(Memory(f"Day{day_for_key}_S{int(row['day_slot'])}",
+                                 all_obs[idx_u], "observation", all_imp[idx_u]))
+
+        # ── Phase E: 反思 — 逐字搬 simulate_parallel 的逻辑 ─────────
         if with_reflection:
             reflect_uids = [uid for uid in active_uids
                             if runtimes[uid].stream.should_reflect()]
             if reflect_uids:
+                # Step 1: 批量生成问题 — 跟 simulator 用 get_recent(15)
                 q_prompts = []
-                q_recent = {}
                 for uid in reflect_uids:
-                    recent = runtimes[uid].stream.get_recent(20)
+                    recent = runtimes[uid].stream.get_recent(15)
                     recent_text = runtimes[uid].stream.format_memories(recent)
-                    q_recent[uid] = recent_text
                     q_prompts.append({
                         "system": "You are a behavioral analysis system.",
                         "user": REFLECTION_Q_PROMPT.format(recent_memories=recent_text)
                     })
                 q_responses = llm.batch_text(q_prompts)
 
+                # Step 2: 批量推断 — 用 _parse_questions, get_recent(15)
                 inf_prompts = []
-                inf_meta = []
+                inf_map = []  # (reflect_local_idx j, uid, question)
                 for j, uid in enumerate(reflect_uids):
-                    questions = [q.strip().lstrip('-*0123456789. )')
-                                 for q in q_responses[j].split('\n')
-                                 if q.strip()][:3]
+                    recent_text = runtimes[uid].stream.format_memories(
+                        runtimes[uid].stream.get_recent(15))
+                    questions = _parse_questions(q_responses[j], max_n=3)
                     for q in questions:
                         inf_prompts.append({
                             "system": "You are a behavioral analysis system. Write concise inferences.",
                             "user": REFLECTION_GEN_PROMPT.format(
-                                question=q, relevant_memories=q_recent[uid])
+                                question=q, relevant_memories=recent_text)
                         })
-                        inf_meta.append((uid, q))
+                        inf_map.append((j, uid, q))
 
                 inf_responses = llm.batch_text(inf_prompts) if inf_prompts else []
-                for k_inf, (uid, q) in enumerate(inf_meta):
+                # 写入记忆流 — 清洗 <think>...</think> 块
+                for k_inf, (j, uid, q) in enumerate(inf_map):
+                    resp = inf_responses[k_inf] if k_inf < len(inf_responses) else ""
+                    resp = _strip_think_tags(resp)
+                    _, _, _, row, _ = active_ctx[uid]
                     runtimes[uid].stream.add(Memory(
-                        f"step{k}_ref",
-                        inf_responses[k_inf] if k_inf < len(inf_responses) else "",
-                        "reflection", 8))
+                        f"Day{day_for_key}_S{int(row['day_slot'])}",
+                        resp, "reflection", 8))
+
                 for uid in reflect_uids:
                     runtimes[uid].stream.reset_reflection_counter()
 
@@ -664,7 +668,7 @@ def main():
                    help='打开后做 importance scoring + reflection (慢)')
     p.add_argument('--max-users', type=int, default=None,
                    help='只跑前 N 个 train user (smoke test 用)')
-    p.add_argument('--llm', choices=['simulated', 'qwen'], default='simulated')
+    p.add_argument('--llm', choices=['simulated', 'qwen'], default='qwen')
     p.add_argument('--qwen-path', default='../models/Qwen3-8B-AWQ')
     p.add_argument('--progress-every-step', type=int, default=25,
                    help='每 N step 打一次进度 (active users / batch / ETA / rolling MAE). 0=关掉')
