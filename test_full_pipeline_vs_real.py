@@ -195,9 +195,14 @@ def make_persona(params: dict) -> str:
 # =============================================================================
 def evaluate_one_user(user_rows: pd.DataFrame, params: dict, ext, llm,
                       n_runs: int, with_reflection: bool,
-                      DE, MS_module, prompts_module):
+                      DE, MS_module, prompts_module,
+                      progress_every: int = 50, uid_label: str = ''):
     """
     返回 DataFrame: 与 user_rows 同长, 加列 base_mean / adj_mean / steps_mean / steps_one。
+
+    progress_every: 每跑完这么多行, 打一行进度 (rolling MAE/bias/per-row latency)。
+                    设为 0 关掉。
+    uid_label: 进度行的前缀, 例如 'uid=12'.
     """
     Memory = MS_module.Memory
     MemoryStream = MS_module.MemoryStream
@@ -223,6 +228,9 @@ def evaluate_one_user(user_rows: pd.DataFrame, params: dict, ext, llm,
     base_mat  = np.zeros((n, n_runs), dtype=np.int32)
     adj_mat   = np.zeros((n, n_runs), dtype=np.int32)
     steps_mat = np.zeros((n, n_runs), dtype=np.int32)
+    real_arr  = user_rows['jbsteps30'].values  # 用于 rolling MAE
+    _t_user_start = time.time()
+    _llm_calls_at_user_start = llm.call_count
 
     for i, row in enumerate(user_rows.itertuples(index=False)):
         ctx = {
@@ -303,6 +311,24 @@ def evaluate_one_user(user_rows: pd.DataFrame, params: dict, ext, llm,
                 stream.add(Memory(f"D1S{int(row.day_slot)}_ref{i}",
                                   ref_text, "reflection", 8))
             stream.reset_reflection_counter()
+
+        # ── 行级进度 (rolling MAE / bias / 每行延迟) ─────────────────
+        if progress_every and (i + 1) % progress_every == 0:
+            # rolling: 用到目前为止已跑的行 [0..i]
+            rolling_steps = steps_mat[:i+1].mean(axis=1)
+            rolling_real  = real_arr[:i+1]
+            rolling_err   = rolling_steps - rolling_real
+            mae_so_far    = float(np.abs(rolling_err).mean())
+            bias_so_far   = float(rolling_err.mean())
+            elapsed_user  = time.time() - _t_user_start
+            llm_this_user = llm.call_count - _llm_calls_at_user_start
+            ms_per_row    = elapsed_user / (i + 1) * 1000
+            eta_user      = elapsed_user / (i + 1) * (n - i - 1)
+            print(f'    [{uid_label} row {i+1}/{n}] '
+                  f'MAE={mae_so_far:.1f} bias={bias_so_far:+.1f} '
+                  f'| {ms_per_row:.0f}ms/row, '
+                  f'LLM(this user)={llm_this_user}, '
+                  f'ETA(user)={eta_user:.0f}s')
 
     # 汇总
     out = user_rows.copy().reset_index(drop=True)
@@ -528,9 +554,11 @@ def main():
                    help='打开后会做 importance scoring + reflection (慢)')
     p.add_argument('--max-users', type=int, default=None,
                    help='只跑前 N 个 train user (smoke test 用)')
-    p.add_argument('--llm', choices=['simulated', 'qwen'], default='simulated',
+    p.add_argument('--llm', choices=['simulated', 'qwen'], default='qwen',
                    help='simulated: SimulatedLLM (随机), qwen: Qwen3BLLM (真模型)')
     p.add_argument('--qwen-path', default='../models/Qwen3-8B-AWQ')
+    p.add_argument('--progress-every', type=int, default=50,
+                   help='每 N 行打一次用户内进度 (rolling MAE/bias). 0=关掉')
     args = p.parse_args()
 
     np.random.seed(args.seed)
@@ -607,15 +635,18 @@ def main():
         out_u = evaluate_one_user(
             user_rows, params, ext, llm,
             n_runs=args.runs, with_reflection=args.with_reflection,
-            DE=DE, MS_module=MS, prompts_module=PR)
+            DE=DE, MS_module=MS, prompts_module=PR,
+            progress_every=args.progress_every,
+            uid_label=f'uid={int(uid)}')
         all_results.append(out_u)
 
         elapsed = time.time() - t0
         avg_per_user = elapsed / (u_idx + 1)
         eta = avg_per_user * (len(train_uids) - u_idx - 1)
         print(f'  [{u_idx+1}/{len(train_uids)}] uid={int(uid)}: '
-              f'{len(user_rows)} rows, '
-              f'mean_err={out_u["err_mean"].mean():+.0f}, '
+              f'n={len(user_rows)}, '
+              f'MAE={out_u["abs_err"].mean():.1f}, '
+              f'bias={out_u["err_mean"].mean():+.1f}, '
               f'LLM calls={llm.call_count}, '
               f'elapsed={elapsed:.0f}s, ETA={eta:.0f}s')
 
