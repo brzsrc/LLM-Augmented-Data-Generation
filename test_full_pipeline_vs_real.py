@@ -57,6 +57,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 from scipy.stats import wasserstein_distance
 
+from prompts import REFLECTION_Q_SYS, REFLECTION_GEN_SYS
+
 matplotlib.rcParams['axes.unicode_minus'] = False
 matplotlib.rcParams['font.family'] = 'DejaVu Sans'
 
@@ -187,13 +189,19 @@ def make_persona(params: dict) -> str:
 def evaluate_one_user(user_rows: pd.DataFrame, params: dict, ext, llm,
                       n_runs: int, with_reflection: bool,
                       DE, MS_module, prompts_module,
-                      progress_every: int = 50, uid_label: str = ''):
+                      progress_every: int = 50, uid_label: str = '',
+                      logger=None):
     """
     返回 DataFrame: 与 user_rows 同长, 加列 steps_mean / steps_one / steps_std。
 
     progress_every: 每跑完这么多行, 打一行进度 (rolling MAE/bias/per-row latency)。
                     设为 0 关掉。
     uid_label: 进度行的前缀, 例如 'uid=12'.
+    logger: 可选的 TraceLogger 实例 (per-user). 若给了, 会写:
+            - log_decision_point (每行)
+            - log_observation (每行)
+            - log_reflection (每次反思事件)
+            log_user_init / finalize 由调用方负责.
     """
     Memory = MS_module.Memory
     MemoryStream = MS_module.MemoryStream
@@ -294,7 +302,19 @@ def evaluate_one_user(user_rows: pd.DataFrame, params: dict, ext, llm,
             slot_history = "(no prior data for this slot before today)"
 
         for r in range(n_runs):
-            obs_text = stream.format_memories(stream.get_recent(10))
+            obs_text = stream.format_memories(stream.get_recent(20))
+            # steps_prompt = PROMPT_STEPS.format(
+            #     persona=persona,
+            #     study_day=int(row.day_slot),
+            #     slot=int(row.day_slot), weekday_desc=weekday_desc,
+            #     location=ctx['location'], activity=ctx['activity'],
+            #     weather=ctx['weather'], temperature=ctx['temperature'],
+            #     prior_30min_steps=ctx['prior_30min_steps'],
+            #     action_desc=action_desc,
+            #     user_bin_mean=int(u_bin), user_bin_source=u_src,
+            #     pop_bin_mean=int(pop_bin), user_overall_mean=int(u_overall),
+            #     slot_history=slot_history,
+            #     recent_obs=obs_text if obs_text else "No prior observations.")
             steps_prompt = PROMPT_STEPS.format(
                 persona=persona,
                 study_day=int(row.day_slot),
@@ -303,10 +323,9 @@ def evaluate_one_user(user_rows: pd.DataFrame, params: dict, ext, llm,
                 weather=ctx['weather'], temperature=ctx['temperature'],
                 prior_30min_steps=ctx['prior_30min_steps'],
                 action_desc=action_desc,
-                user_bin_mean=int(u_bin), user_bin_source=u_src,
-                pop_bin_mean=int(pop_bin), user_overall_mean=int(u_overall),
                 slot_history=slot_history,
                 recent_obs=obs_text if obs_text else "No prior observations.")
+
             steps_pred = llm.judge_steps(SYS_STEPS, steps_prompt)
             steps_mat[i, r] = max(0, int(steps_pred))
 
@@ -332,24 +351,81 @@ def evaluate_one_user(user_rows: pd.DataFrame, params: dict, ext, llm,
         stream.add(Memory(f"Day{day_for_key}_Slot{slot_for_key}",
                           observation, "observation", importance))
 
+        # ── Logger 钩子 1: log_observation ──────────────────────────────
+        # 这条 observation 现在已经加入 stream, 我们用 logger 落盘
+        if logger is not None:
+            logger.log_observation(
+                day=day_for_key, slot=slot_for_key,
+                obs_text=observation,
+                importance=importance,
+                importance_acc=stream.importance_since_reflection,
+            )
+
+        # ── Logger 钩子 2: log_decision_point ──────────────────────────
+        # Plan B 已经废掉 base/adj, 但 logger 的接口仍要这些字段; 占位写 0
+        # final_steps 用 n_runs 平均后的 int
+        if logger is not None:
+            avg_steps = int(steps_mat[i].mean())
+            # 把 dosage 也算上 (Plan A 老逻辑用过, Plan B 用真实 send 衰减)
+            # 简单起见这里给一个 0 占位 (没追踪真实 dosage 在 evaluate_one_user 内)
+            # ctx 已经有 location/activity/temperature/weather/prior_30min_steps,
+            # 我们补一下 avail / yesterday_steps 占位以符合 logger 期望
+            ctx_for_log = dict(ctx)
+            ctx_for_log.setdefault('avail', 1)
+            ctx_for_log.setdefault('yesterday_steps', 0)
+            logger.log_decision_point(
+                day=day_for_key, slot=slot_for_key, ctx=ctx_for_log,
+                action=action,
+                base_steps=0,            # Plan B: 已废
+                llm_adj_pct=0,           # Plan B: 已废
+                final_steps=avg_steps,
+                state={'motivation': 0, 'habit': 0, 'receptivity': 0},  # Plan A 简化版无 state
+                dosage=float(dosage),
+                prompt_text=steps_prompt[:500],  # 来自上面 n_runs 循环最后一次 r 的 prompt
+                llm_raw_output=str(avg_steps),
+                importance=importance,
+                importance_acc=stream.importance_since_reflection,
+                reflection_triggered=False,  # 下面如果触发了我们另存一条
+            )
+
         # 反思触发 — 完整复用 synthetic_user_generator.simulate_user 的逻辑
         if with_reflection and stream.should_reflect():
-            recent = stream.get_recent(15)  # 跟 simulator 一致
+            recent = stream.get_recent(20)  # 跟 simulator 一致
             recent_text = stream.format_memories(recent)
             q_prompt_text = REFLECTION_Q_PROMPT.format(recent_memories=recent_text)
             q_response = llm.generate_text(
-                "You are a behavioral analysis system.", q_prompt_text)
+                REFLECTION_Q_SYS, q_prompt_text)
             questions = _parse_questions(q_response, max_n=3)
+            inferences_for_log = []  # 收集每个 question 的 inference, 给 logger 用
             for q in questions:
                 ref_gen_prompt = REFLECTION_GEN_PROMPT.format(
                     question=q, relevant_memories=recent_text)
                 ref_text = llm.generate_text(
-                    "You are a behavioral analysis system. Write concise inferences.",
+                    REFLECTION_GEN_SYS,
                     ref_gen_prompt)
                 ref_text_clean = _strip_think_tags(ref_text)
+                inferences_for_log.append(ref_text_clean)
                 stream.add(Memory(f"Day{day_for_key}_Slot{slot_for_key}",
                                   ref_text_clean, "reflection", 8))
             stream.reset_reflection_counter()
+
+            # ── Logger 钩子 3: log_reflection ────────────────────────
+            if logger is not None:
+                state_zero = {'motivation': 0, 'habit': 0, 'receptivity': 0}
+                combined_text = "\n\n".join(inferences_for_log)
+                logger.log_reflection(
+                    day=day_for_key,
+                    reflection_text=combined_text,
+                    old_state=state_zero, new_state=state_zero,
+                    raw_llm_state=(0, 0, 0),
+                    constrained_state=state_zero,
+                    reflect_prompt=q_prompt_text,
+                    state_prompt="",  # Plan B 简化版: 没有 state update prompt
+                    recent_obs_text=recent_text,
+                    recent_ref_text="",
+                    questions=questions,
+                    inferences=inferences_for_log,
+                )
 
         # ── 行级进度 (rolling MAE / bias / 每行延迟) ─────────────────
         if progress_every and (i + 1) % progress_every == 0:
@@ -591,6 +667,8 @@ def main():
     p.add_argument('--qwen-path', default='../models/Qwen3-8B-AWQ')
     p.add_argument('--progress-every', type=int, default=50,
                    help='每 N 行打一次用户内进度 (rolling MAE/bias). 0=关掉')
+    p.add_argument('--no-logger', action='store_true',
+                   help='关闭 per-user trace logger (默认每用户写一个子目录的 trace 文件)')
     args = p.parse_args()
 
     np.random.seed(args.seed)
@@ -654,6 +732,16 @@ def main():
     # 逐用户走
     all_results = []
     t0 = time.time()
+    # 导入 logger 模块 (用户可关闭)
+    logger_module = None
+    if not args.no_logger:
+        try:
+            from trace_logger import TraceLogger
+            logger_module = TraceLogger
+            print(f'[logger] enabled, per-user traces will be written to {out_dir}/user<uid>/')
+        except ImportError as e:
+            print(f'[logger] disabled (import failed: {e})')
+
     for u_idx, uid in enumerate(train_uids):
         user_rows = real_df[real_df['uid'] == uid]
         if len(user_rows) == 0:
@@ -664,13 +752,45 @@ def main():
             real_te=float(user_rows['predicted_te'].iloc[0]),
             users_df=users_df,
         )
+        # per-user logger
+        logger = None
+        if logger_module is not None:
+            user_dir = out_dir / f'user{int(uid)}'
+            logger = logger_module(str(user_dir),
+                                   user_id=int(uid),
+                                   user_params=params)
+            # persona 跟 evaluate_one_user 里一样的口径 (rich if available)
+            if hasattr(ext, 'user_persona_text') and int(uid) in ext.user_persona_text:
+                persona_for_log = ext.user_persona_text[int(uid)]
+            else:
+                persona_for_log = make_persona(params)
+            logger.log_user_init(
+                params=params,
+                initial_state={'motivation': 0, 'habit': 0, 'receptivity': 0},
+                persona=persona_for_log,
+            )
+
         out_u = evaluate_one_user(
             user_rows, params, ext, llm,
             n_runs=args.runs, with_reflection=args.with_reflection,
             DE=DE, MS_module=MS, prompts_module=PR,
             progress_every=args.progress_every,
-            uid_label=f'uid={int(uid)}')
+            uid_label=f'uid={int(uid)}',
+            logger=logger)
         all_results.append(out_u)
+
+        # finalize per-user logger
+        if logger is not None:
+            logger.finalize(
+                final_state={'motivation': 0, 'habit': 0, 'receptivity': 0},
+                summary_stats={
+                    'n_rows': int(len(user_rows)),
+                    'mae': float(out_u['abs_err'].mean()),
+                    'bias': float(out_u['err_mean'].mean()),
+                    'mean_real': float(out_u['jbsteps30'].mean()),
+                    'mean_pred': float(out_u['steps_mean'].mean()),
+                },
+            )
 
         elapsed = time.time() - t0
         avg_per_user = elapsed / (u_idx + 1)

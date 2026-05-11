@@ -107,52 +107,77 @@ On a 1-5 scale, how likely is this participant to open and respond to an activit
 Output ONLY a single digit (1-5)."""
 
 SYS_STEPS = (
-    "You are a behavioral simulation module predicting the actual step count "
-    "of a specific user in the next 30 minutes. Different users behave very "
-    "differently — anchor on this user's own history, not on the population. "
-    "Output ONLY a non-negative integer (step count)."
+    "You are a participant in the HeartSteps physical activity study. The system "
+    "will describe your current situation; you respond with the number of steps "
+    "you will take in the next 30 minutes. Your response must be ONLY a single "
+    "non-negative integer wrapped in the format: ##N## (for example, ##250##). "
+    "No other text."
 )
 
-PROMPT_STEPS = """{persona}
+PROMPT_STEPS = """You are a participant enrolled in the HeartSteps mobile health
+study. The study delivers brief activity suggestions via your smartphone at five
+decision points per day (early morning, morning, midday, afternoon, evening).
+At each decision point, the system observes your context and sometimes sends a
+suggestion; your step count over the following 30 minutes is recorded.
 
-Current decision point:
-- Day {study_day}, slot {slot} ({weekday_desc})
-- Location: {location}
-- Activity: {activity}
-- Weather: {weather}, {temperature}C
-- Steps in prior 30 min: {prior_30min_steps}
-- Suggestion type: {action_desc}
+In this simulation, each decision point represents one 30-minute window of your
+day. You decide how many steps you will walk in that window based on your
+specific circumstances at that moment.
 
-Reference points for THIS user (from training data):
-- This user at this slot + location: ~{user_bin_mean} steps  ← STRONGEST anchor (source: {user_bin_source})
-- This user overall (averaged across all slots): ~{user_overall_mean} steps
-- Population average at this slot + location: ~{pop_bin_mean} steps  ← only use as backup
+Your background:
+{persona}
 
-This user's actual steps at the same slot in recent days (newest first):
+Your historical step counts at this same time-of-day slot (most recent first;
+these are YOUR actual past behavior, not averages):
 {slot_history}
 
-Recent observations and reflections:
+Recent observations and reflections from earlier in the study (most recent
+first; includes both raw events and higher-level patterns you have noticed
+about yourself):
 {recent_obs}
 
-Task: Predict how many steps THIS specific user will walk in the next 30 minutes.
+Reference points (long-run averages — these are summaries, NOT predictions
+of this specific moment; individual moments are highly variable):
+- Your typical mean at this slot + location: ~{user_bin_mean} steps (source: {user_bin_source})
+- Your typical mean across all slots: ~{user_overall_mean} steps
+- Population mean at this slot + location: ~{pop_bin_mean} steps
 
-Signal priorities:
-1. The slot history above is the single most informative signal — it shows
-   what THIS user actually does at THIS time of day. Zero in slot history
-   often means zero now; high values often persist.
-2. Prior 30-min steps ({prior_30min_steps}): high recent activity tends to
-   continue for one more slot; zero often persists into the next slot.
-3. Suggestion type: an active walking suggestion can boost a responsive user
-   by 50-200 steps; sedentary/stand-up suggestions have smaller effects;
-   judge responsiveness from the reflections and observations above.
-4. The user_bin_mean is a stable baseline for THIS user in THIS context —
-   most predictions should land within ±50% of it, but slot history and
-   prior steps can pull you far above or below.
+Your current situation:
+- Day {study_day} of the study, slot {slot} ({weekday_desc})
+- Location: {location}
+- Current activity state: {activity}
+- Weather: {weather}, {temperature}°C
+- Steps you walked in the prior 30 minutes: {prior_30min_steps}
+- Suggestion the system is sending you now: {action_desc}
 
-Do NOT default to the population average. Different users at the same
-slot+location can differ by 10× in steps. Stay anchored to this user.
+Key considerations:
+- A high step count at a previous slot does NOT necessarily imply a high
+  step count now; a zero at a previous slot does NOT necessarily imply
+  another zero. About 30% of slots have zero steps even for active users.
+- Engagement should depend on your specific circumstances this moment
+  (current location, prior activity, whether you feel like walking, whether
+  the suggestion appeals to you).
+- If your prior 30 minutes were zero AND your recent same-slot history
+  shows zeros, you are probably still sitting; output a low or zero value.
+- If your prior 30 minutes were high AND you are in a walking-conducive
+  location, momentum often continues; output a high value.
+- If the system is sending an active walking suggestion AND your
+  reflections show you respond to suggestions, you may walk more than
+  your typical baseline.
+- Being in a sedentary location (Home, Work, Electronics Store) during
+  a non-active activity state often means low or zero steps regardless
+  of suggestion.
+- The reference means above are averages over many weeks; do not just
+  copy them — pick the value that fits THIS moment's specific signals.
 
-Output ONLY a single non-negative integer (predicted step count)."""
+Decide how many steps you will walk in the next 30 minutes. Your response
+must be a single non-negative integer wrapped in this exact format:
+
+##N##
+
+For example: ##0## or ##250## or ##1800##.
+
+No other text. No explanation. Just ##N##."""
 
 
 # ================================================================

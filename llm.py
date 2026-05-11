@@ -25,27 +25,27 @@ class Qwen3BLLM:
         self.llm = LLM(model=model_path, quantization="awq",
                        gpu_memory_utilization=0.90, max_model_len=4096,
                        trust_remote_code=True)
-        self.score_guided = StructuredOutputsParams(choice=["1", "2", "3", "4", "5"])
-        self.score_params = SamplingParams(temperature=0.3, max_tokens=1, structured_outputs=self.score_guided)
-        self.importance_guided = StructuredOutputsParams(choice=[str(i) for i in range(1, 11)])
-        self.importance_params = SamplingParams(temperature=0.1, max_tokens=2, structured_outputs=self.importance_guided)
+        self.score_guided = StructuredOutputsParams(choice=[f"##{i}##" for i in range(1, 6)])
+        self.score_params = SamplingParams(temperature=0.3, max_tokens=4, structured_outputs=self.score_guided)
+        self.importance_guided = StructuredOutputsParams(choice=[f"##{i}##" for i in range(1, 11)])
+        self.importance_params = SamplingParams(temperature=0.1, max_tokens=4, structured_outputs=self.importance_guided)
         self.text_params = SamplingParams(temperature=0.3, max_tokens=500)
-        # Plan B: absolute step prediction.
-        # 关键修复: 用 structured_outputs 强制输出整数 (避免模型先吐换行/标签前缀),
-        # 同时 max_tokens 给足 (5 位数 最长 4 token + 安全余量)
-        # 用稀疏 choice set 加速 vLLM constrained decoding 构建:
-        #   0-999 step 全保留, 1000-3000 step 2 间隔, 3000-9999 step 100 间隔
+        # Plan B (ARMMAN-style): LLM 输出 ##N## 包裹的步数, 例如 ##250##.
+        # structured_outputs 强制采 choice list 中的一个完整字符串.
+        # 稀疏 choice 控制规模 (4-digit max + ## wrapper, 单选 7-8 字符):
+        #   0-999 全保留, 1000-3000 每 5 步, 3000-9999 每 100 步
         steps_choices = (
-            [str(i) for i in range(0, 1000)] +
-            [str(i) for i in range(1000, 3000, 5)] +
-            [str(i) for i in range(3000, 10000, 100)]
+            [f"##{i}##" for i in range(0, 1000)] +
+            [f"##{i}##" for i in range(1000, 3000, 5)] +
+            [f"##{i}##" for i in range(3000, 10000, 100)]
         )
         self.steps_guided = StructuredOutputsParams(choice=steps_choices)
-        self.steps_params = SamplingParams(temperature=0.3, max_tokens=8,
+        # ##N## 最长是 ##9900## = 8 字符 ≈ 5-6 token, max_tokens=12 给足安全余量
+        self.steps_params = SamplingParams(temperature=0.3, max_tokens=12,
                                            structured_outputs=self.steps_guided)
         # 调试用: 跑头几次时把原始 text 存一下方便诊断
         self.debug_steps_outputs = []
-        self.debug_capture_n = 20  # 只存前 20 次的原始输出
+        self.debug_capture_n = 20
         self.call_count = 0
         print(f"Model loaded! steps choices = {len(steps_choices)}")
 
@@ -56,8 +56,8 @@ class Qwen3BLLM:
 
     def score_importance(self, system, user):
         out = self.llm.generate([self._prompt(system, user)], self.importance_params)
-        self.call_count += 1;
-        return out[0].outputs[0].text.strip()
+        self.call_count += 1
+        return self._parse_int(out[0].outputs[0].text, lo=1, hi=10, default=5)
 
     def generate_text(self, system, user):
         out = self.llm.generate([self._prompt(system, user)], self.text_params)
@@ -67,8 +67,8 @@ class Qwen3BLLM:
     def batch_score(self, prompts):
         fmt = [self._prompt(p["system"], p["user"]) for p in prompts]
         out = self.llm.generate(fmt, self.score_params)
-        self.call_count += len(prompts);
-        return [o.outputs[0].text.strip() for o in out]
+        self.call_count += len(prompts)
+        return [self._parse_int(o.outputs[0].text, lo=1, hi=5, default=3) for o in out]
 
     def judge_steps(self, system, user):
         out = self.llm.generate([self._prompt(system, user)], self.steps_params)
@@ -81,8 +81,8 @@ class Qwen3BLLM:
     def batch_importance(self, prompts):
         fmt = [self._prompt(p["system"], p["user"]) for p in prompts]
         out = self.llm.generate(fmt, self.importance_params)
-        self.call_count += len(prompts);
-        return [o.outputs[0].text.strip() for o in out]
+        self.call_count += len(prompts)
+        return [self._parse_int(o.outputs[0].text, lo=1, hi=10, default=5) for o in out]
 
     def batch_steps(self, prompts):
         fmt = [self._prompt(p["system"], p["user"]) for p in prompts]
@@ -98,18 +98,49 @@ class Qwen3BLLM:
 
     @staticmethod
     def _parse_steps(text: str) -> int:
-        """Robust parse: take leading digits, clip to [0, 9999]."""
+        """Robust parse: handle ##N## wrapper or any text with digits.
+        Strategy: extract first contiguous digit run, clip to [0, 9999].
+        Examples:
+          '##250##' → 250
+          '250'     → 250
+          '##0##'   → 0
+          '## 0 ##' → 0  (whitespace tolerant)
+          'I think ##300##' → 300
+          ''        → 0
+        """
         s = text.strip()
-        # leading digits only (may be followed by garbage)
+        # find first digit
         n = 0
+        found_digit = False
         for ch in s:
             if ch.isdigit():
+                found_digit = True
                 n = n * 10 + int(ch)
                 if n > 9999:
                     return 9999
-            else:
+            elif found_digit:
+                # past the first digit run, stop
                 break
-        return min(n, 9999)
+        return min(n, 9999) if found_digit else 0
+
+    @staticmethod
+    def _parse_int(text: str, lo: int, hi: int, default: int) -> int:
+        """Parse first integer from text (handles ##N## or bare digits),
+        clip to [lo, hi]. Returns `default` if no digits found."""
+        s = text.strip()
+        n = 0
+        found = False
+        for ch in s:
+            if ch.isdigit():
+                found = True
+                n = n * 10 + int(ch)
+                if n > hi:
+                    return hi
+            elif found:
+                break
+        if not found:
+            return default
+        return max(lo, min(hi, n))
 
     def batch_text(self, prompts):
         fmt = [self._prompt(p["system"], p["user"]) for p in prompts]
@@ -121,15 +152,15 @@ class Qwen3BLLM:
 class SimulatedLLM:
     def __init__(self): self.call_count = 0
 
-    def score_importance(self, s, u): self.call_count += 1; return str(np.random.randint(3, 8))
+    def score_importance(self, s, u): self.call_count += 1; return int(np.random.randint(3, 8))
 
     def generate_text(self, s, u): self.call_count += 1; return "Simulated inference."
 
-    def batch_score(self, p): self.call_count += len(p); return [str(np.random.randint(1, 6)) for _ in p]
+    def batch_score(self, p): self.call_count += len(p); return [int(np.random.randint(1, 6)) for _ in p]
 
     def judge_steps(self, s, u): self.call_count += 1; return int(np.random.lognormal(4.5, 1.2))
 
-    def batch_importance(self, p): self.call_count += len(p); return [str(np.random.randint(3, 8)) for _ in p]
+    def batch_importance(self, p): self.call_count += len(p); return [int(np.random.randint(3, 8)) for _ in p]
 
     def batch_steps(self, p): self.call_count += len(p); return [int(np.random.lognormal(4.5, 1.2)) for _ in p]
 
