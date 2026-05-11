@@ -50,6 +50,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 from scipy.stats import wasserstein_distance
 
+from prompts import REFLECTION_Q_SYS, REFLECTION_GEN_SYS
+
 matplotlib.rcParams['axes.unicode_minus'] = False
 matplotlib.rcParams['font.family'] = 'DejaVu Sans'
 
@@ -166,16 +168,20 @@ def make_persona(params: dict) -> str:
 # =============================================================================
 class UserRuntime:
     def __init__(self, uid, params, persona, all_rows, MS_module,
-                 prompt_persona=None):
+                 prompt_persona=None, logger=None):
         """
         persona: 简短的 5-line 描述, 用于 seed memory stream (保持兼容)
         prompt_persona: rich persona (来自 ext.get_rich_persona), 用于 LLM prompt;
                         若 None 则用 persona
+        logger: 可选的 TraceLogger 实例 (per-user). 若给了, 会被 pipeline 用来
+                落盘 observation / decision_point / reflection. user_init 和
+                finalize 由调用方负责.
         """
         self.uid = uid
         self.params = params
         self.persona = persona
         self.prompt_persona = prompt_persona if prompt_persona is not None else persona
+        self.logger = logger
         # 重要: reset_index 让 .iloc[k] 工作; 排序确保 personal time order
         self.all_rows = all_rows.sort_values(['date', 'day_slot']).reset_index(drop=True)
         self.N = len(self.all_rows)
@@ -196,12 +202,27 @@ class UserRuntime:
 def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
                           DE, MS_module, prompts_module,
                           progress_every_step: int = 25,
-                          verbose: bool = True):
-    """跑完所有用户, 返回 runtimes 字典。"""
+                          verbose: bool = True,
+                          logger_dir: 'Path' = None):
+    """跑完所有用户, 返回 runtimes 字典。
+
+    logger_dir: 若给了 Path, 每个用户会创建 TraceLogger 写到 {logger_dir}/user{uid}/.
+                每个 runtime.logger 也会被赋上, 让 Phase D/E 钩子可以调用.
+    """
     Memory = MS_module.Memory
     create_observation = MS_module.create_observation
     PROMPT_STEPS = prompts_module.PROMPT_STEPS
     SYS_STEPS = prompts_module.SYS_STEPS
+
+    # logger 可选
+    LoggerCls = None
+    if logger_dir is not None:
+        try:
+            from trace_logger import TraceLogger
+            LoggerCls = TraceLogger
+        except ImportError as e:
+            print(f'[logger] 不能 import trace_logger ({e}), 禁用')
+            LoggerCls = None
 
     if with_reflection:
         REFLECTION_Q_PROMPT = prompts_module.REFLECTION_Q_PROMPT
@@ -232,8 +253,23 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
             prompt_persona = ext.user_persona_text[int(uid)]
         else:
             prompt_persona = persona  # fallback
+
+        # per-user logger (可选)
+        user_logger = None
+        if LoggerCls is not None:
+            user_dir = logger_dir / f'user{int(uid)}'
+            user_logger = LoggerCls(str(user_dir),
+                                    user_id=int(uid),
+                                    user_params=params)
+            user_logger.log_user_init(
+                params=params,
+                initial_state={'motivation': 0, 'habit': 0, 'receptivity': 0},
+                persona=prompt_persona,
+            )
+
         runtimes[uid] = UserRuntime(uid, params, persona, ud, MS_module,
-                                    prompt_persona=prompt_persona)
+                                    prompt_persona=prompt_persona,
+                                    logger=user_logger)
 
     sorted_uids = sorted(runtimes.keys())
     max_steps = max(rt.N for rt in runtimes.values())
@@ -276,7 +312,7 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
                 'activity': row['activity'] if isinstance(row['activity'], str) else 'STILL',
                 'weather': weather,
                 'temperature': temp,
-                'study_day': 1,
+                'study_day': int(row['study_day']),
                 'prior_30min_steps': int(row['jbsteps30pre']),
                 'response': row['response']
                     if 'response' in rt.all_rows.columns and isinstance(row['response'], str)
@@ -294,45 +330,42 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
             weekday_desc = "weekday" if ctx['weekday'] else "weekend"
 
             # reference points
-            if hasattr(ext, 'get_user_bin_mean'):
-                u_bin, u_src = ext.get_user_bin_mean(
-                    int(uid), int(row['day_slot']), ctx['location'])
-                pop_bin = ext.get_pop_bin_mean(int(row['day_slot']), ctx['location'])
-                u_overall = ext.user_overall_mean.get(int(uid),
-                                                      float(ext.global_mean_steps))
-            else:
-                u_bin, u_src = float(rt.params['predicted_mean_steps']), 'fallback'
-                pop_bin = float(ext.global_mean_steps) if hasattr(ext, 'global_mean_steps') else 250.0
-                u_overall = float(rt.params['predicted_mean_steps'])
-
-            # slot-matched history (strict before row.date)
-            if hasattr(ext, 'get_user_slot_history'):
-                hist = ext.get_user_slot_history(
-                    int(uid), int(row['day_slot']),
-                    before_date=row['date'], max_items=5)
-            else:
-                hist = []
-            if hist:
-                slot_history = "\n".join(
-                    f"- {d} (slot {int(row['day_slot'])}): {s} steps" for d, s in hist)
-            else:
-                slot_history = "(no prior data for this slot before today)"
+            # if hasattr(ext, 'get_user_bin_mean'):
+            #     u_bin, u_src = ext.get_user_bin_mean(
+            #         int(uid), int(row['day_slot']), ctx['location'])
+            #     pop_bin = ext.get_pop_bin_mean(int(row['day_slot']), ctx['location'])
+            #     u_overall = ext.user_overall_mean.get(int(uid),
+            #                                           float(ext.global_mean_steps))
+            # else:
+            #     u_bin, u_src = float(rt.params['predicted_mean_steps']), 'fallback'
+            #     pop_bin = float(ext.global_mean_steps) if hasattr(ext, 'global_mean_steps') else 250.0
+            #     u_overall = float(rt.params['predicted_mean_steps'])
+            #
+            # # slot-matched history (strict before row.date)
+            # if hasattr(ext, 'get_user_slot_history'):
+            #     hist = ext.get_user_slot_history(
+            #         int(uid), int(row['day_slot']),
+            #         before_date=row['date'], max_items=5)
+            # else:
+            #     hist = []
+            # if hist:
+            #     slot_history = "\n".join(
+            #         f"- {d} (slot {int(row['day_slot'])}): {s} steps" for d, s in hist)
+            # else:
+            #     slot_history = "(no prior data for this slot before today)"
 
             # n_runs prompts for this row — all identical (memory stream is the same
             # at this step); n_runs only captures LLM stochasticity (temperature=0.3)
             for run_idx in range(n_runs):
                 p = PROMPT_STEPS.format(
                     persona=rt.prompt_persona,
-                    study_day=int(row['day_slot']),
+                    study_day=int(row['study_day']),
                     slot=int(row['day_slot']),
                     weekday_desc=weekday_desc,
                     location=ctx['location'], activity=ctx['activity'],
                     weather=ctx['weather'], temperature=ctx['temperature'],
                     prior_30min_steps=ctx['prior_30min_steps'],
                     action_desc=action_desc,
-                    user_bin_mean=int(u_bin), user_bin_source=u_src,
-                    pop_bin_mean=int(pop_bin), user_overall_mean=int(u_overall),
-                    slot_history=slot_history,
                     recent_obs=recent_obs)
                 all_prompts.append({"system": SYS_STEPS, "user": p})
                 prompt_meta.append((uid, run_idx))
@@ -361,14 +394,12 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
 
         # ── Phase D: importance + 加入 observation memory  ─────────
         # 完整对应 synthetic_user_generator.simulate_parallel 的 Phase C+D.
-        # 用 step k+1 当 "day" 占位 (我们这里没有真正的 study day, 用步号代替)
-        day_for_key = k + 1
         all_obs = []  # uid 顺序与 active_uids 对齐
         for uid in active_uids:
             rt = runtimes[uid]
             ctx, action, _, row, _ = active_ctx[uid]
             obs = create_observation(
-                day=day_for_key, slot=int(row['day_slot']),
+                day=row['study_day'], slot=int(row['day_slot']),
                 ctx=ctx, action=action, steps=int(row['jbsteps30']))
             all_obs.append(obs)
 
@@ -386,9 +417,37 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
 
         for idx_u, uid in enumerate(active_uids):
             rt = runtimes[uid]
-            _, _, _, row, _ = active_ctx[uid]
-            rt.stream.add(Memory(f"Day{day_for_key}_S{int(row['day_slot'])}",
+            ctx, action, _, row, _ = active_ctx[uid]
+            rt.stream.add(Memory(f"Day{row['study_day']}_S{int(row['day_slot'])}",
                                  all_obs[idx_u], "observation", all_imp[idx_u]))
+
+            # ── Logger 钩子 1: log_observation + log_decision_point ──
+            if rt.logger is not None:
+                slot_n = int(row['day_slot'])
+                rt.logger.log_observation(
+                    day=row['study_day'], slot=slot_n,
+                    obs_text=all_obs[idx_u],
+                    importance=all_imp[idx_u],
+                    importance_acc=rt.stream.importance_since_reflection,
+                )
+                # Plan B 已废 base/adj, 占位写 0
+                ctx_for_log = dict(ctx)
+                ctx_for_log.setdefault('avail', 1)
+                ctx_for_log.setdefault('yesterday_steps', 0)
+                rt.logger.log_decision_point(
+                    day=row['study_day'], slot=slot_n, ctx=ctx_for_log,
+                    action=action,
+                    base_steps=0,
+                    llm_adj_pct=0,
+                    final_steps=int(rt.results[k]['steps_mean']),
+                    state={'motivation': 0, 'habit': 0, 'receptivity': 0},
+                    dosage=float(active_ctx[uid][2]),  # dosage from active_ctx tuple
+                    prompt_text="",  # parallel 不留 prompt 文本副本, 太占空间
+                    llm_raw_output=str(int(rt.results[k]['steps_mean'])),
+                    importance=all_imp[idx_u],
+                    importance_acc=rt.stream.importance_since_reflection,
+                    reflection_triggered=False,  # 反思如果触发, log_reflection 另存
+                )
 
         # ── Phase E: 反思 — 逐字搬 simulate_parallel 的逻辑 ─────────
         if with_reflection:
@@ -396,26 +455,35 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
                             if runtimes[uid].stream.should_reflect()]
             if reflect_uids:
                 # Step 1: 批量生成问题 — 跟 simulator 用 get_recent(15)
+                # 同时缓存每个 uid 的 recent_text + q_prompt 给 logger 用
                 q_prompts = []
+                per_uid_q_prompt_text = {}   # uid -> q_prompt user content
+                per_uid_recent_text = {}     # uid -> recent_text fed to LLM
                 for uid in reflect_uids:
-                    recent = runtimes[uid].stream.get_recent(15)
+                    recent = runtimes[uid].stream.get_recent(25)
                     recent_text = runtimes[uid].stream.format_memories(recent)
+                    q_user = REFLECTION_Q_PROMPT.format(recent_memories=recent_text)
+                    per_uid_q_prompt_text[uid] = q_user
+                    per_uid_recent_text[uid] = recent_text
                     q_prompts.append({
-                        "system": "You are a behavioral analysis system.",
-                        "user": REFLECTION_Q_PROMPT.format(recent_memories=recent_text)
+                        "system": REFLECTION_Q_SYS,
+                        "user": q_user
                     })
                 q_responses = llm.batch_text(q_prompts)
 
                 # Step 2: 批量推断 — 用 _parse_questions, get_recent(15)
+                # 同时按 uid 分组 questions, 之后好喂给 log_reflection
                 inf_prompts = []
                 inf_map = []  # (reflect_local_idx j, uid, question)
+                per_uid_questions = {uid: [] for uid in reflect_uids}
+                per_uid_inferences = {uid: [] for uid in reflect_uids}
                 for j, uid in enumerate(reflect_uids):
-                    recent_text = runtimes[uid].stream.format_memories(
-                        runtimes[uid].stream.get_recent(15))
+                    recent_text = per_uid_recent_text[uid]
                     questions = _parse_questions(q_responses[j], max_n=3)
+                    per_uid_questions[uid] = questions
                     for q in questions:
                         inf_prompts.append({
-                            "system": "You are a behavioral analysis system. Write concise inferences.",
+                            "system": REFLECTION_GEN_SYS,
                             "user": REFLECTION_GEN_PROMPT.format(
                                 question=q, relevant_memories=recent_text)
                         })
@@ -426,13 +494,38 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
                 for k_inf, (j, uid, q) in enumerate(inf_map):
                     resp = inf_responses[k_inf] if k_inf < len(inf_responses) else ""
                     resp = _strip_think_tags(resp)
+                    per_uid_inferences[uid].append(resp)
                     _, _, _, row, _ = active_ctx[uid]
                     runtimes[uid].stream.add(Memory(
-                        f"Day{day_for_key}_S{int(row['day_slot'])}",
+                        f"Day{row['study_day']}_S{int(row['day_slot'])}",
                         resp, "reflection", 8))
 
                 for uid in reflect_uids:
                     runtimes[uid].stream.reset_reflection_counter()
+
+                # ── Logger 钩子 3: log_reflection per uid ──────────
+                # 对每个反思了的 uid, 写一条 log_reflection
+                for uid in reflect_uids:
+                    rt = runtimes[uid]
+                    if rt.logger is None:
+                        continue
+                    state_zero = {'motivation': 0, 'habit': 0, 'receptivity': 0}
+                    inferences = per_uid_inferences[uid]
+                    questions = per_uid_questions[uid]
+                    combined_text = "\n\n".join(inferences) if inferences else ""
+                    rt.logger.log_reflection(
+                        day=row['study_day'],
+                        reflection_text=combined_text,
+                        old_state=state_zero, new_state=state_zero,
+                        raw_llm_state=(0, 0, 0),
+                        constrained_state=state_zero,
+                        reflect_prompt=per_uid_q_prompt_text[uid],
+                        state_prompt="",  # Plan B 简化版无 state-update prompt
+                        recent_obs_text=per_uid_recent_text[uid],
+                        recent_ref_text="",
+                        questions=questions,
+                        inferences=inferences,
+                    )
 
         rows_done += len(active_uids)
         step_elapsed_ms = (time.time() - t_step_start) * 1000
@@ -672,6 +765,8 @@ def main():
     p.add_argument('--qwen-path', default='../models/Qwen3-8B-AWQ')
     p.add_argument('--progress-every-step', type=int, default=25,
                    help='每 N step 打一次进度 (active users / batch / ETA / rolling MAE). 0=关掉')
+    p.add_argument('--no-logger', action='store_true',
+                   help='关闭 per-user trace logger (默认每用户写一个子目录的 trace 文件)')
     args = p.parse_args()
 
     np.random.seed(args.seed)
@@ -730,15 +825,42 @@ def main():
     print(f'[real_rows] {len(real_df)} rows')
 
     t0 = time.time()
+    # 默认开启 logger; --no-logger 关
+    logger_dir_arg = None if args.no_logger else out_dir
+    if logger_dir_arg is not None:
+        print(f'[logger] enabled, per-user traces -> {out_dir}/user<uid>/')
+
     runtimes = run_parallel_pipeline(
         real_df, ext, llm, n_runs=args.runs,
         with_reflection=args.with_reflection,
         DE=DE, MS_module=MS, prompts_module=PR,
-        progress_every_step=args.progress_every_step, verbose=True)
+        progress_every_step=args.progress_every_step, verbose=True,
+        logger_dir=logger_dir_arg)
     out_df = assemble_output(real_df, runtimes)
     print(f'\n[done] total rows={len(out_df)}, '
           f'total LLM calls={llm.call_count}, '
           f'time={time.time()-t0:.0f}s')
+
+    # finalize per-user logger 用 assemble_output 后的总结指标
+    if logger_dir_arg is not None:
+        for uid, rt in runtimes.items():
+            if rt.logger is None:
+                continue
+            sub = out_df[out_df['uid'] == uid]
+            if len(sub) == 0:
+                rt.logger.finalize(
+                    final_state={'motivation': 0, 'habit': 0, 'receptivity': 0},
+                    summary_stats={'n_rows': 0})
+                continue
+            rt.logger.finalize(
+                final_state={'motivation': 0, 'habit': 0, 'receptivity': 0},
+                summary_stats={
+                    'n_rows': int(len(sub)),
+                    'mae': float(sub['abs_err'].mean()),
+                    'bias': float(sub['err_mean'].mean()),
+                    'mean_real': float(sub['jbsteps30'].mean()),
+                    'mean_pred': float(sub['steps_mean'].mean()),
+                })
 
     # 调试: 打印前 10 个原始 LLM 输出, 帮助诊断"全是 0"这类问题
     if hasattr(llm, 'debug_steps_outputs') and llm.debug_steps_outputs:

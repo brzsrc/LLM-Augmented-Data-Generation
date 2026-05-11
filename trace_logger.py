@@ -139,7 +139,7 @@ class TraceLogger:
             "importance": importance,
             "importance_accumulated": importance_acc,
             "reflection_triggered": reflection_triggered,
-            "llm_prompt": prompt_text[:500] if prompt_text else "",
+            "llm_prompt": prompt_text if prompt_text else "",
             "llm_raw_output": str(llm_raw_output),
         }
         
@@ -165,7 +165,7 @@ class TraceLogger:
             "timestamp": timestamp,
             "mem_type": mem_type,
             "importance": importance,
-            "content": content[:300],
+            "content": content,
             "memory_size_after": memory_size,
             "step_index": self.step_index,
         }
@@ -235,12 +235,12 @@ class TraceLogger:
             },
             "questions": questions,
             "inferences": inferences,
-            "reflection_text": reflection_text[:800],
-            "reflect_prompt": reflect_prompt[:500],
-            "state_prompt": state_prompt[:500],
+            "reflection_text": reflection_text,
+            "reflect_prompt": reflect_prompt,
+            "state_prompt": state_prompt,
         }
         self.trace_f.write(_safe_dump({"type": "reflection", **record}) + "\n")
-        self.log_memory_event(f"D{day}R", reflection_text[:200], "reflection", 6)
+        self.log_memory_event(f"D{day}R", reflection_text, "reflection", 6)
         self.log_memory_event(f"D{day}U", 
             f"State: mot={constrained_state['motivation']},hab={constrained_state['habit']},"
             f"rec={constrained_state['receptivity']}", "reflection", 5)
@@ -263,7 +263,7 @@ class TraceLogger:
         if inferences:
             md += f"**Step 2 — Evidence-Based Inferences:**\n\n"
             for i, (q, inf) in enumerate(zip(questions, inferences), 1):
-                md += f"**Q{i}**: {q[:100]}\n"
+                md += f"**Q{i}**: {q}\n"
                 md += f"> {inf}\n\n"
         
         # Step 3: 状态更新
@@ -282,7 +282,7 @@ class TraceLogger:
         # 折叠的详细信息
         if recent_obs_text:
             md += f"<details>\n<summary>Recent observations fed to LLM ({len(recent_obs_text)} chars)</summary>\n\n"
-            md += f"```\n{recent_obs_text[:800]}\n```\n\n</details>\n\n"
+            md += f"```\n{recent_obs_text}\n```\n\n</details>\n\n"
         
         if state_prompt:
             md += f"<details>\n<summary>State update prompt</summary>\n\n"

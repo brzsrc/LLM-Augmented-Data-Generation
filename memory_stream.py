@@ -68,13 +68,9 @@ def create_observation(day: int, slot: int, ctx: dict, action: int, steps: int) 
 
     if action == 1:
         obs += "System sent an ACTIVE walking suggestion. "
-        obs += f"Steps in following 30min: {steps}. "
+        obs += f"Steps in following 30min: {steps} after suggestion. "
         if ctx.get('response'):
             obs += f"Participant response: {ctx['response']}. "
-        if steps == 0:
-            obs += "Participant did NOT respond to suggestion. "
-        elif steps > 200:
-            obs += "Participant responded positively with walking. "
     elif action == 2:
         obs += "System sent a SEDENTARY/stand-up suggestion. "
         obs += f"Steps in following 30min: {steps}. "

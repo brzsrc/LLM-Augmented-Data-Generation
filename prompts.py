@@ -280,15 +280,12 @@ Your current situation:
 Key considerations:
 - A high step count at a previous slot does NOT necessarily imply a high
   step count now; a zero at a previous slot does NOT necessarily imply
-  another zero. About 30% of slots have zero steps even for active users.
-- Engagement should depend on your specific circumstances this moment 
-  and your recent records
-  (current location, prior activity, whether you feel like walking, whether
-  the suggestion appeals to you).
-- If your prior 30 minutes were zero AND your recent same slot-location records
-  shows zeros, you are probably still sitting; output a low or zero value.
-- If your prior 30 minutes were high AND you are in a walking-conducive
-  location, momentum often continues; output a high value.
+  another zero. 
+- Engagement and how many steps you decide to walk should depend on 
+  your specific circumstances this moment (current location, 
+  current weather and temperature, prior activity, prior steps) 
+  and your recent records (whether you feel like walking, 
+  whether the suggestion appeals to you).
 - If the system is sending an active walking suggestion AND your
   reflections show you respond to suggestions, you may walk more than
   your typical baseline.
@@ -304,7 +301,7 @@ must be a single non-negative integer wrapped in this exact format:
 
 ##N##
 
-For example: ##0## or ##250## or ##1800##.
+For example: ##0## or ##252## or ##1837##.
 
 No other text. No explanation. Just ##N##."""
 
