@@ -26,10 +26,10 @@ class Qwen3BLLM:
                        gpu_memory_utilization=0.90, max_model_len=4096,
                        trust_remote_code=True)
         self.score_guided = StructuredOutputsParams(choice=[f"##{i}##" for i in range(1, 6)])
-        self.score_params = SamplingParams(temperature=0.3, max_tokens=4, structured_outputs=self.score_guided)
+        self.score_params = SamplingParams(temperature=0.7, max_tokens=4, structured_outputs=self.score_guided)
         self.importance_guided = StructuredOutputsParams(choice=[f"##{i}##" for i in range(1, 11)])
         self.importance_params = SamplingParams(temperature=0.1, max_tokens=4, structured_outputs=self.importance_guided)
-        self.text_params = SamplingParams(temperature=0.3, max_tokens=500)
+        self.text_params = SamplingParams(temperature=0.7, max_tokens=500)
         # Plan B (ARMMAN-style): LLM 输出 ##N## 包裹的步数, 例如 ##250##.
         # structured_outputs 强制采 choice list 中的一个完整字符串.
         # 稀疏 choice 控制规模 (4-digit max + ## wrapper, 单选 7-8 字符):
@@ -41,7 +41,7 @@ class Qwen3BLLM:
         )
         self.steps_guided = StructuredOutputsParams(choice=steps_choices)
         # ##N## 最长是 ##9900## = 8 字符 ≈ 5-6 token, max_tokens=12 给足安全余量
-        self.steps_params = SamplingParams(temperature=0.3, max_tokens=12,
+        self.steps_params = SamplingParams(temperature=0.7, max_tokens=12,
                                            structured_outputs=self.steps_guided)
         # 调试用: 跑头几次时把原始 text 存一下方便诊断
         self.debug_steps_outputs = []

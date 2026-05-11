@@ -454,7 +454,7 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
             reflect_uids = [uid for uid in active_uids
                             if runtimes[uid].stream.should_reflect()]
             if reflect_uids:
-                # Step 1: 批量生成问题 — 跟 simulator 用 get_recent(15)
+                # Step 1: 批量生成问题 — 跟 simulaMemorytor 用 get_recent(15)
                 # 同时缓存每个 uid 的 recent_text + q_prompt 给 logger 用
                 q_prompts = []
                 per_uid_q_prompt_text = {}   # uid -> q_prompt user content
@@ -754,7 +754,7 @@ def main():
     p.add_argument('--users_csv', default=None)
     p.add_argument('--data_extractor_dir', default='.')
     p.add_argument('--out',       default='./full_pipeline_parallel_output')
-    p.add_argument('--runs',      type=int, default=10,
+    p.add_argument('--runs',      type=int, default=5,
                    help='每行抽样次数, 平均掉 base + LLM 的随机性')
     p.add_argument('--seed',      type=int, default=42)
     p.add_argument('--with-reflection', action='store_true',
