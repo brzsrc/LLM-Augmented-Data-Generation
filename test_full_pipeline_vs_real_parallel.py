@@ -137,38 +137,12 @@ def prepare_real_rows(cleaned_path: str, train_uids: list,
     return df
 
 
-def build_user_params(uid: int, real_mean: float, real_te: float,
-                      users_df: pd.DataFrame) -> dict:
-    """跟 serial 版一致。"""
-    row = users_df[users_df['user.index'] == uid]
-    if len(row) > 0:
-        r = row.iloc[0]
-        return {
-            'age': r['age'], 'gender': r['gender'],
-            'selfeff.intake': r['selfeff.intake'], 'consc': r['consc'],
-            'predicted_mean_steps': real_mean, 'predicted_te': real_te,
-        }
-    return {
-        'age': 35, 'gender': 'F', 'selfeff.intake': 14.5, 'consc': 22.0,
-        'predicted_mean_steps': real_mean, 'predicted_te': real_te,
-    }
-
-
-def make_persona(params: dict) -> str:
-    """跟 serial 版一致。"""
-    return (f"Age {int(params['age'])}, {params['gender']}. "
-            f"Self-efficacy {params['selfeff.intake']:.1f}/25, "
-            f"conscientiousness {params['consc']:.1f}/30. "
-            f"Baseline ~{int(params['predicted_mean_steps'])} steps/decision. "
-            f"Initial treatment effect {params['predicted_te']:+.0f} steps.")
-
-
 # =============================================================================
 # 用户运行时状态: 一个用户一个 stream + cursor
 # =============================================================================
 class UserRuntime:
-    def __init__(self, uid, params, persona, all_rows, MS_module,
-                 prompt_persona=None, logger=None):
+    def __init__(self, uid, all_rows, MS_module,
+                 prompt_persona, logger=None):
         """
         persona: 简短的 5-line 描述, 用于 seed memory stream (保持兼容)
         prompt_persona: rich persona (来自 ext.get_rich_persona), 用于 LLM prompt;
@@ -178,16 +152,14 @@ class UserRuntime:
                 finalize 由调用方负责.
         """
         self.uid = uid
-        self.params = params
-        self.persona = persona
-        self.prompt_persona = prompt_persona if prompt_persona is not None else persona
+        self.prompt_persona = prompt_persona
         self.logger = logger
         # 重要: reset_index 让 .iloc[k] 工作; 排序确保 personal time order
         self.all_rows = all_rows.sort_values(['date', 'day_slot']).reset_index(drop=True)
         self.N = len(self.all_rows)
 
         self.stream = MS_module.MemoryStream()
-        for line in persona.strip().split('. '):
+        for line in prompt_persona.strip().split('. '):
             if line.strip():
                 self.stream.add(MS_module.Memory(
                     "study_start", line.strip() + ".", "background", 7))
@@ -235,40 +207,22 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
     # ── Step 1: 给每个用户初始化 runtime ────────────────────────────
     runtimes = {}
     for uid, ud in real_df.groupby('uid'):
-        params = {
-            'predicted_mean_steps': float(ud['predicted_mean_steps'].iloc[0]),
-            'predicted_te': float(ud['predicted_te'].iloc[0]),
-            'age': int(ud['age'].iloc[0])
-                if 'age' in ud.columns and not pd.isna(ud['age'].iloc[0]) else 35,
-            'gender': ud['gender'].iloc[0]
-                if 'gender' in ud.columns and isinstance(ud['gender'].iloc[0], str) else 'F',
-            'selfeff.intake': float(ud['selfeff.intake'].iloc[0])
-                if 'selfeff.intake' in ud.columns and not pd.isna(ud['selfeff.intake'].iloc[0]) else 14.5,
-            'consc': float(ud['consc'].iloc[0])
-                if 'consc' in ud.columns and not pd.isna(ud['consc'].iloc[0]) else 22.0,
-        }
-        persona = make_persona(params)
         # ── 方法 3: rich persona (从前 5 天 derive 出来的, 见 data_extractor) ──
-        if hasattr(ext, 'user_persona_text') and int(uid) in ext.user_persona_text:
-            prompt_persona = ext.user_persona_text[int(uid)]
-        else:
-            prompt_persona = persona  # fallback
+        assert hasattr(ext, 'user_persona_text') and int(uid) in ext.user_persona_text
+        prompt_persona = ext.user_persona_text[int(uid)]
 
         # per-user logger (可选)
         user_logger = None
         if LoggerCls is not None:
             user_dir = logger_dir / f'user{int(uid)}'
             user_logger = LoggerCls(str(user_dir),
-                                    user_id=int(uid),
-                                    user_params=params)
+                                    user_id=int(uid))
             user_logger.log_user_init(
-                params=params,
                 initial_state={'motivation': 0, 'habit': 0, 'receptivity': 0},
                 persona=prompt_persona,
             )
 
-        runtimes[uid] = UserRuntime(uid, params, persona, ud, MS_module,
-                                    prompt_persona=prompt_persona,
+        runtimes[uid] = UserRuntime(uid, ud, MS_module, prompt_persona,
                                     logger=user_logger)
 
     sorted_uids = sorted(runtimes.keys())
@@ -321,41 +275,21 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
             action = int(row['send'])
             dosage = float(row['dosage'])
 
-            obs_text = rt.stream.format_memories(rt.stream.get_recent(10))
+            obs_text = rt.stream.format_memories(rt.stream.get_recent(10, "observation"))
+            ref_text = rt.stream.format_memories(rt.stream.get_recent(3, "reflection"))
+
             recent_obs = obs_text if obs_text else "No prior observations."
+            recent_ref = ref_text if ref_text else "No prior reflections."
+
             active_ctx[uid] = (ctx, action, dosage, row, recent_obs)
 
             action_desc = {0: "No suggestion", 1: "Active walking suggestion",
                            2: "Sedentary stand-up suggestion"}.get(action, "No suggestion")
             weekday_desc = "weekday" if ctx['weekday'] else "weekend"
 
-            # reference points
-            # if hasattr(ext, 'get_user_bin_mean'):
-            #     u_bin, u_src = ext.get_user_bin_mean(
-            #         int(uid), int(row['day_slot']), ctx['location'])
-            #     pop_bin = ext.get_pop_bin_mean(int(row['day_slot']), ctx['location'])
-            #     u_overall = ext.user_overall_mean.get(int(uid),
-            #                                           float(ext.global_mean_steps))
-            # else:
-            #     u_bin, u_src = float(rt.params['predicted_mean_steps']), 'fallback'
-            #     pop_bin = float(ext.global_mean_steps) if hasattr(ext, 'global_mean_steps') else 250.0
-            #     u_overall = float(rt.params['predicted_mean_steps'])
-            #
-            # # slot-matched history (strict before row.date)
-            # if hasattr(ext, 'get_user_slot_history'):
-            #     hist = ext.get_user_slot_history(
-            #         int(uid), int(row['day_slot']),
-            #         before_date=row['date'], max_items=5)
-            # else:
-            #     hist = []
-            # if hist:
-            #     slot_history = "\n".join(
-            #         f"- {d} (slot {int(row['day_slot'])}): {s} steps" for d, s in hist)
-            # else:
-            #     slot_history = "(no prior data for this slot before today)"
 
             # n_runs prompts for this row — all identical (memory stream is the same
-            # at this step); n_runs only captures LLM stochasticity (temperature=0.3)
+            # at this step); n_runs only captures LLM stochasticity
             for run_idx in range(n_runs):
                 p = PROMPT_STEPS.format(
                     persona=rt.prompt_persona,
@@ -366,7 +300,9 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
                     weather=ctx['weather'], temperature=ctx['temperature'],
                     prior_30min_steps=ctx['prior_30min_steps'],
                     action_desc=action_desc,
-                    recent_obs=recent_obs)
+                    recent_obs=recent_obs,
+                    recent_ref=recent_ref,
+                )
                 all_prompts.append({"system": SYS_STEPS, "user": p})
                 prompt_meta.append((uid, run_idx))
 

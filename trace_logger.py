@@ -295,12 +295,12 @@ class TraceLogger:
     # 用户初始化记录
     # ─────────────────────────────────────────────
     
-    def log_user_init(self, params: dict, initial_state: dict, persona: str):
+    def log_user_init(self, initial_state: dict, persona: str):
         """记录用户初始化信息"""
         record = {
             "type": "user_init",
             "user_id": self.user_id,
-            "params": {k: _json_safe(v) for k, v in params.items()},
+            # "params": {k: _json_safe(v) for k, v in params.items()},
             "initial_state": initial_state.copy(),
             "persona": persona,
         }

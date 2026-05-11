@@ -21,6 +21,7 @@ class Memory:
     def __init__(self, timestamp: str, content: str, mem_type: str, importance: int):
         self.timestamp = timestamp
         self.content = content
+        #reflection, observation, background
         self.mem_type = mem_type
         self.importance = importance
 

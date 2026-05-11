@@ -264,10 +264,12 @@ PROMPT_STEPS = """
 Your background:
 {persona}
 
-Recent records of your own behavior and reflections from earlier in the study (most recent
-first; includes both raw events and higher-level patterns you have noticed
-about yourself):
+Recent records of your own behavior from earlier in the study (most recent
+first):
 {recent_obs}
+
+Recent reflections of your own behavior from earlier in the study:
+{recent_ref}
 
 Your current situation:
 - Day {study_day} of the study, slot {slot} ({weekday_desc})
@@ -281,11 +283,13 @@ Key considerations:
 - A high step count at a previous slot does NOT necessarily imply a high
   step count now; a zero at a previous slot does NOT necessarily imply
   another zero. 
-- Engagement and how many steps you decide to walk should depend on 
-  your specific circumstances this moment (current location, 
-  current weather and temperature, prior activity, prior steps) 
-  and your recent records (whether you feel like walking, 
-  whether the suggestion appeals to you).
+- Engagement and how many steps you decide to walk should depend on: 
+  1. your specific circumstances this moment (current location, 
+  current weather and temperature, prior activity, prior steps).
+  2. Based on your recent records, whether you feel like walking under 
+  this kind of circumstance patterns.
+  3. your recent reflections on your behavior patterns 
+  (e.g. whether the suggestion appeals to you under current circumstance)
 - If the system is sending an active walking suggestion AND your
   reflections show you respond to suggestions, you may walk more than
   your typical baseline.
@@ -293,7 +297,7 @@ Key considerations:
   reflections show you do not want to respond to suggestions, 
   you may walk less than your typical baseline.  
 - Being in a sedentary location (Home, Work, Electronics Store etc) during
-  a non-active activity state often means low or zero steps regardless
+  a non-active activity state might means low or zero steps regardless
   of suggestion.
 
 Decide how many steps you will walk in the next 30 minutes. Your response
