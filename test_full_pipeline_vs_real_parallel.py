@@ -740,6 +740,16 @@ def main():
           f'total LLM calls={llm.call_count}, '
           f'time={time.time()-t0:.0f}s')
 
+    # 调试: 打印前 10 个原始 LLM 输出, 帮助诊断"全是 0"这类问题
+    if hasattr(llm, 'debug_steps_outputs') and llm.debug_steps_outputs:
+        print()
+        print('=' * 72)
+        print('LLM raw outputs (前 10 次调用, 用于 debug parsing):')
+        print('=' * 72)
+        for i, raw in enumerate(llm.debug_steps_outputs[:10]):
+            print(f'  [{i}] {raw!r}')
+        print('=' * 72)
+
     report(out_df, out_dir)
 
 

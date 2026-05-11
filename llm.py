@@ -30,12 +30,24 @@ class Qwen3BLLM:
         self.importance_guided = StructuredOutputsParams(choice=[str(i) for i in range(1, 11)])
         self.importance_params = SamplingParams(temperature=0.1, max_tokens=2, structured_outputs=self.importance_guided)
         self.text_params = SamplingParams(temperature=0.3, max_tokens=500)
-        # Plan B: absolute step prediction. No structured choice (too many options).
-        # Just plain int parsing with conservative max_tokens.
-        # Real jbsteps30 99th percentile ≈ 2500, but we allow up to 9999.
-        self.steps_params = SamplingParams(temperature=0.3, max_tokens=6)
+        # Plan B: absolute step prediction.
+        # 关键修复: 用 structured_outputs 强制输出整数 (避免模型先吐换行/标签前缀),
+        # 同时 max_tokens 给足 (5 位数 最长 4 token + 安全余量)
+        # 用稀疏 choice set 加速 vLLM constrained decoding 构建:
+        #   0-999 step 全保留, 1000-3000 step 2 间隔, 3000-9999 step 100 间隔
+        steps_choices = (
+            [str(i) for i in range(0, 1000)] +
+            [str(i) for i in range(1000, 3000, 5)] +
+            [str(i) for i in range(3000, 10000, 100)]
+        )
+        self.steps_guided = StructuredOutputsParams(choice=steps_choices)
+        self.steps_params = SamplingParams(temperature=0.3, max_tokens=8,
+                                           structured_outputs=self.steps_guided)
+        # 调试用: 跑头几次时把原始 text 存一下方便诊断
+        self.debug_steps_outputs = []
+        self.debug_capture_n = 20  # 只存前 20 次的原始输出
         self.call_count = 0
-        print("Model loaded!")
+        print(f"Model loaded! steps choices = {len(steps_choices)}")
 
     def _prompt(self, system: str, user: str) -> str:
         return (f"<|im_start|>system\n{system}<|im_end|>\n"
@@ -61,7 +73,10 @@ class Qwen3BLLM:
     def judge_steps(self, system, user):
         out = self.llm.generate([self._prompt(system, user)], self.steps_params)
         self.call_count += 1
-        return self._parse_steps(out[0].outputs[0].text)
+        raw = out[0].outputs[0].text
+        if len(self.debug_steps_outputs) < self.debug_capture_n:
+            self.debug_steps_outputs.append(raw)
+        return self._parse_steps(raw)
 
     def batch_importance(self, prompts):
         fmt = [self._prompt(p["system"], p["user"]) for p in prompts]
@@ -73,7 +88,13 @@ class Qwen3BLLM:
         fmt = [self._prompt(p["system"], p["user"]) for p in prompts]
         out = self.llm.generate(fmt, self.steps_params)
         self.call_count += len(prompts)
-        return [self._parse_steps(o.outputs[0].text) for o in out]
+        results = []
+        for o in out:
+            raw = o.outputs[0].text
+            if len(self.debug_steps_outputs) < self.debug_capture_n:
+                self.debug_steps_outputs.append(raw)
+            results.append(self._parse_steps(raw))
+        return results
 
     @staticmethod
     def _parse_steps(text: str) -> int:
