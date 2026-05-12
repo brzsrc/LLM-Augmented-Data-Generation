@@ -1,0 +1,27 @@
+{
+  "edges": [
+    -1.0,
+    0.0,
+    36.0,
+    72.0,
+    115.0,
+    164.0,
+    231.0,
+    316.0,
+    460.0,
+    810.0,
+    "inf"
+  ],
+  "labels": [
+    "steps_zero",
+    "steps_q1",
+    "steps_q2",
+    "steps_q3",
+    "steps_q4",
+    "steps_q5",
+    "steps_q6",
+    "steps_q7",
+    "steps_q8",
+    "steps_high"
+  ]
+}

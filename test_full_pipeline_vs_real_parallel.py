@@ -675,7 +675,8 @@ def report(out_df, save_dir: Path):
 
     csv_path = save_dir / 'full_pipeline_vs_real_rows.csv'
     keep = ['uid', 'date', 'day_slot', 'location', 'activity', 'weekday',
-            'send', 'dosage', 'jbsteps30pre', 'jbsteps30',
+            'weather', 'temperature',
+            'send', 'response', 'jbsteps30pre', 'jbsteps30',
             'steps_mean', 'steps_one', 'steps_std',
             'err_mean', 'abs_err']
     out_df[keep].to_csv(csv_path, index=False)

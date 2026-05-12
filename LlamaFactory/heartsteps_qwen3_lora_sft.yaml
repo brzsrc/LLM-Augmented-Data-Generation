@@ -1,0 +1,63 @@
+# ================================================================
+# heartsteps_qwen3_lora_sft.yaml
+# ================================================================
+# Qwen3-0.6B-Base + LoRA r=8 微调
+# 天级轨迹生成（Geo-Llama 风格）
+#
+# 用法：
+#   llamafactory-cli train heartsteps_qwen3_lora_sft.yaml
+# ================================================================
+
+### model
+model_name_or_path: Qwen/Qwen3-0.6B-Base
+
+### method
+stage: sft
+do_train: true
+finetuning_type: lora
+lora_target: q_proj,k_proj,v_proj,o_proj
+lora_rank: 8
+lora_alpha: 16
+lora_dropout: 0.1
+
+### dataset
+# 注意：dataset_dir 指向包含 dataset_info.json 的目录
+dataset_dir: data
+dataset: heartsteps_train
+eval_dataset: heartsteps_eval
+template: default
+# Qwen3-0.6B-Base 是 base 模型，用 default template
+# 如果你用 Qwen3-0.6B（后训练版），改为 template: qwen3_nothink
+cutoff_len: 512
+overwrite_cache: true
+preprocessing_num_workers: 4
+
+### output
+output_dir: saves/heartsteps_qwen3_lora
+logging_steps: 10
+save_steps: 500
+save_total_limit: 3
+plot_loss: true
+overwrite_output_dir: true
+
+### train
+per_device_train_batch_size: 16
+gradient_accumulation_steps: 2
+learning_rate: 1.0e-5
+num_train_epochs: 20
+lr_scheduler_type: cosine
+warmup_ratio: 0.05
+bf16: true
+# 如果你的 GPU 不支持 bf16，改为：
+# fp16: true
+
+### eval
+val_size: 0.0
+# 验证集已经在 eval_dataset 中指定
+per_device_eval_batch_size: 16
+eval_strategy: steps
+eval_steps: 200
+
+### misc
+seed: 42
+report_to: tensorboard

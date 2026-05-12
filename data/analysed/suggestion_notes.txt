@@ -27,3 +27,34 @@
 'jbmins30pre', 'jbsteps30pre', 'jbmins40pre', 'jbsteps40pre', 'jbmins60pre', 'jbsteps60pre'
 'jbsteps30pre.zero', 'jbsteps40pre.zero', 'jbsteps60pre.zero'
 'gfmins10', 'gfsteps10', 'gfmins30', 'gfsteps30', 'gfmins60', 'gfsteps60', 'gfmins30pre', 'gfsteps30pre', 'gfmins60pre', 'gfsteps60pre'
+
+
+
+
+user_id=user_id,
+study_day=day,
+slot=slot,
+
+
+jbsteps30pre=ctx['prior_30min_steps'],
+location=ctx['location'],
+temperature=ctx['temperature'],
+weather=ctx['weather'],
+weekday=ctx['weekday'],
+activity=ctx['activity'],
+
+
+avail=ctx['avail'],
+send=action,
+response=ctx.get('response', 'no_send'),
+
+jbsteps30=steps,
+base_steps=base,
+llm_adj_pct=adj,
+dosage=round(dosage, 3),
+reward=round(reward, 4),
+
+
+motivation_raw=m_score,
+habit_raw=h_score,
+receptivity_raw=r_score,

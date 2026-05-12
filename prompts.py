@@ -275,7 +275,7 @@ Your current situation:
 - Day {study_day} of the study, slot {slot} ({weekday_desc})
 - Location: {location}
 - Current activity state: {activity}
-- Weather: {weather}, {temperature}°C
+- Weather: {weather}, {temperature}
 - Steps you walked in the prior 30 minutes: {prior_30min_steps}
 - Suggestion the system is sending you now: {action_desc}
 
