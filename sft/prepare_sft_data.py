@@ -53,9 +53,9 @@ def serialize_visit(row):
             f"temperature is {row['temperature']}, "
             f"location is {row['location']}, "  # ← 提前
             f"activity is {row['activity']}, "  # ← 提前
-            f"steps_pre is {row['jbsteps30pre_bucket']}"  # ← 现在能看到所有上下文
+            f"steps_pre is {row['jbsteps30pre_bucket']}, "  # ← 现在能看到所有上下文
             f"send is {send_str}, "
-            f"response is {row['response']}, "
+            f"response is {row['response']}"
     )
 
 
@@ -81,7 +81,7 @@ def serialize_day_trajectory(day_rows, permute=False):
 
 SYSTEM_PROMPT = (
     "You are a behavioral trajectory generator for an mHealth walking study. "
-    "Given a participant's activity profile(activity level: low/mid/high, "
+    "Given a participant's activity profile (activity level: low/mid/high, "
     "zero-step tendency: rare/common/frequent) and day context, generate a realistic "
     "daily trajectory of 3-5 decision points. Each decision point includes: "
     "day_slot (1-5), trial eligibility, weather, temperature, "
