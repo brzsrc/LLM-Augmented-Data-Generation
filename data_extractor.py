@@ -20,12 +20,11 @@ class V1DataExtractor:
     【修改2】所有列名适配 cleaned 格式
     """
 
-    def __init__(self, users_path: str, cleaned_path: str,
+    def __init__(self, cleaned_path: str,
                  train_uids_path: str = 'data/train_uids.json',
                  test_uids_path: str = 'data/test_uids.json'):
         import json
 
-        users_full = pd.read_csv(users_path)
         sugg_full  = pd.read_csv(cleaned_path)
 
         # ── Train/test split：所有种子统计只在 train 上算 ──
@@ -36,17 +35,13 @@ class V1DataExtractor:
         self.train_uids = train_uids
         self.test_uids  = test_uids
 
-        # users.csv 里 uid 列名是 user.index（来自原始 mHealth 数据）
-        uid_col = 'user.index' if 'user.index' in users_full.columns else 'uid'
 
         # train split：用来 fit 所有种子统计
         self.sugg  = sugg_full[sugg_full['uid'].isin(train_uids)].reset_index(drop=True)
-        self.users = users_full[users_full[uid_col].isin(train_uids)].reset_index(drop=True)
 
         # test split：留给后面 fidelity / FQE 评估时用，
         # generator 的训练阶段绝不能碰
         self.sugg_test  = sugg_full[sugg_full['uid'].isin(test_uids)].reset_index(drop=True)
-        self.users_test = users_full[users_full[uid_col].isin(test_uids)].reset_index(drop=True)
 
         print(f"[split] train: {len(train_uids)} users / {len(self.sugg)} rows  |  "
               f"test: {len(test_uids)} users / {len(self.sugg_test)} rows")
@@ -58,16 +53,7 @@ class V1DataExtractor:
 
     def _compute_user_profiles(self):
         """generate_baseline_vectors 消费：Cholesky基线 + 步数/TE经验分布 + 性别 + 聚类"""
-        s, u = self.sugg, self.users
-
-        # Cholesky 基线参数（生成 selfeff, consc, age 给 persona 文本用，不预测步数）
-        self.baseline_cols = ['selfeff.intake', 'consc', 'age']
-        data = u[self.baseline_cols].dropna()
-        self.baseline_mu = data.mean().values
-        self.baseline_sigma = data.cov().values
-        eig = np.min(np.linalg.eigvalsh(self.baseline_sigma))
-        if eig < 1e-6:
-            self.baseline_sigma += (abs(eig) + 1e-5) * np.eye(len(self.baseline_cols))
+        s = self.sugg
 
         # 每用户的真实平均步数和 TE（直接采样用，不做回归）
         user_stats = s.groupby('uid').agg(mean_steps=('jbsteps30', 'mean')).reset_index()
@@ -86,20 +72,6 @@ class V1DataExtractor:
             te_list.append(te)
         self.real_te = np.array(te_list)
 
-        # 性别分布
-        self.gender_probs = u['gender'].value_counts(normalize=True).to_dict()
-
-        # 聚类结果
-        self.cluster_uids = CLUSTER_UIDS
-        self.cluster_weights = CLUSTER_WEIGHTS
-        self.cluster_names = CLUSTER_NAMES
-        self.cluster_location_dist = CLUSTER_LOCATION_DIST
-        self.cluster_avail_by_slot = CLUSTER_AVAIL_BY_SLOT
-
-        print(f"[user_profiles] {len(u)} users, "
-              f"mean_steps range=[{self.real_mean_steps.min():.0f}, {self.real_mean_steps.max():.0f}], "
-              f"TE range=[{self.real_te.min():.0f}, {self.real_te.max():+.0f}], "
-              f"{len(self.cluster_uids)} clusters")
 
     def _compute_context_params(self):
         """generate_context 消费：avail率 + location分布 + 发送概率 + response分布"""
@@ -335,134 +307,88 @@ class V1DataExtractor:
         )
 
 
-def generate_baseline_vectors(ext: V1DataExtractor, n: int) -> pd.DataFrame:
-
-    """Cholesky生成心理属性（给persona用）+ 从V1经验分布直接采样步数和TE"""
-    L = np.linalg.cholesky(ext.baseline_sigma)
-
-    z = np.random.standard_normal((n, len(ext.baseline_cols)))
-    bl = ext.baseline_mu + z @ L.T
-
-    alpha = np.random.uniform(-2, 2, len(ext.baseline_cols))
-    delta = alpha / np.sqrt(1 + alpha @ alpha)
-
-    for i in range(n):
-        u, v = np.random.standard_normal(len(ext.baseline_cols)), np.random.standard_normal(len(ext.baseline_cols))
-        bl[i] += (u > 0).astype(float) * (delta * np.abs(v))
-
-    df = pd.DataFrame(bl, columns=ext.baseline_cols)
-
-    df['selfeff.intake'] = df['selfeff.intake'].clip(5, 25)
-    df['consc'] = df['consc'].clip(12, 30)
-    df['age'] = df['age'].clip(19, 65).round().astype(int)
-
-    gv, gp = list(ext.gender_probs.keys()), list(ext.gender_probs.values())
-    df['gender'] = np.random.choice(gv, n, p=gp)
-    df['user_id'] = range(1, n + 1)
-
-    # 直接从 V1 的 37 人经验分布采样（不用回归）
-    df['predicted_mean_steps'] = np.random.choice(ext.real_mean_steps, n, replace=True)
-    df['predicted_mean_steps_pre'] = np.random.choice(ext.real_mean_steps_pre, n, replace=True)
-    df['predicted_te'] = np.random.choice(ext.real_te, n, replace=True)
-
-    # 按聚类比例分配 cluster
-    cluster_ids = list(ext.cluster_weights.keys())
-    cluster_counts = list(ext.cluster_weights.values())
-    cluster_probs = [c / sum(cluster_counts) for c in cluster_counts]
-    df['cluster'] = np.random.choice(cluster_ids, n, p=cluster_probs)
-    df['cluster_name'] = df['cluster'].map(ext.cluster_names)
-
-    print(f"  Cluster分配: {dict(Counter(df['cluster'].values))}")
-    print(f"  mean_steps: mean={df['predicted_mean_steps'].mean():.0f}, "
-          f"range=[{df['predicted_mean_steps'].min():.0f}, {df['predicted_mean_steps'].max():.0f}]")
-    print(f"  TE: mean={df['predicted_te'].mean():+.0f}, "
-          f"range=[{df['predicted_te'].min():+.0f}, {df['predicted_te'].max():+.0f}]")
-
-    return df
-
-
 # ================================================================
 # 第五部分：上下文和步数生成
 # ================================================================
 
-def generate_context(ext: V1DataExtractor, params: dict, day: int, slot: int, traj: list) -> dict:
-    """
-    【修改14】location 从该用户所属 cluster 的 weekday/weekend × slot 分布中采样
-    【重构】prior_30min_steps 改为按 (slot, location) 桶的零膨胀对数正态采样,
-            与 generate_base_steps 中 baseline 的形状统一。
-    """
-    is_weekday = (day - 1) % 7 < 5
-    cluster_id = int(params.get('cluster', 0))
-
-    # 【修改14】从 cluster 的地点分布采样
-    loc_dist = ext.cluster_location_dist.get(cluster_id, {}).get((is_weekday, slot), None)
-    if loc_dist is None:
-        # fallback 到全局分布
-        loc_dist = ext.location_by_slot.get(slot, {'Home': 1.0})
-
-    locs = list(loc_dist.keys())
-    probs = list(loc_dist.values())
-    probs = [p / sum(probs) for p in probs]  # 归一化
-    location = np.random.choice(locs, p=probs)
-
-    # avail 率也用 cluster 的
-    cl_avail = ext.cluster_avail_by_slot.get(cluster_id, {})
-    avail_prob = cl_avail.get(slot, ext.avail_by_slot.get(slot, 0.87))
-    avail = int(np.random.random() < avail_prob)
-
-    # 天气
-    weather_options = ['Clear', 'Partly Cloudy', 'Mostly Cloudy', 'Overcast', 'Rain']
-    weather = np.random.choice(weather_options, p=[0.3, 0.3, 0.2, 0.1, 0.1])
-    temperature = round(np.random.normal(22, 8), 1)
-
-    # ── 前 30 分钟步数: 零膨胀对数正态, 桶参数来自真实数据 ───────────
-    zp_p, log_mu_p, log_sd_p = ext.get_step_bin(slot, location)
-    user_offset = np.log(max(params['predicted_mean_steps_pre'], 1.0)
-                         / max(ext.global_mean_steps_pre, 1.0))
-    weekend_offset = 0.0 if is_weekday else np.log(0.9)
-    if np.random.random() < zp_p:
-        prior = 0
-    else:
-        prior = max(0, min(6000,
-                    int(np.exp(np.random.normal(
-                        log_mu_p + user_offset + weekend_offset, log_sd_p)))))
-
-    yesterday = (sum(t['jbsteps30'] for t in traj[-5:]) if len(traj) >= 5
-                 else int(params['predicted_mean_steps'] * 5))
-
-    # activity
-    if prior > 200:
-        activity = 'ON_FOOT'
-    elif np.random.random() < 0.08:
-        activity = 'IN_VEHICLE'
-    else:
-        activity = 'STILL'
-
-    # 【修改9】send: 三值概率
-    # 先决定是否 randomized（~59%），然后按三值概率分配
-    if avail and np.random.random() < ext.randomization_rate:
-        # is_randomized=True: 按 send_probs 采样
-        send_vals = list(ext.send_probs.keys())
-        send_ps = list(ext.send_probs.values())
-        action = int(np.random.choice(send_vals, p=send_ps))
-    else:
-        action = 0  # not randomized → no send
-
-    if not avail:
-        action = 0
-
-    # 【修改11】生成 response
-    response = 'no_send'
-    if action > 0:
-        resp_vals = list(ext.response_probs.keys())
-        resp_ps = list(ext.response_probs.values())
-        response = np.random.choice(resp_vals, p=resp_ps)
-
-    return dict(study_day=day, slot=slot, location=location, avail=avail,
-                temperature=temperature, weather=weather,
-                prior_30min_steps=prior, yesterday_steps=yesterday,
-                activity=activity, weekday=(day - 1) % 7 < 5, action=action,
-                response=response)
+# def generate_context(ext: V1DataExtractor, params: dict, day: int, slot: int, traj: list) -> dict:
+#     """
+#     【修改14】location 从该用户所属 cluster 的 weekday/weekend × slot 分布中采样
+#     【重构】prior_30min_steps 改为按 (slot, location) 桶的零膨胀对数正态采样,
+#             与 generate_base_steps 中 baseline 的形状统一。
+#     """
+#     is_weekday = (day - 1) % 7 < 5
+#     cluster_id = int(params.get('cluster', 0))
+#
+#     # 【修改14】从 cluster 的地点分布采样
+#     loc_dist = ext.cluster_location_dist.get(cluster_id, {}).get((is_weekday, slot), None)
+#     if loc_dist is None:
+#         # fallback 到全局分布
+#         loc_dist = ext.location_by_slot.get(slot, {'Home': 1.0})
+#
+#     locs = list(loc_dist.keys())
+#     probs = list(loc_dist.values())
+#     probs = [p / sum(probs) for p in probs]  # 归一化
+#     location = np.random.choice(locs, p=probs)
+#
+#     # avail 率也用 cluster 的
+#     cl_avail = ext.cluster_avail_by_slot.get(cluster_id, {})
+#     avail_prob = cl_avail.get(slot, ext.avail_by_slot.get(slot, 0.87))
+#     avail = int(np.random.random() < avail_prob)
+#
+#     # 天气
+#     weather_options = ['Clear', 'Partly Cloudy', 'Mostly Cloudy', 'Overcast', 'Rain']
+#     weather = np.random.choice(weather_options, p=[0.3, 0.3, 0.2, 0.1, 0.1])
+#     temperature = round(np.random.normal(22, 8), 1)
+#
+#     # ── 前 30 分钟步数: 零膨胀对数正态, 桶参数来自真实数据 ───────────
+#     zp_p, log_mu_p, log_sd_p = ext.get_step_bin(slot, location)
+#     user_offset = np.log(max(params['predicted_mean_steps_pre'], 1.0)
+#                          / max(ext.global_mean_steps_pre, 1.0))
+#     weekend_offset = 0.0 if is_weekday else np.log(0.9)
+#     if np.random.random() < zp_p:
+#         prior = 0
+#     else:
+#         prior = max(0, min(6000,
+#                     int(np.exp(np.random.normal(
+#                         log_mu_p + user_offset + weekend_offset, log_sd_p)))))
+#
+#     yesterday = (sum(t['jbsteps30'] for t in traj[-5:]) if len(traj) >= 5
+#                  else int(params['predicted_mean_steps'] * 5))
+#
+#     # activity
+#     if prior > 200:
+#         activity = 'ON_FOOT'
+#     elif np.random.random() < 0.08:
+#         activity = 'IN_VEHICLE'
+#     else:
+#         activity = 'STILL'
+#
+#     # 【修改9】send: 三值概率
+#     # 先决定是否 randomized（~59%），然后按三值概率分配
+#     if avail and np.random.random() < ext.randomization_rate:
+#         # is_randomized=True: 按 send_probs 采样
+#         send_vals = list(ext.send_probs.keys())
+#         send_ps = list(ext.send_probs.values())
+#         action = int(np.random.choice(send_vals, p=send_ps))
+#     else:
+#         action = 0  # not randomized → no send
+#
+#     if not avail:
+#         action = 0
+#
+#     # 【修改11】生成 response
+#     response = 'no_send'
+#     if action > 0:
+#         resp_vals = list(ext.response_probs.keys())
+#         resp_ps = list(ext.response_probs.values())
+#         response = np.random.choice(resp_vals, p=resp_ps)
+#
+#     return dict(study_day=day, slot=slot, location=location, avail=avail,
+#                 temperature=temperature, weather=weather,
+#                 prior_30min_steps=prior, yesterday_steps=yesterday,
+#                 activity=activity, weekday=(day - 1) % 7 < 5, action=action,
+#                 response=response)
 
 
 def generate_base_steps(params: dict, ctx: dict, action: int, dosage: float, ext: V1DataExtractor) -> int:
@@ -562,9 +488,6 @@ def main():
         f"rerun cluster_analysis.py after split_users.py!"
     print(f"[sanity] no leakage detected ✓")
 
-
-    baseline_df = generate_baseline_vectors(ext, 10)
-    print('baseline_df', baseline_df.to_string())
 
 
 

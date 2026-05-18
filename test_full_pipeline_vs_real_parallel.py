@@ -43,63 +43,56 @@ import sys
 import time
 import types
 from pathlib import Path
+from typing import List
 
 import numpy as np
 import pandas as pd
 import matplotlib
 import matplotlib.pyplot as plt
 from scipy.stats import wasserstein_distance
-
-from prompts import REFLECTION_Q_SYS, REFLECTION_GEN_SYS
+import re
+from prompts import REFLECTION_Q_SYS, REFLECTION_GEN_SYS, PROMPT_STEPS, SYS_STEPS, IMPORTANCE_SYSTEM, IMPORTANCE_USER, \
+    REFLECTION_Q_PROMPT, REFLECTION_GEN_PROMPT
 
 matplotlib.rcParams['axes.unicode_minus'] = False
 matplotlib.rcParams['font.family'] = 'DejaVu Sans'
 
 
-# =============================================================================
-# stub data.cluster_config (跟 serial 一致)
-# =============================================================================
-def stub_cluster_config(extractor_dir: str):
-    if 'data' in sys.modules:
-        return
-    try:
-        sys.path.insert(0, extractor_dir)
-        import cluster_config as cc
-        mod = types.ModuleType('data.cluster_config')
-        for k in ['CLUSTER_UIDS', 'CLUSTER_WEIGHTS', 'CLUSTER_NAMES',
-                  'CLUSTER_LOCATION_DIST', 'CLUSTER_AVAIL_BY_SLOT']:
-            setattr(mod, k, getattr(cc, k))
-        data_mod = types.ModuleType('data'); data_mod.cluster_config = mod
-        sys.modules['data'] = data_mod
-        sys.modules['data.cluster_config'] = mod
-        print('[stub] using real cluster_config.py')
-    except Exception:
-        mod = types.ModuleType('data.cluster_config')
-        mod.CLUSTER_UIDS = {0: []}; mod.CLUSTER_WEIGHTS = {0: 1.0}
-        mod.CLUSTER_NAMES = {0: 'all'}; mod.CLUSTER_LOCATION_DIST = {}
-        mod.CLUSTER_AVAIL_BY_SLOT = {}
-        data_mod = types.ModuleType('data'); data_mod.cluster_config = mod
-        sys.modules['data'] = data_mod
-        sys.modules['data.cluster_config'] = mod
-        print('[stub] cluster_config stubbed empty')
+def _strip_think_tags(text: str) -> str:
+    """Remove <think>...</think> blocks and any stray tags from LLM output."""
+    # 移除完整的 <think>...</think> 块（包括跨行）
+    text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    # 移除残留的孤立标签
+    text = text.replace('<think>', '').replace('</think>', '')
+    return text.strip()
 
 
-def maybe_make_dummy_users_csv(cleaned_path: str, out_path: str):
-    if os.path.exists(out_path):
-        return out_path
-    cleaned = pd.read_csv(cleaned_path)
-    uids = sorted(cleaned['uid'].unique().tolist())
-    rng = np.random.RandomState(0)
-    df = pd.DataFrame({
-        'user.index': uids,
-        'selfeff.intake': rng.uniform(8, 22, len(uids)),
-        'consc':          rng.uniform(15, 28, len(uids)),
-        'age':            rng.randint(20, 60, len(uids)),
-        'gender':         rng.choice(['M', 'F'], len(uids)),
-    })
-    df.to_csv(out_path, index=False)
-    print(f'[dummy users] wrote {out_path}')
-    return out_path
+def _parse_questions(raw: str, max_n: int = 3) -> List[str]:
+    """
+    Robustly parse a list of questions out of LLM output.
+    Handles: leading </think> tags, blank lines, numbered list prefixes
+    like '1.', '1)', '- ', '* '. Only keeps lines that look like real questions.
+    """
+    cleaned = _strip_think_tags(raw)
+    questions = []
+    for line in cleaned.split('\n'):
+        line = line.strip()
+        if not line:
+            continue
+        # 去掉行首的列表序号: "1.", "1)", "1:", "- ", "* ", "Q1:", etc.
+        line = re.sub(r'^\s*(?:Q\s*\d+[.):]?|\d+[.):]|[-*•])\s*', '', line, flags=re.IGNORECASE).strip()
+        if not line:
+            continue
+        # 只保留像问题的行：有一定长度，且形式上像一句话/问句
+        # 排除明显不是问题的残留标签或元注释
+        if len(line) < 15:
+            continue
+        if line.lower().startswith(('<think', '</think', 'note:', 'here are', 'list ')):
+            continue
+        questions.append(line)
+        if len(questions) >= max_n:
+            break
+    return questions
 
 
 def prepare_real_rows(cleaned_path: str, train_uids: list,
@@ -112,7 +105,7 @@ def prepare_real_rows(cleaned_path: str, train_uids: list,
     df = df.dropna(subset=['jbsteps30', 'jbsteps30pre', 'location', 'activity'])
 
     df['date'] = pd.to_datetime(df['date'])
-    df['weekday'] = df['date'].dt.dayofweek < 5
+    df['weekday'] = df['is_weekday']
     df = df.sort_values(['uid', 'date', 'day_slot']).reset_index(drop=True)
 
     dosage_list = []
@@ -172,7 +165,7 @@ class UserRuntime:
 # 核心: 按 step k 推进, 每 step 内 batch active users × n_runs 个 prompt
 # =============================================================================
 def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
-                          DE, MS_module, prompts_module,
+                          MS_module,
                           progress_every_step: int = 25,
                           verbose: bool = True,
                           logger_dir: 'Path' = None):
@@ -183,8 +176,6 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
     """
     Memory = MS_module.Memory
     create_observation = MS_module.create_observation
-    PROMPT_STEPS = prompts_module.PROMPT_STEPS
-    SYS_STEPS = prompts_module.SYS_STEPS
 
     # logger 可选
     LoggerCls = None
@@ -195,14 +186,6 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
         except ImportError as e:
             print(f'[logger] 不能 import trace_logger ({e}), 禁用')
             LoggerCls = None
-
-    if with_reflection:
-        REFLECTION_Q_PROMPT = prompts_module.REFLECTION_Q_PROMPT
-        REFLECTION_GEN_PROMPT = prompts_module.REFLECTION_GEN_PROMPT
-        IMPORTANCE_SYSTEM = prompts_module.IMPORTANCE_SYSTEM
-        IMPORTANCE_USER = prompts_module.IMPORTANCE_USER
-        # 完整复用 simulator 的反思解析逻辑 (处理 <think> 块/列表前缀/杂质行)
-        from synthetic_user_generator import _parse_questions, _strip_think_tags
 
     # ── Step 1: 给每个用户初始化 runtime ────────────────────────────
     runtimes = {}
@@ -218,7 +201,6 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
             user_logger = LoggerCls(str(user_dir),
                                     user_id=int(uid))
             user_logger.log_user_init(
-                initial_state={'motivation': 0, 'habit': 0, 'receptivity': 0},
                 persona=prompt_persona,
             )
 
@@ -255,17 +237,13 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
             rt = runtimes[uid]
             row = rt.all_rows.iloc[k]
 
-            weather = row['weather'] \
-                if 'weather' in rt.all_rows.columns and isinstance(row['weather'], str) \
-                else 'Clear'
-            temp = float(row['temperature']) if not pd.isna(row['temperature']) else 22.0
             ctx = {
                 'slot': int(row['day_slot']),
                 'location': row['location'],
                 'weekday': bool(row['weekday']),
-                'activity': row['activity'] if isinstance(row['activity'], str) else 'STILL',
-                'weather': weather,
-                'temperature': temp,
+                'activity': row['activity'],
+                'weather': row['weather'],
+                'temperature': row['temperature'],
                 'study_day': int(row['study_day']),
                 'prior_30min_steps': int(row['jbsteps30pre']),
                 'response': row['response']
@@ -366,17 +344,14 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
                     importance=all_imp[idx_u],
                     importance_acc=rt.stream.importance_since_reflection,
                 )
-                # Plan B 已废 base/adj, 占位写 0
+
                 ctx_for_log = dict(ctx)
                 ctx_for_log.setdefault('avail', 1)
                 ctx_for_log.setdefault('yesterday_steps', 0)
                 rt.logger.log_decision_point(
                     day=row['study_day'], slot=slot_n, ctx=ctx_for_log,
                     action=action,
-                    base_steps=0,
-                    llm_adj_pct=0,
                     final_steps=int(rt.results[k]['steps_mean']),
-                    state={'motivation': 0, 'habit': 0, 'receptivity': 0},
                     dosage=float(active_ctx[uid][2]),  # dosage from active_ctx tuple
                     prompt_text="",  # parallel 不留 prompt 文本副本, 太占空间
                     llm_raw_output=str(int(rt.results[k]['steps_mean'])),
@@ -390,7 +365,6 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
             reflect_uids = [uid for uid in active_uids
                             if runtimes[uid].stream.should_reflect()]
             if reflect_uids:
-                # Step 1: 批量生成问题 — 跟 simulaMemorytor 用 get_recent(15)
                 # 同时缓存每个 uid 的 recent_text + q_prompt 给 logger 用
                 q_prompts = []
                 per_uid_q_prompt_text = {}   # uid -> q_prompt user content
@@ -445,16 +419,12 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
                     rt = runtimes[uid]
                     if rt.logger is None:
                         continue
-                    state_zero = {'motivation': 0, 'habit': 0, 'receptivity': 0}
                     inferences = per_uid_inferences[uid]
                     questions = per_uid_questions[uid]
                     combined_text = "\n\n".join(inferences) if inferences else ""
                     rt.logger.log_reflection(
                         day=row['study_day'],
                         reflection_text=combined_text,
-                        old_state=state_zero, new_state=state_zero,
-                        raw_llm_state=(0, 0, 0),
-                        constrained_state=state_zero,
                         reflect_prompt=per_uid_q_prompt_text[uid],
                         state_prompt="",  # Plan B 简化版无 state-update prompt
                         recent_obs_text=per_uid_recent_text[uid],
@@ -728,14 +698,6 @@ def main():
         args.test_uids = str(tmp_test)
         print(f'[auto] inferred {len(test_uids)} test uids')
 
-    stub_cluster_config(args.data_extractor_dir)
-
-    if args.users_csv is None:
-        users_csv = str(out_dir / 'users_dummy.csv')
-        maybe_make_dummy_users_csv(args.cleaned, users_csv)
-    else:
-        users_csv = args.users_csv
-    users_df = pd.read_csv(users_csv)
 
     sys.path.insert(0, args.data_extractor_dir)
     import data_extractor as DE
@@ -743,7 +705,7 @@ def main():
     import prompts as PR
     import llm as LM
 
-    ext = DE.V1DataExtractor(users_csv, args.cleaned,
+    ext = DE.V1DataExtractor(args.cleaned,
                              train_uids_path=args.train,
                              test_uids_path=args.test_uids)
 
@@ -755,10 +717,6 @@ def main():
         llm = LM.SimulatedLLM()
 
     real_df = prepare_real_rows(args.cleaned, train_uids, avail_only=True)
-    users_df_renamed = users_df.rename(columns={'user.index': 'uid'})
-    real_df = real_df.merge(
-        users_df_renamed[['uid', 'age', 'gender', 'selfeff.intake', 'consc']],
-        on='uid', how='left')
     print(f'[real_rows] {len(real_df)} rows')
 
     t0 = time.time()
@@ -770,7 +728,7 @@ def main():
     runtimes = run_parallel_pipeline(
         real_df, ext, llm, n_runs=args.runs,
         with_reflection=args.with_reflection,
-        DE=DE, MS_module=MS, prompts_module=PR,
+        MS_module=MS,
         progress_every_step=args.progress_every_step, verbose=True,
         logger_dir=logger_dir_arg)
     out_df = assemble_output(real_df, runtimes)

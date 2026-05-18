@@ -34,17 +34,7 @@ import pandas as pd
 
 from vllm import LLM, SamplingParams
 
-
-SYSTEM_PROMPT = (
-    "You are a behavioral trajectory generator for an mHealth walking study. "
-    "Given a participant's activity profile(activity level: low/mid/high, "
-    "zero-step tendency: rare/common/frequent) and day context, generate a realistic "
-    "daily trajectory of 3-5 decision points. Each decision point includes: "
-    "day_slot (1-5), trial eligibility, weather, temperature, "
-    "location, activity state, prior 30-min step level, sent notification type, and "
-    "user response. Separate decision points with ' ## '. "
-    "Output ONLY the trajectory, no explanation."
-)
+from sft.sys_prompt import SYSTEM_PROMPT
 
 
 def build_prompt(activity_level, zero_tendency, is_weekday, n_slots):
@@ -66,7 +56,7 @@ VISIT_PATTERN = re.compile(
     r'temperature is (\w+),\s*'
     r'location is (\w+),\s*'
     r'activity is (\w+),\s*'
-    r'steps_pre is (steps_\w+?)'
+    r'steps_pre is (steps_\w+?),\s*'
     r'send is (\w+),\s*'
     r'response is (\w+)',
     re.IGNORECASE,

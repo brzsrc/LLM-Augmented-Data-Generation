@@ -52,22 +52,57 @@ sends a suggestion to encourage you walking or not being still more.
 You are now pausing to reflect on how you react to these suggestions based on your recent memories.
 """
 
+# REFLECTION_Q_PROMPT = """
+# Your recent memories:
+# {recent_memories}
+#
+# Based on these records,
+# list exactly 3 questions worth investigating about YOUR own behavior. Cover
+# different angles:
+#
+# - Q1 should be about when, where, or under what conditions after receiving suggestions,
+#   you tend to walk MORE or LESS than your own usual amount or remain still entirely after receiving suggestions
+#   (be specific: which slots, locations, weather, temperature, suggestion types).
+# - Q2 should be about how you respond (or fail to respond) to walking
+#   suggestions from the system — and whether the type of suggestion,
+#   location, or time of day changes that response.
+# - Q3 should be about as the study going on over days, how do you feel about the suggestions you received,
+#   are you less motivated / bored, or tends to ignore the suggestions, etc.
+#
+# Each question must be specific and grounded in the evidence above (not
+# generic).
+#
+# Format your output as exactly 3 lines, one question per line, in this exact
+# format (note: NO ## wrappers for questions; use Q1: / Q2: / Q3: prefix):
+#
+# Q1: <your first question>
+# Q2: <your second question>
+# Q3: <your third question>
+#
+# No other text. No preamble. No explanation. Just the three lines."""
+
+
 REFLECTION_Q_PROMPT = """
 Your recent memories:
 {recent_memories}
 
 Based on these records, 
-list exactly 3 questions worth investigating about YOUR own behavior. Cover
-different angles:
+list exactly 3 questions worth investigating about YOUR own behavior. 
 
-- Q1 should be about when, where, or under what conditions after receiving suggestions,
-  you tend to walk MORE or LESS than your own usual amount or remain still entirely after receiving suggestions
-  (be specific: which slots, locations, weather, temperature, suggestion types).
-- Q2 should be about how you respond (or fail to respond) to walking
-  suggestions from the system — and whether the type of suggestion,
-  location, or time of day changes that response.
-- Q3 should be about as the study going on over days, how do you feel about the suggestions you received,
-  are you less motivated / bored, or tends to ignore the suggestions, etc.
+## Question design rules
+Each question must cover a DIFFERENT analytical angle. Pick 3 different 
+angles from this list — do not pick two from the same angle:
+  (a) BASELINE: when do I walk more/less even without any intervention (when send=0)?
+  (b) IMMEDIATE RESPONSE: among slots where send>0, what conditions 
+      predict whether I actually move vs stay still in the next 30 minutes?
+  (c) DOSE EFFECT: does receiving suggestions more frequently in recent 
+      days change my behavior?
+  (d) CONTEXT × INTERVENTION: does the same suggestion type work 
+      differently across locations / slots / weekday-weekend?
+  (e) CARRYOVER: does my activity in one slot predict my activity 
+      in the next slot or the next day?
+  (f) STABILITY: which conditions show consistent behavior vs which 
+      are highly variable?
 
 Each question must be specific and grounded in the evidence above (not
 generic). 
@@ -80,6 +115,7 @@ Q2: <your second question>
 Q3: <your third question>
 
 No other text. No preamble. No explanation. Just the three lines."""
+
 
 REFLECTION_GEN_SYS = """
 You are a participant who is interested in increasing your walking and 
@@ -110,82 +146,6 @@ points, no quotes, no special wrappers. Start your response directly with
 the inference sentence.
 
 No other text. Just the one sentence."""
-
-MOTIVATION_PROMPT = """## Participant Background
-{seed_memory}
-
-## Recent Reflections
-{recent_reflections}
-
-## Recent Behavior Records (newest first)
-{recent_observations}
-
-## Current State
-Study day: {study_day}, time slot {slot}
-Steps in prior 30min: {pre30_steps}
-Suggestion sent: {action_desc}
-Steps in following 30min: {post_steps}
-
-## Task
-On a 1-5 scale, rate this participant's current INTRINSIC MOTIVATION — the self-directed drive to walk, independent of external prompts.
-
-1 = Very low. Participant only walks when prompted, or shows declining activity over days.
-2 = Low. Mostly sedentary without prompts, occasional activity.
-3 = Moderate. Some self-initiated walking but inconsistent.
-4 = High. Regularly walks without prompts, stable or increasing trend.
-5 = Very high. Consistently active regardless of suggestions, increasing self-initiated activity.
-
-IMPORTANT: Compare steps at prompted vs unprompted decision points. If participant walks 200+ steps WITHOUT a suggestion, motivation is likely HIGH.
-
-Output ONLY a single digit (1-5)."""
-
-HABIT_PROMPT = """## Participant Background
-{seed_memory}
-
-## Recent Behavior Records (newest first)
-{recent_observations}
-
-## Behavioral Regularity Indicators
-Steps in past 7 days by slot: {slot_pattern}
-Day-to-day consistency: {consistency_desc}
-
-## Current State
-Study day: {study_day}
-
-## Task
-On a 1-5 scale, rate this participant's current HABIT STRENGTH — how automatic and regular their walking behavior has become.
-
-1 = No habit. Walking is entirely effortful and irregular.
-2 = Weak. Occasionally walks at similar times but mostly inconsistent.
-3 = Forming. Some regular patterns emerging (e.g., walks at same slot most days).
-4 = Moderate. Consistent patterns across multiple days, walks at predictable times.
-5 = Strong. Highly regular, walks at same times daily regardless of context.
-
-Output ONLY a single digit (1-5)."""
-
-RECEPTIVITY_PROMPT = """## Participant Background
-{seed_memory}
-
-## Recent Reflections
-{recent_reflections}
-
-## Recent Behavior Records (newest first)
-{recent_observations}
-
-## Current State
-Study day: {study_day}, time slot {slot}
-Current dosage: {dosage:.2f}
-
-## Task
-On a 1-5 scale, how likely is this participant to open and respond to an activity suggestion RIGHT NOW by walking in the next 30 minutes?
-
-1 = Very unlikely. Participant has a pattern of ignoring suggestions, or recent response rate is very low.
-2 = Unlikely. Participant occasionally responds but mostly ignores.
-3 = Uncertain. Not enough information, or response pattern is inconsistent.
-4 = Likely. Participant has been responding positively to suggestions recently.
-5 = Very likely. Participant actively responds and shows positive attitude.
-
-Output ONLY a single digit (1-5)."""
 
 SYS_STEPS = """
 You are a participant who is interested in increasing your walking and 

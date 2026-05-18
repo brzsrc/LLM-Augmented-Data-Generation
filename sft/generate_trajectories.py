@@ -41,7 +41,7 @@ from peft import PeftModel
 # ================================================================
 SYSTEM_PROMPT = (
     "You are a behavioral trajectory generator for an mHealth walking study. "
-    "Given a participant's activity profile(activity level: low/mid/high, "
+    "Given a participant's activity profile (activity level: low/mid/high, "
     "zero-step tendency: rare/common/frequent) and day context, generate a realistic "
     "daily trajectory of 3-5 decision points. Each decision point includes: "
     "day_slot (1-5), trial eligibility, weather, temperature, "
@@ -147,7 +147,7 @@ VISIT_PATTERN = re.compile(
     r'temperature is (\w+),\s*'
     r'location is (\w+),\s*'
     r'activity is (\w+),\s*'
-    r'steps_pre is (\w+?)'      # ← 非贪婪，因为后面紧跟 "send"
+    r'steps_pre is (\w+?),\s*'      # ← 非贪婪，因为后面紧跟 "send"
     r'send is (\w+),\s*'
     r'response is (\w+)',
     re.IGNORECASE,

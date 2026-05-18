@@ -26,6 +26,7 @@ import pandas as pd
 from pathlib import Path
 
 from data.cluster_config import CLUSTER_UIDS, CLUSTER_NAMES
+from sft.sys_prompt import SYSTEM_PROMPT
 
 
 # ================================================================
@@ -39,7 +40,7 @@ def serialize_visit(row):
     适配 HeartSteps: 把 (slot, avail, steps_pre, send, response, activity,
                        location, weather, temperature) 拼成一条 visit。
     """
-    avail = "yes" if row['avail'] else "no"
+    # avail = "yes" if row['avail'] else "no"
     is_rand = "yes" if row['is_randomized'] else "no"
 
     # send 语义化（0=没发, 1=非活动消息, 2=活动消息）
@@ -47,7 +48,7 @@ def serialize_visit(row):
     send_str = send_map.get(int(row['send']), str(row['send']))
 
     return (f"day_slot is {int(row['day_slot'])}, "
-            # f"avail is {avail}, "
+            f"is_weekday is {row['is_weekday']}, "
             f"in_trial is {is_rand}, "
             f"weather is {row['weather']}, "
             f"temperature is {row['temperature']}, "
@@ -78,18 +79,6 @@ def serialize_day_trajectory(day_rows, permute=False):
 # ================================================================
 # 2. 构建 LLaMA-Factory 数据集
 # ================================================================
-
-SYSTEM_PROMPT = (
-    "You are a behavioral trajectory generator for an mHealth walking study. "
-    "Given a participant's activity profile (activity level: low/mid/high, "
-    "zero-step tendency: rare/common/frequent) and day context, generate a realistic "
-    "daily trajectory of 3-5 decision points. Each decision point includes: "
-    "day_slot (1-5), trial eligibility, weather, temperature, "
-    "location, activity state, prior 30-min step level, sent notification type, and "
-    "user response. Separate decision points with ' ## '. "
-    "Output ONLY the trajectory, no explanation."
-)
-
 
 
 def compute_user_profiles(df):

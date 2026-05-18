@@ -96,8 +96,8 @@ class TraceLogger:
     # ─────────────────────────────────────────────
     
     def log_decision_point(self, day: int, slot: int, ctx: dict, 
-                           action: int, base_steps: int, llm_adj_pct: int,
-                           final_steps: int, state: dict, dosage: float,
+                           action: int,
+                           final_steps: int, dosage: float,
                            prompt_text: str = "", llm_raw_output: str = "",
                            importance: int = 0, importance_acc: int = 0,
                            reflection_triggered: bool = False):
@@ -126,15 +126,8 @@ class TraceLogger:
                 "dosage_before": round(dosage, 3),
             },
             "step_generation": {
-                "base_steps": base_steps,
-                "llm_adjustment_pct": llm_adj_pct,
                 "final_steps": final_steps,
                 "reward": round(float(__import__('numpy').log(final_steps + 0.5)), 4),
-            },
-            "psychological_state": {
-                "motivation": state['motivation'],
-                "habit": state['habit'],
-                "receptivity": state['receptivity'],
             },
             "importance": importance,
             "importance_accumulated": importance_acc,
@@ -147,9 +140,9 @@ class TraceLogger:
         
         # 时间线 CSV
         self.timeline_f.write(
-            f"{day},{slot},{self.step_index},{state['motivation']},{state['habit']},"
-            f"{state['receptivity']},{ctx.get('avail',0)},{action},{final_steps},"
-            f"{base_steps},{llm_adj_pct},{dosage:.3f},{importance_acc},"
+            f"{day},{slot},{self.step_index},"
+            f"{ctx.get('avail',0)},{action},{final_steps},"
+            f"{dosage:.3f},{importance_acc},"
             f"{int(reflection_triggered)}\n"
         )
     
@@ -191,11 +184,7 @@ class TraceLogger:
     
     def log_reflection(self, day: int, 
                        reflection_text: str,
-                       old_state: dict, new_state: dict,
-                       raw_llm_state: Tuple[int, int, int],
-                       constrained_state: dict,
                        reflect_prompt: str = "",
-                       state_prompt: str = "",
                        recent_obs_text: str = "",
                        recent_ref_text: str = "",
                        questions: List[str] = None,
@@ -225,32 +214,16 @@ class TraceLogger:
             "reflection_index": self.reflection_count,
             "day": day,
             "step_index": self.step_index,
-            "old_state": old_state.copy(),
-            "llm_raw_output": list(raw_llm_state),
-            "constrained_state": constrained_state.copy(),
-            "state_change": {
-                "motivation": constrained_state['motivation'] - old_state['motivation'],
-                "habit": constrained_state['habit'] - old_state['habit'],
-                "receptivity": constrained_state['receptivity'] - old_state['receptivity'],
-            },
             "questions": questions,
             "inferences": inferences,
             "reflection_text": reflection_text,
             "reflect_prompt": reflect_prompt,
-            "state_prompt": state_prompt,
         }
         self.trace_f.write(_safe_dump({"type": "reflection", **record}) + "\n")
         self.log_memory_event(f"D{day}R", reflection_text, "reflection", 6)
-        self.log_memory_event(f"D{day}U", 
-            f"State: mot={constrained_state['motivation']},hab={constrained_state['habit']},"
-            f"rec={constrained_state['receptivity']}", "reflection", 5)
         
         # --- Markdown 可读记录 ---
         md = f"### Reflection #{self.reflection_count} — Day {day}\n\n"
-        
-        # 状态变化摘要
-        md += f"**State before**: motivation={old_state['motivation']}, "
-        md += f"habit={old_state['habit']}, receptivity={old_state['receptivity']}\n\n"
         
         # Step 1: 问题
         if questions:
@@ -266,27 +239,10 @@ class TraceLogger:
                 md += f"**Q{i}**: {q}\n"
                 md += f"> {inf}\n\n"
         
-        # Step 3: 状态更新
-        md += f"**Step 3 — State Update:**\n\n"
-        md += f"- LLM raw output: ({raw_llm_state[0]}, {raw_llm_state[1]}, {raw_llm_state[2]})\n"
-        md += f"- After constraint: motivation={constrained_state['motivation']}, "
-        md += f"habit={constrained_state['habit']}, receptivity={constrained_state['receptivity']}\n"
-        
-        changes = []
-        for k in ['motivation', 'habit', 'receptivity']:
-            delta = constrained_state[k] - old_state[k]
-            if delta != 0:
-                changes.append(f"{k} {'+' if delta>0 else ''}{delta}")
-        md += f"- **Changes**: {', '.join(changes) if changes else 'No change'}\n\n"
-        
         # 折叠的详细信息
         if recent_obs_text:
             md += f"<details>\n<summary>Recent observations fed to LLM ({len(recent_obs_text)} chars)</summary>\n\n"
             md += f"```\n{recent_obs_text}\n```\n\n</details>\n\n"
-        
-        if state_prompt:
-            md += f"<details>\n<summary>State update prompt</summary>\n\n"
-            md += f"```\n{state_prompt[:1000]}\n```\n\n</details>\n\n"
         
         md += "---\n\n"
         self.reflection_f.write(md)
@@ -295,13 +251,12 @@ class TraceLogger:
     # 用户初始化记录
     # ─────────────────────────────────────────────
     
-    def log_user_init(self, initial_state: dict, persona: str):
+    def log_user_init(self, persona: str):
         """记录用户初始化信息"""
         record = {
             "type": "user_init",
             "user_id": self.user_id,
             # "params": {k: _json_safe(v) for k, v in params.items()},
-            "initial_state": initial_state.copy(),
             "persona": persona,
         }
         self.trace_f.write(_safe_dump(record) + "\n")
@@ -319,10 +274,6 @@ class TraceLogger:
         self.reflection_f.write(f"- Total reflections triggered: {self.reflection_count}\n")
         self.reflection_f.write(f"- Average decisions between reflections: "
                                 f"{self.decision_count / max(self.reflection_count, 1):.1f}\n")
-        if final_state:
-            self.reflection_f.write(f"- Final state: motivation={final_state.get('motivation','?')}, "
-                                    f"habit={final_state.get('habit','?')}, "
-                                    f"receptivity={final_state.get('receptivity','?')}\n")
         if summary_stats:
             self.reflection_f.write(f"\n### Behavioral Statistics\n\n")
             for k, v in summary_stats.items():
