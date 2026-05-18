@@ -171,7 +171,7 @@ def main():
     parser.add_argument('--input', default='../data/cleaned_output.csv')
     parser.add_argument('--train-uids', default='../data/train_uids.json',
                         help='JSON file with list of train uid integers')
-    parser.add_argument('--output-dir', default='data')
+    parser.add_argument('--output-dir', default='../LlamaFactory/data')
     parser.add_argument('--n-permutations', type=int, default=10,
                         help='每条轨迹生成多少个排列变体')
     parser.add_argument('--min-slots', type=int, default=3,
