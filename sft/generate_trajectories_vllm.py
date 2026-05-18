@@ -70,17 +70,24 @@ STEPS_BUCKETS = [
 
 
 
-def parse_trajectory(text):
+def parse_trajectory(text, debug=False):
     visits = []
-    for m in VISIT_PATTERN.finditer(text):
+    raw_matches = list(VISIT_PATTERN.finditer(text))
+
+    if debug and not raw_matches:
+        print(f"  [debug] 正则未匹配任何 visit")
+        print(f"  [debug] text 前 200 字: {text[:200]!r}")
+
+
+    for m in raw_matches:
         slot = int(m.group(1))
         if slot < 1 or slot > 5:
             continue
-        if m.group(7) not in STEPS_BUCKETS:
+        if m.group(8) not in STEPS_BUCKETS:
             continue
         visits.append({
             'day_slot': slot,
-            'is_weekday_str': m.group(2).lower() == 'yes',
+            # 'is_weekday_str': m.group(2).lower() == 'yes',
             'is_randomized': m.group(3).lower() == 'yes',
             'weather': m.group(4),
             'temperature': m.group(5),
@@ -90,6 +97,9 @@ def parse_trajectory(text):
             'send': m.group(9),
             'response': m.group(10),
         })
+    if debug:
+        print(f"  [debug] 匹配 {len(raw_matches)} 个，通过 {len(visits)} 个")
+
     if len(visits) < 3:
         return None
     visits.sort(key=lambda v: v['day_slot'])
