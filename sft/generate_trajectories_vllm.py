@@ -51,6 +51,7 @@ def build_prompt(activity_level, zero_tendency, is_weekday, n_slots):
 
 VISIT_PATTERN = re.compile(
     r'day_slot is (\d+)\s*,?\s*'
+    r'is_weekday is (yes|no),\s*'
     r'in_trial is (yes|no),\s*'
     r'weather is (\w+),\s*'
     r'temperature is (\w+),\s*'

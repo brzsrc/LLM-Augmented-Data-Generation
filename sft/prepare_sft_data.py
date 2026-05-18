@@ -40,13 +40,14 @@ def serialize_visit(row):
     """
     # avail = "yes" if row['avail'] else "no"
     is_rand = "yes" if row['is_randomized'] else "no"
+    is_weekday = "yes" if row['is_weekday'] else "no"
 
     # send 语义化（0=没发, 1=非活动消息, 2=活动消息）
     send_map = {0: "no_send", 1: "non_activity", 2: "activity"}
     send_str = send_map.get(int(row['send']), str(row['send']))
 
     return (f"day_slot is {int(row['day_slot'])}, "
-            f"is_weekday is {row['is_weekday']}, "
+            f"is_weekday is {is_weekday}, "
             f"in_trial is {is_rand}, "
             f"weather is {row['weather']}, "
             f"temperature is {row['temperature']}, "
@@ -262,7 +263,7 @@ def main():
 
     eval_examples = build_sft_examples(
         eval_df,
-        n_permutations=args.n_permutations,
+        n_permutations=1,
         min_slots=args.min_slots
     )
     n_unique_days = len(eval_examples) // args.n_permutations
