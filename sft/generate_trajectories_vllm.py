@@ -69,6 +69,7 @@ STEPS_BUCKETS = [
 ]
 
 
+
 def parse_trajectory(text):
     visits = []
     for m in VISIT_PATTERN.finditer(text):
@@ -79,14 +80,15 @@ def parse_trajectory(text):
             continue
         visits.append({
             'day_slot': slot,
-            'is_randomized': m.group(2).lower() == "yes",
-            'weather': m.group(3),
-            'temperature': m.group(4),
-            'location': m.group(5),
-            'activity': m.group(6),
-            'jbsteps30pre_bucket': m.group(7),
-            'send': m.group(8),
-            'response': m.group(9),
+            'is_weekday_str': m.group(2).lower() == 'yes',
+            'is_randomized': m.group(3).lower() == 'yes',
+            'weather': m.group(4),
+            'temperature': m.group(5),
+            'location': m.group(6),
+            'activity': m.group(7),
+            'jbsteps30pre_bucket': m.group(8),
+            'send': m.group(9),
+            'response': m.group(10),
         })
     if len(visits) < 3:
         return None

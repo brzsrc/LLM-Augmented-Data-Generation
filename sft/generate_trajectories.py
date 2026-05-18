@@ -35,20 +35,7 @@ import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
 
-
-# ================================================================
-# 必须和 prepare_sft_data.py 中的 SYSTEM_PROMPT 完全一致
-# ================================================================
-SYSTEM_PROMPT = (
-    "You are a behavioral trajectory generator for an mHealth walking study. "
-    "Given a participant's activity profile (activity level: low/mid/high, "
-    "zero-step tendency: rare/common/frequent) and day context, generate a realistic "
-    "daily trajectory of 3-5 decision points. Each decision point includes: "
-    "day_slot (1-5), trial eligibility, weather, temperature, "
-    "location, activity state, prior 30-min step level, sent notification type, and "
-    "user response. Separate decision points with ' ## '. "
-    "Output ONLY the trajectory, no explanation."
-)
+from sys_prompt import SYSTEM_PROMPT
 
 
 # ================================================================
@@ -75,33 +62,12 @@ def load_model(model_path, adapter_path=None):
     return model, tokenizer
 
 
-# ================================================================
-# 2. 构建 Prompt（必须和 build_instruction 一致）
-# ================================================================
-
-def build_instruction(activity_level, zero_tendency, is_weekday, n_slots):
-    """构建 instruction，必须和 prepare_sft_data.py 的 build_instruction 完全一致。"""
+def build_prompt(activity_level, zero_tendency, is_weekday, n_slots):
     day_type = "weekday" if is_weekday else "weekend"
-    return (f"Generate a {day_type} trajectory with {n_slots} decision points "
-            f"for a participant with {activity_level} activity level "
-            f"and {zero_tendency} zero-step periods.")
-
-
-def build_prompt(activity_level, zero_tendency, is_weekday, n_slots, tokenizer):
-    """用 tokenizer 的 chat template 构建 prompt（自动套上 Qwen3 的 ChatML 格式）。"""
-    instruction = build_instruction(activity_level, zero_tendency, is_weekday, n_slots)
-
-    messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": instruction},
-    ]
-    # tokenize=False 拿到字符串；add_generation_prompt=True 加上 "<|im_start|>assistant\n"
-    prompt = tokenizer.apply_chat_template(
-        messages,
-        tokenize=False,
-        add_generation_prompt=True,
-    )
-    return prompt
+    instruction = (f"Generate a {day_type} trajectory with {n_slots} decision points "
+                   f"for a participant with {activity_level} activity level "
+                   f"and {zero_tendency} zero-step periods.")
+    return f"Human: {SYSTEM_PROMPT}\n{instruction}\nAssistant: "
 
 
 # ================================================================
