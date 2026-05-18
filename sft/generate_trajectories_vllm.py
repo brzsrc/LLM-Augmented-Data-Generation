@@ -245,18 +245,26 @@ def main():
                 v['jbsteps30pre'] = bucket_to_value(v['jbsteps30pre_bucket'], sampler)
             all_rows.append(v)
 
-    # ================ 失败重试（更低温度） ================
-    if failed_tasks:
-        print(f"\n重试 {len(failed_tasks)} 个失败任务...")
+    # ================ 多轮重试（温度递降） ================
+    RETRY_TEMPS = [0.8, 0.5, 0.3]
+    for retry_round, retry_temp in enumerate(RETRY_TEMPS, 1):
+        if not failed_tasks:
+            break
+        print(f"\n重试 {retry_round}/{len(RETRY_TEMPS)}: "
+              f"{len(failed_tasks)} 个任务, temperature={retry_temp}")
+
         retry_sampling = SamplingParams(
-            temperature=max(0.7, args.temperature - 0.2),
+            temperature=retry_temp,
             top_p=args.top_p,
             max_tokens=args.max_tokens,
         )
         outputs = llm.generate([t['prompt'] for t in failed_tasks], retry_sampling)
+
+        still_failed = []
         for task, out in zip(failed_tasks, outputs):
             visits = parse_trajectory(out.outputs[0].text)
             if visits is None:
+                still_failed.append(task)
                 continue
             for v in visits:
                 v.update({
@@ -269,6 +277,38 @@ def main():
                 if sampler:
                     v['jbsteps30pre'] = bucket_to_value(v['jbsteps30pre_bucket'], sampler)
                 all_rows.append(v)
+
+        recovered = len(failed_tasks) - len(still_failed)
+        print(f"  恢复 {recovered} 个, 剩余 {len(still_failed)} 个")
+        failed_tasks = still_failed
+
+    if failed_tasks:
+        print(f"\n⚠️ 最终 {len(failed_tasks)} 个任务无法解析（已丢弃）")
+
+    # # ================ 失败重试（更低温度） ================
+    # if failed_tasks:
+    #     print(f"\n重试 {len(failed_tasks)} 个失败任务...")
+    #     retry_sampling = SamplingParams(
+    #         temperature=max(0.7, args.temperature - 0.2),
+    #         top_p=args.top_p,
+    #         max_tokens=args.max_tokens,
+    #     )
+    #     outputs = llm.generate([t['prompt'] for t in failed_tasks], retry_sampling)
+    #     for task, out in zip(failed_tasks, outputs):
+    #         visits = parse_trajectory(out.outputs[0].text)
+    #         if visits is None:
+    #             continue
+    #         for v in visits:
+    #             v.update({
+    #                 'user_id': task['user_id'],
+    #                 'study_day': task['study_day'],
+    #                 'is_weekday': task['is_weekday'],
+    #                 'activity_level': task['activity_level'],
+    #                 'zero_tendency': task['zero_tendency'],
+    #             })
+    #             if sampler:
+    #                 v['jbsteps30pre'] = bucket_to_value(v['jbsteps30pre_bucket'], sampler)
+    #             all_rows.append(v)
 
     df = pd.DataFrame(all_rows)
     ok_days = df.groupby(['user_id', 'study_day']).ngroups if len(df) > 0 else 0
