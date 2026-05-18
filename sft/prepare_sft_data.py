@@ -24,8 +24,6 @@ import random
 import numpy as np
 import pandas as pd
 from pathlib import Path
-
-from data.cluster_config import CLUSTER_UIDS, CLUSTER_NAMES
 from sft.sys_prompt import SYSTEM_PROMPT
 
 
