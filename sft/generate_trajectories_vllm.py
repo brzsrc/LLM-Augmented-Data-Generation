@@ -34,7 +34,7 @@ import pandas as pd
 
 from vllm import LLM, SamplingParams
 
-from sft.sys_prompt import SYSTEM_PROMPT
+from sys_prompt import SYSTEM_PROMPT
 
 
 def build_prompt(activity_level, zero_tendency, is_weekday, n_slots):
