@@ -426,7 +426,6 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
                         day=row['study_day'],
                         reflection_text=combined_text,
                         reflect_prompt=per_uid_q_prompt_text[uid],
-                        state_prompt="",  # Plan B 简化版无 state-update prompt
                         recent_obs_text=per_uid_recent_text[uid],
                         recent_ref_text="",
                         questions=questions,
@@ -666,7 +665,7 @@ def main():
     p.add_argument('--seed',      type=int, default=42)
     p.add_argument('--with-reflection', action='store_true',
                    help='打开后做 importance scoring + reflection (慢)')
-    p.add_argument('--max-users', type=int, default=None,
+    p.add_argument('--max_users', type=int, default=None,
                    help='只跑前 N 个 train user (smoke test 用)')
     p.add_argument('--llm', choices=['simulated', 'qwen'], default='qwen')
     p.add_argument('--qwen-path', default='../models/Qwen3-8B-AWQ')
@@ -702,7 +701,6 @@ def main():
     sys.path.insert(0, args.data_extractor_dir)
     import data_extractor as DE
     import memory_stream as MS
-    import prompts as PR
     import llm as LM
 
     ext = DE.V1DataExtractor(args.cleaned,
