@@ -24,7 +24,7 @@ import random
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from sft.sys_prompt import SYSTEM_PROMPT
+from sys_prompt import SYSTEM_PROMPT
 
 
 # ================================================================
