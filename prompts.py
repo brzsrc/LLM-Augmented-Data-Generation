@@ -1,14 +1,8 @@
-# ================================================================
-# 第三部分：Prompt 模板（不变，略）
-# ================================================================
-
-SYSTEM_SCORE = "You are a behavioral scoring system. Output ONLY a single digit (1-5). No explanation."
-
 IMPORTANCE_SYSTEM = """
-"You are scoring the importance of an event in a participant's record "
-"of their HeartSteps physical activity study. Your response must be a "
-"single integer from 1 to 10 wrapped in the format: ##N## "
-"(for example, ##5##). No other text."
+You are scoring the importance of an event in a participant's record 
+of their HeartSteps physical activity study. Your response must be a 
+single integer from 1 to 10 wrapped in the format: ##N## 
+(for example, ##5##). No other text.
 """
 
 IMPORTANCE_USER = """You are reviewing one event from a HeartSteps participant's
@@ -40,6 +34,98 @@ For example: ##3## or ##7##.
 
 No other text. No explanation. Just ##N##."""
 
+IMPORTANCE_REASSESS_SYSTEM = """
+You are re-scoring the importance of past events in a HeartSteps 
+participant's record. You see ALL recent events at once and must judge 
+each one's importance RELATIVE to the others. Your response must be a 
+single line: ##N1,N2,N3,...## where each Ni is an integer 1-10. 
+The number of integers must EXACTLY equal the number of events. 
+No other text.
+"""
+
+IMPORTANCE_REASSESS_USER = """
+Below are {n_events} events from a HeartSteps
+participant's recent record. Re-score each event's importance on 1-10,
+JUDGING THEM RELATIVE TO EACH OTHER.
+
+An event is important if it carries signal for understanding the
+participant's behavior or predicting their future activity. An event is
+unimportant if it is routine and predictable from the participant's
+baseline.
+
+Scoring guidance:
+- 1-3 = routine, predictable from baseline (e.g., zero steps in slot 1 at
+  home; expected high steps at gym)
+- 4-6 = some deviation from baseline, but not surprising
+- 7-8 = clear signal: a meaningful response to a suggestion (positive or
+  negative), an unexpected zero, or an unusual peak that breaks the
+  participant's recent pattern
+- 9-10 = key turning points: first occurrence of a pattern, a complete
+  break from previous behavior, a sudden adoption or rejection of a
+  suggested behavior, or an extreme outlier vs this user's history
+
+Distribution constraint (REQUIRED):
+- At least 50% of events should score 1-5.
+- At most 20% of events should score 8+.
+- At most 1-2 events should score 10.
+
+Events (numbered, one per line):
+{numbered_events}
+
+Output EXACTLY {n_events} integers separated by commas, wrapped in ##...##.
+Example for {n_events} events: ##3,2,7,1,5,4,2,6,3,8##
+
+No preamble. No explanation. Just the wrapped list."""
+
+REFLECTION_REASSESS_SYSTEM = (
+    "You are re-evaluating past reflections (hypotheses/rules) about a "
+    "HeartSteps participant. Each reflection was generated earlier based on "
+    "limited evidence. Your job is to judge how well each reflection still "
+    "holds up given the new observations that have come in since. Your "
+    "response must be a single line: ##N1,N2,N3,...## where each Ni is an "
+    "integer 1-10. The number of integers must EXACTLY equal the number of "
+    "reflections. No other text."
+)
+
+REFLECTION_REASSESS_USER = """Below are {n_reflections} reflections that
+were generated earlier about a HeartSteps participant. Then below them are
+{n_new_obs} new observations collected SINCE the most recent reflection.
+
+Re-score each reflection on 1-10 based on whether it still holds up given
+the new evidence:
+
+- 1-2 = INVALIDATED. The new observations directly contradict this
+  reflection's claim. The reflection is now wrong or no longer applies.
+- 3-4 = WEAKENED. New evidence shows mixed support. The reflection is
+  partly right but should not be relied on as a rule.
+- 5 = NEUTRAL. Not enough new evidence to evaluate, or the reflection
+  describes a stable baseline pattern that neither gained nor lost
+  support.
+- 6-7 = CONFIRMED. New evidence supports the reflection's direction. It
+  is a useful working hypothesis.
+- 8-9 = STRONGLY CONFIRMED. Multiple new observations match this
+  reflection's prediction. It captures a real pattern in this user.
+- 10 = CRITICAL RULE. The reflection makes a specific prediction that has
+  been confirmed multiple times and is highly distinctive of this user.
+
+Distribution constraint (REQUIRED):
+- Be willing to give low scores. At least 30% of reflections should
+  score 5 or below if no new evidence supports them.
+- Do not default to 7-8 for everything. Old reflections that nobody
+  re-validated should drop.
+- Reserve 10 for at most 1 reflection.
+
+REFLECTIONS (numbered, oldest first):
+{numbered_reflections}
+
+NEW OBSERVATIONS since the last reflection (used as evidence for re-scoring):
+{numbered_new_observations}
+
+Output EXACTLY {n_reflections} integers separated by commas, wrapped in
+##...##. Example for {n_reflections} reflections: ##7,3,8,2,5,9,4,1,6,5##
+
+No preamble. No explanation. Just the wrapped list."""
+
 REFLECTION_Q_SYS = """
 You are a participant who is interested in increasing your walking and 
 enrolled in a study helping individuals increase and sustain physical activity. 
@@ -52,39 +138,12 @@ sends a suggestion to encourage you walking or not being still more.
 You are now pausing to reflect on how you react to these suggestions based on your recent memories.
 """
 
-# REFLECTION_Q_PROMPT = """
-# Your recent memories:
-# {recent_memories}
-#
-# Based on these records,
-# list exactly 3 questions worth investigating about YOUR own behavior. Cover
-# different angles:
-#
-# - Q1 should be about when, where, or under what conditions after receiving suggestions,
-#   you tend to walk MORE or LESS than your own usual amount or remain still entirely after receiving suggestions
-#   (be specific: which slots, locations, weather, temperature, suggestion types).
-# - Q2 should be about how you respond (or fail to respond) to walking
-#   suggestions from the system — and whether the type of suggestion,
-#   location, or time of day changes that response.
-# - Q3 should be about as the study going on over days, how do you feel about the suggestions you received,
-#   are you less motivated / bored, or tends to ignore the suggestions, etc.
-#
-# Each question must be specific and grounded in the evidence above (not
-# generic).
-#
-# Format your output as exactly 3 lines, one question per line, in this exact
-# format (note: NO ## wrappers for questions; use Q1: / Q2: / Q3: prefix):
-#
-# Q1: <your first question>
-# Q2: <your second question>
-# Q3: <your third question>
-#
-# No other text. No preamble. No explanation. Just the three lines."""
-
-
 REFLECTION_Q_PROMPT = """
-Your recent memories:
-{recent_memories}
+Recent records of your own behavior from earlier in the study (most recent first):
+{recent_obs}
+
+Recent reflections of your own behavior from earlier in the study:
+{recent_ref}
 
 Based on these records, 
 list exactly 3 questions worth investigating about YOUR own behavior. 
@@ -132,8 +191,11 @@ You are now reflecting on your own behavior of how you react to these suggestion
 REFLECTION_GEN_PROMPT = """
 A question about yourself: "{question}"
 
-Relevant records of your own behavior:
-{relevant_memories}
+Relevant recent records of your own behavior from earlier in the study (most recent first):
+{recent_obs}
+
+Relevant recent reflections of your own behavior from earlier in the study:
+{recent_ref}
 
 Based ONLY on the evidence above, write a single 1-2 sentence inference about
 yourself that answers the question and be specific.
@@ -224,8 +286,7 @@ PROMPT_STEPS = """
 Your background:
 {persona}
 
-Recent records of your own behavior from earlier in the study (most recent
-first):
+Recent records of your own behavior from earlier in the study (most recent first):
 {recent_obs}
 
 Recent reflections of your own behavior from earlier in the study:

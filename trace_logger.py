@@ -220,7 +220,7 @@ class TraceLogger:
             "reflect_prompt": reflect_prompt,
         }
         self.trace_f.write(_safe_dump({"type": "reflection", **record}) + "\n")
-        self.log_memory_event(f"D{day}R", reflection_text, "reflection", 6)
+        self.log_memory_event(f"D{day}R", reflection_text, "reflection", 8)
         
         # --- Markdown 可读记录 ---
         md = f"### Reflection #{self.reflection_count} — Day {day}\n\n"
@@ -246,6 +246,68 @@ class TraceLogger:
         
         md += "---\n\n"
         self.reflection_f.write(md)
+
+    # ─────────────────────────────────────────────
+    # 重打分记录
+    # ─────────────────────────────────────────────
+
+    def log_reassessment(self, day: int, mem_type: str, n_memories: int,
+                         timestamps: List[str],
+                         old_scores: List[int],
+                         new_scores: List[int]):
+        """记录一次批量重打分,用于诊断 reassess 质量。
+
+        写入 trace.jsonl 一条 type=reassessment 的记录,字段:
+          - day, step_index, n_memories
+          - per-memory: timestamp, old, new, delta
+          - aggregate: mean_old, mean_new, n_promoted (delta>=3),
+            n_demoted (delta<=-3), top3_changes
+        """
+        deltas = [n - o for n, o in zip(new_scores, old_scores)]
+
+        per_mem = [
+            {"timestamp": ts, "old": int(o), "new": int(n), "delta": int(d)}
+            for ts, o, n, d in zip(timestamps, old_scores, new_scores, deltas)
+        ]
+
+        # 找变化最大的 3 个 (绝对值)
+        ranked = sorted(per_mem, key=lambda x: abs(x['delta']), reverse=True)
+        top_changes = ranked[:3]
+
+        record = {
+            "type": "reassessment",
+            "day": int(day),
+            'mem_type': mem_type,
+            "step_index": self.step_index,
+            "n_memories": int(n_memories),
+            "aggregate": {
+                "mean_old": round(float(np.mean(old_scores)), 2) if old_scores else 0.0,
+                "mean_new": round(float(np.mean(new_scores)), 2) if new_scores else 0.0,
+                "n_promoted": int(sum(1 for d in deltas if d >= 3)),
+                "n_demoted": int(sum(1 for d in deltas if d <= -3)),
+                "top_changes": top_changes,
+            },
+            "per_memory": per_mem,
+        }
+        self.trace_f.write(_safe_dump(record) + "\n")
+
+        # ───── NEW: 同步 memory.jsonl ─────
+        # 对每条被重打分的 memory, 在 memory.jsonl 追加一条 reassess 事件,
+        # 只写真正变化的 (delta != 0)
+        for ts, old_s, new_s, d in zip(timestamps, old_scores, new_scores, deltas):
+            if d == 0:
+                continue  # 没变化的不写,减少日志体积
+            mem_record = {
+                "timestamp": ts,
+                "mem_type": mem_type,  # 'observation' 或 'reflection',跟原始 add 一致
+                "event": "reassess",  # 新字段, 区分 add vs reassess
+                "importance": int(new_s),  # 新分数
+                "importance_old": int(old_s),
+                "delta": int(d),
+                "memory_size_after": 0,  # 重打分不改变 stream 长度
+                "step_index": self.step_index,
+            }
+            self.memory_f.write(_safe_dump(mem_record) + "\n")
     
     # ─────────────────────────────────────────────
     # 用户初始化记录
@@ -265,7 +327,7 @@ class TraceLogger:
     # 结束
     # ─────────────────────────────────────────────
     
-    def finalize(self, final_state: dict = None, summary_stats: dict = None):
+    def finalize(self, summary_stats: dict = None):
         """写入摘要并关闭文件"""
         
         # 写摘要到 reflection markdown
@@ -284,7 +346,6 @@ class TraceLogger:
             "type": "summary",
             "total_decisions": self.decision_count,
             "total_reflections": self.reflection_count,
-            "final_state": final_state,
             "summary_stats": summary_stats,
         }
         self.trace_f.write(_safe_dump(record) + "\n")

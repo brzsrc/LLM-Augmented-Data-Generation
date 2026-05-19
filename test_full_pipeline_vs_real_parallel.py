@@ -5,7 +5,7 @@ import sys
 import time
 import types
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import pandas as pd
@@ -14,7 +14,8 @@ import matplotlib.pyplot as plt
 from scipy.stats import wasserstein_distance
 import re
 from prompts import REFLECTION_Q_SYS, REFLECTION_GEN_SYS, PROMPT_STEPS, SYS_STEPS, IMPORTANCE_SYSTEM, IMPORTANCE_USER, \
-    REFLECTION_Q_PROMPT, REFLECTION_GEN_PROMPT
+    REFLECTION_Q_PROMPT, REFLECTION_GEN_PROMPT, IMPORTANCE_REASSESS_SYSTEM, IMPORTANCE_REASSESS_USER, \
+    REFLECTION_REASSESS_SYSTEM, REFLECTION_REASSESS_USER
 
 matplotlib.rcParams['axes.unicode_minus'] = False
 matplotlib.rcParams['font.family'] = 'DejaVu Sans'
@@ -92,20 +93,31 @@ def prepare_real_rows(cleaned_path: str, train_uids: list,
     return df
 
 
+def _parse_reassess_scores(text: str, expected_n: int) -> Optional[List[int]]:
+    """Parse '##3,2,7,1,5##' into list[int]. Return None on any failure.
+
+    Robust to: leading <think> blocks, extra whitespace, trailing text,
+    integers outside 1-10 (clamped). Returns None if count mismatches.
+    """
+    cleaned = _strip_think_tags(text)
+    m = re.search(r'##\s*([\d,\s]+?)\s*##', cleaned)
+    if not m:
+        return None
+    try:
+        nums = [int(x.strip()) for x in m.group(1).split(',') if x.strip()]
+    except ValueError:
+        return None
+    if len(nums) != expected_n:
+        return None
+    return [max(1, min(10, n)) for n in nums]
+
+
 # =============================================================================
 # 用户运行时状态: 一个用户一个 stream + cursor
 # =============================================================================
 class UserRuntime:
     def __init__(self, uid, all_rows, MS_module,
                  prompt_persona, logger=None):
-        """
-        persona: 简短的 5-line 描述, 用于 seed memory stream (保持兼容)
-        prompt_persona: rich persona (来自 ext.get_rich_persona), 用于 LLM prompt;
-                        若 None 则用 persona
-        logger: 可选的 TraceLogger 实例 (per-user). 若给了, 会被 pipeline 用来
-                落盘 observation / decision_point / reflection. user_init 和
-                finalize 由调用方负责.
-        """
         self.uid = uid
         self.prompt_persona = prompt_persona
         self.logger = logger
@@ -215,8 +227,8 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
             action = int(row['send'])
             dosage = float(row['dosage'])
 
-            obs_text = rt.stream.format_memories(rt.stream.get_recent(10, "observation"))
-            ref_text = rt.stream.format_memories(rt.stream.get_recent(3, "reflection"))
+            obs_text = rt.stream.format_memories(rt.stream.get_recent_weighted_obs())
+            ref_text = rt.stream.format_memories(rt.stream.get_recent_weighted_ref())
 
             recent_obs = obs_text if obs_text else "No prior observations."
             recent_ref = ref_text if ref_text else "No prior reflections."
@@ -322,42 +334,181 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
                     reflection_triggered=False,  # 反思如果触发, log_reflection 另存
                 )
 
-        # ── Phase E: 反思 — 逐字搬 simulate_parallel 的逻辑 ─────────
+        # ── Phase E: 反思 ─────────
         if with_reflection:
             reflect_uids = [uid for uid in active_uids
                             if runtimes[uid].stream.should_reflect()]
             if reflect_uids:
+
+                # ───── Phase E.0a: 批量重打分 stream 中的 observation ─────
+                # 在反思之前先重打分,让反思 prompt 用上更新后的 importance
+                reassess_prompts = []
+                per_uid_reassess_targets = {}  # uid -> List[Memory]
+                per_uid_old_scores = {}  # uid -> List[int] (用于 logger 诊断)
+
+                for uid in reflect_uids:
+                    targets = runtimes[uid].stream.get_recent(n=30, mem_type='observation')
+                    per_uid_reassess_targets[uid] = targets
+                    per_uid_old_scores[uid] = [m.importance for m in targets]
+
+                    if len(targets) == 0:
+                        # 没有 observation 可重打分 (理论上不会发生因为已经触发反思)
+                        reassess_prompts.append(None)
+                        continue
+
+                    numbered = "\n".join(
+                        f"[{i + 1}] {m.timestamp}: {m.content}"
+                        for i, m in enumerate(targets)
+                    )
+                    reassess_prompts.append({
+                        "system": IMPORTANCE_REASSESS_SYSTEM,
+                        "user": IMPORTANCE_REASSESS_USER.format(
+                            n_events=len(targets),
+                            numbered_events=numbered,
+                        ),
+                    })
+
+                # batch 调用 (跳过 None — 这些 uid 没东西可重打)
+                valid_indices = [i for i, p in enumerate(reassess_prompts) if p is not None]
+                valid_prompts = [reassess_prompts[i] for i in valid_indices]
+                valid_responses = llm.batch_text(valid_prompts) if valid_prompts else []
+
+                # 应用新分数
+                for vi, resp in zip(valid_indices, valid_responses):
+                    uid = reflect_uids[vi]
+                    targets = per_uid_reassess_targets[uid]
+                    new_scores = _parse_reassess_scores(resp, expected_n=len(targets))
+
+                    if new_scores is None:
+                        # 解析失败 → 保留原分数,记录到 logger 以便诊断
+                        if runtimes[uid].logger is not None:
+                            # 复用 log_memory_event 留个痕迹
+                            runtimes[uid].logger.log_memory_event(
+                                timestamp=f"D{active_ctx[uid][3]['study_day']}_REASSESS_FAIL",
+                                content=f"reassess parse failed; raw response head: {resp[:200]}",
+                                mem_type="diagnostic",
+                                importance=0,
+                            )
+                        continue
+
+                    # 原地修改 importance
+                    for mem, score in zip(targets, new_scores):
+                        mem.importance = score
+
+                    # logger 钩子: 把这次重打分写进诊断日志
+                    if runtimes[uid].logger is not None:
+                        row_for_log = active_ctx[uid][3]
+                        runtimes[uid].logger.log_reassessment(
+                            day=int(row_for_log['study_day']),
+                            mem_type="observation",
+                            n_memories=len(targets),
+                            timestamps=[m.timestamp for m in targets],
+                            old_scores=per_uid_old_scores[uid],
+                            new_scores=new_scores,
+                        )
+
+                # ───── Phase E.0b: 批量重打分 reflection ─────
+                # 在 observation 已经重打分后再做 reflection 重打分,
+                # 这样 LLM 看到的 new_observations 已经是"重要事件靠前"的版本
+                refl_reassess_prompts = []
+                per_uid_refl_targets = {}
+                per_uid_refl_old_scores = {}
+
+                for uid in reflect_uids:
+                    refl_targets = runtimes[uid].stream.get_recent(n=None, mem_type='reflection')
+                    new_obs = runtimes[uid].stream.get_new_observations_since_last_reflection(
+                        fallback_n=15
+                    )
+                    per_uid_refl_targets[uid] = refl_targets
+                    per_uid_refl_old_scores[uid] = [m.importance for m in refl_targets]
+
+                    if len(refl_targets) == 0:
+                        # 还没有过反思 (首次反思),跳过
+                        refl_reassess_prompts.append(None)
+                        continue
+                    if len(new_obs) == 0:
+                        # 没有新证据可用,保留原分数
+                        refl_reassess_prompts.append(None)
+                        continue
+
+                    numbered_refl = "\n".join(
+                        f"[R{i+1}] {m.timestamp}: {m.content}"
+                        for i, m in enumerate(refl_targets)
+                    )
+                    numbered_obs = "\n".join(
+                        f"[O{i+1}] {m.timestamp}: {m.content}"
+                        for i, m in enumerate(new_obs)
+                    )
+                    refl_reassess_prompts.append({
+                        "system": REFLECTION_REASSESS_SYSTEM,
+                        "user": REFLECTION_REASSESS_USER.format(
+                            n_reflections=len(refl_targets),
+                            n_new_obs=len(new_obs),
+                            numbered_reflections=numbered_refl,
+                            numbered_new_observations=numbered_obs,
+                        ),
+                    })
+
+                valid_idx = [i for i, p in enumerate(refl_reassess_prompts) if p is not None]
+                valid_prompts = [refl_reassess_prompts[i] for i in valid_idx]
+                valid_responses = llm.batch_text(valid_prompts) if valid_prompts else []
+
+                for vi, resp in zip(valid_idx, valid_responses):
+                    uid = reflect_uids[vi]
+                    refl_targets = per_uid_refl_targets[uid]
+                    new_scores = _parse_reassess_scores(resp, expected_n=len(refl_targets))
+                    if new_scores is None:
+                        continue
+                    for mem, score in zip(refl_targets, new_scores):
+                        mem.importance = score
+                    if runtimes[uid].logger is not None:
+                        row_for_log = active_ctx[uid][3]
+                        runtimes[uid].logger.log_reassessment(
+                            day=int(row_for_log['study_day']),
+                            mem_type="reflection",
+                            n_memories=len(refl_targets),
+                            timestamps=[m.timestamp for m in refl_targets],
+                            old_scores=per_uid_refl_old_scores[uid],
+                            new_scores=new_scores,
+                        )
+
+                # ───── Phase E.1: 反思 — 用 importance-weighted memory ─────
                 # 同时缓存每个 uid 的 recent_text + q_prompt 给 logger 用
                 q_prompts = []
                 per_uid_q_prompt_text = {}   # uid -> q_prompt user content
                 per_uid_recent_text = {}     # uid -> recent_text fed to LLM
+
                 for uid in reflect_uids:
-                    recent = runtimes[uid].stream.get_recent(25)
-                    recent_text = runtimes[uid].stream.format_memories(recent)
-                    q_user = REFLECTION_Q_PROMPT.format(recent_memories=recent_text)
+                    recent_obs = runtimes[uid].stream.get_recent_weighted_obs(
+                        n=20, importance_floor=7, recent_window=30
+                    )
+                    recent_ref = runtimes[uid].stream.get_recent_weighted_ref(n=5)
+                    obs_text = runtimes[uid].stream.format_memories(recent_obs)
+                    ref_text = runtimes[uid].stream.format_memories(recent_ref)
+                    q_user = REFLECTION_Q_PROMPT.format(recent_obs=obs_text, recent_ref=ref_text)
                     per_uid_q_prompt_text[uid] = q_user
-                    per_uid_recent_text[uid] = recent_text
+                    per_uid_recent_text[uid] = (obs_text, ref_text)
                     q_prompts.append({
                         "system": REFLECTION_Q_SYS,
                         "user": q_user
                     })
                 q_responses = llm.batch_text(q_prompts)
 
-                # Step 2: 批量推断 — 用 _parse_questions, get_recent(15)
+                # Step 2: 批量推断 — 用 _parse_questions, weighted memory
                 # 同时按 uid 分组 questions, 之后好喂给 log_reflection
                 inf_prompts = []
                 inf_map = []  # (reflect_local_idx j, uid, question)
                 per_uid_questions = {uid: [] for uid in reflect_uids}
                 per_uid_inferences = {uid: [] for uid in reflect_uids}
                 for j, uid in enumerate(reflect_uids):
-                    recent_text = per_uid_recent_text[uid]
+                    obs_text, ref_text = per_uid_recent_text[uid]
                     questions = _parse_questions(q_responses[j], max_n=3)
                     per_uid_questions[uid] = questions
                     for q in questions:
                         inf_prompts.append({
                             "system": REFLECTION_GEN_SYS,
                             "user": REFLECTION_GEN_PROMPT.format(
-                                question=q, relevant_memories=recent_text)
+                                question=q, recent_obs=obs_text, recent_ref=ref_text)
                         })
                         inf_map.append((j, uid, q))
 
@@ -368,9 +519,10 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
                     resp = _strip_think_tags(resp)
                     per_uid_inferences[uid].append(resp)
                     _, _, _, row, _ = active_ctx[uid]
-                    runtimes[uid].stream.add(Memory(
-                        f"Day{row['study_day']}_S{int(row['day_slot'])}",
-                        resp, "reflection", 8))
+                    if len(resp) > 0:
+                        runtimes[uid].stream.add(Memory(
+                            f"Day{row['study_day']}_S{int(row['day_slot'])}",
+                            resp, "reflection", 8))
 
                 for uid in reflect_uids:
                     runtimes[uid].stream.reset_reflection_counter()
@@ -381,6 +533,7 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
                     rt = runtimes[uid]
                     if rt.logger is None:
                         continue
+                    _, _, _, row, _ = active_ctx[uid]
                     inferences = per_uid_inferences[uid]
                     questions = per_uid_questions[uid]
                     combined_text = "\n\n".join(inferences) if inferences else ""
@@ -703,12 +856,9 @@ def main():
                 continue
             sub = out_df[out_df['uid'] == uid]
             if len(sub) == 0:
-                rt.logger.finalize(
-                    final_state={'motivation': 0, 'habit': 0, 'receptivity': 0},
-                    summary_stats={'n_rows': 0})
+                rt.logger.finalize(summary_stats={'n_rows': 0})
                 continue
             rt.logger.finalize(
-                final_state={'motivation': 0, 'habit': 0, 'receptivity': 0},
                 summary_stats={
                     'n_rows': int(len(sub)),
                     'mae': float(sub['abs_err'].mean()),
