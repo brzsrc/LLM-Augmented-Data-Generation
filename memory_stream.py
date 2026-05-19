@@ -64,7 +64,7 @@ def create_observation(day: int, slot: int, ctx: dict, action: int, steps: int) 
     """
     ts = f"Day{day}_Slot{slot}"
     obs = f"[{ts}] Location: {ctx['location']}. "
-    obs += f"Weather: {ctx['weather']}, {ctx['temperature']}C. "
+    obs += f"Weather: {ctx['weather']}, {ctx['temperature']}. "
     obs += f"Steps in prior 30min: {ctx['prior_30min_steps']}. Activity: {ctx['activity']}. "
 
     if action == 1:

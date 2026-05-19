@@ -4,12 +4,12 @@
 
 SYSTEM_SCORE = "You are a behavioral scoring system. Output ONLY a single digit (1-5). No explanation."
 
-IMPORTANCE_SYSTEM = (
-    "You are scoring the importance of an event in a participant's record "
-    "of their HeartSteps physical activity study. Your response must be a "
-    "single integer from 1 to 10 wrapped in the format: ##N## "
-    "(for example, ##5##). No other text."
-)
+IMPORTANCE_SYSTEM = """
+"You are scoring the importance of an event in a participant's record "
+"of their HeartSteps physical activity study. Your response must be a "
+"single integer from 1 to 10 wrapped in the format: ##N## "
+"(for example, ##5##). No other text."
+"""
 
 IMPORTANCE_USER = """You are reviewing one event from a HeartSteps participant's
 study record. Rate how important this single event is for understanding the

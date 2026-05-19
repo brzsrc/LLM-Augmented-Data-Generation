@@ -246,7 +246,7 @@ def main():
             all_rows.append(v)
 
     # ================ 多轮重试（温度递降） ================
-    RETRY_TEMPS = [0.8, 0.5, 0.3]
+    RETRY_TEMPS = [0.8, 0.7, 0.5]
     for retry_round, retry_temp in enumerate(RETRY_TEMPS, 1):
         if not failed_tasks:
             break
