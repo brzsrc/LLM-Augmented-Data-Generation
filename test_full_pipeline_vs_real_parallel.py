@@ -94,17 +94,14 @@ def prepare_real_rows(cleaned_path: str, train_uids: list,
 
 
 def _parse_reassess_scores(text: str, expected_n: int) -> Optional[List[int]]:
-    """Parse '##3,2,7,1,5##' into list[int]. Return None on any failure.
-
-    Robust to: leading <think> blocks, extra whitespace, trailing text,
-    integers outside 1-10 (clamped). Returns None if count mismatches.
-    """
     cleaned = _strip_think_tags(text)
-    m = re.search(r'##\s*([\d,\s]+?)\s*##', cleaned)
-    if not m:
+    # 取最后一个 ##...## 块（最终答案通常在末尾）
+    matches = re.findall(r'##\s*([\d,\s]+?)\s*##', cleaned)
+    if not matches:
         return None
+    nums_str = matches[-1]   # 用最后一个
     try:
-        nums = [int(x.strip()) for x in m.group(1).split(',') if x.strip()]
+        nums = [int(x.strip()) for x in nums_str.split(',') if x.strip()]
     except ValueError:
         return None
     if len(nums) != expected_n:
@@ -378,6 +375,7 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
                     uid = reflect_uids[vi]
                     targets = per_uid_reassess_targets[uid]
                     new_scores = _parse_reassess_scores(resp, expected_n=len(targets))
+                    raw_nums_found = re.findall(r'\d+', _strip_think_tags(resp))
 
                     if new_scores is None:
                         # 解析失败 → 保留原分数,记录到 logger 以便诊断
@@ -385,7 +383,7 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
                             # 复用 log_memory_event 留个痕迹
                             runtimes[uid].logger.log_memory_event(
                                 timestamp=f"D{active_ctx[uid][3]['study_day']}_REASSESS_FAIL",
-                                content=f"reassess parse failed; raw response head: {resp[:200]}",
+                                content=f"expected {len(targets)} got {len(raw_nums_found)} ints; head: {resp}",
                                 mem_type="diagnostic",
                                 importance=0,
                             )
@@ -782,8 +780,8 @@ def main():
                    help='打开后做 importance scoring + reflection (慢)')
     p.add_argument('--max_users', type=int, default=None,
                    help='只跑前 N 个 train user (smoke test 用)')
-    p.add_argument('--llm', choices=['simulated', 'qwen'], default='qwen')
-    p.add_argument('--qwen-path', default='../models/Qwen3-8B-AWQ')
+    p.add_argument('--llm', choices=['simulated', 'qwen3_8B', 'qwen3_32B'], default='qwen3_32B')
+    p.add_argument('--qwen-path', default='../models/Qwen3-32B-AWQ')
     p.add_argument('--progress-every-step', type=int, default=25,
                    help='每 N step 打一次进度 (active users / batch / ETA / rolling MAE). 0=关掉')
     p.add_argument('--no-logger', action='store_true',

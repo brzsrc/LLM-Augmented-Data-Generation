@@ -27,13 +27,11 @@ class Qwen3BLLM:
                        trust_remote_code=True)
         self.score_guided = StructuredOutputsParams(choice=[f"##{i}##" for i in range(1, 6)])
         self.score_params = SamplingParams(temperature=0.7, max_tokens=4, structured_outputs=self.score_guided)
+
         self.importance_guided = StructuredOutputsParams(choice=[f"##{i}##" for i in range(1, 11)])
         self.importance_params = SamplingParams(temperature=0.1, max_tokens=4, structured_outputs=self.importance_guided)
+
         self.text_params = SamplingParams(temperature=0.7, max_tokens=500)
-        # Plan B (ARMMAN-style): LLM 输出 ##N## 包裹的步数, 例如 ##250##.
-        # structured_outputs 强制采 choice list 中的一个完整字符串.
-        # 稀疏 choice 控制规模 (4-digit max + ## wrapper, 单选 7-8 字符):
-        #   0-999 全保留, 1000-3000 每 5 步, 3000-9999 每 100 步
         steps_choices = (
             [f"##{i}##" for i in range(0, 1000)] +
             [f"##{i}##" for i in range(1000, 3000, 5)] +
@@ -148,6 +146,153 @@ class Qwen3BLLM:
         self.call_count += len(prompts);
         return [o.outputs[0].text.strip() for o in out]
 
+# ================================================================
+# Qwen3-32B-AWQ
+# ================================================================
+
+class Qwen32BLLM:
+    def __init__(self, model_path: str = "../models/Qwen3-32B-AWQ"):
+        from vllm import LLM, SamplingParams
+        from vllm.sampling_params import StructuredOutputsParams
+        print(f"Loading model: {model_path}")
+        self.llm = LLM(
+            model=model_path,
+            quantization="awq_marlin",         # ← CHANGED: 从 "awq" 改 "awq_marlin",更快
+            dtype="float16",                    # ← NEW: 明确 fp16
+            gpu_memory_utilization=0.90,
+            max_model_len=8192,                 # ← CHANGED: 从 4096 提到 8192 (reassess prompt 可能到 2K)
+            trust_remote_code=True,
+        )
+
+        # score (1-5): 反思打分用
+        self.score_guided = StructuredOutputsParams(choice=[f"##{i}##" for i in range(1, 6)])
+        self.score_params = SamplingParams(
+            temperature=0.7, top_p=0.8, top_k=20,    # ← NEW: Qwen3 官方推荐采样参数
+            max_tokens=4,
+            structured_outputs=self.score_guided
+        )
+
+        # importance (1-10): 单点 importance 打分用
+        self.importance_guided = StructuredOutputsParams(choice=[f"##{i}##" for i in range(1, 11)])
+        self.importance_params = SamplingParams(
+            temperature=0.1, top_p=0.8, top_k=20,    # ← NEW
+            max_tokens=4,
+            structured_outputs=self.importance_guided
+        )
+
+        # text: 反思生成、reassess 重打分都用这个
+        self.text_params = SamplingParams(
+            temperature=0.7, top_p=0.8, top_k=20,    # ← NEW
+            max_tokens=500
+        )
+
+        # steps choices (跟 8B 完全一样,不动)
+        steps_choices = (
+            [f"##{i}##" for i in range(0, 1000)] +
+            [f"##{i}##" for i in range(1000, 3000, 5)] +
+            [f"##{i}##" for i in range(3000, 10000, 100)]
+        )
+        self.steps_guided = StructuredOutputsParams(choice=steps_choices)
+        self.steps_params = SamplingParams(
+            temperature=0.7, top_p=0.8, top_k=20,    # ← NEW
+            max_tokens=12,
+            structured_outputs=self.steps_guided
+        )
+
+        self.debug_steps_outputs = []
+        self.debug_capture_n = 20
+        self.call_count = 0
+        print(f"Model loaded! steps choices = {len(steps_choices)}")
+
+    def _prompt(self, system: str, user: str) -> str:
+        # Qwen3-32B 支持 /no_think 模式开关,跟 8B 一样保留
+        return (f"<|im_start|>system\n{system}<|im_end|>\n"
+                f"<|im_start|>user\n{user}<|im_end|>\n"
+                f"<|im_start|>assistant\n/no_think\n")
+
+    def score_importance(self, system, user):
+        out = self.llm.generate([self._prompt(system, user)], self.importance_params)
+        self.call_count += 1
+        return self._parse_int(out[0].outputs[0].text, lo=1, hi=10, default=5)
+
+    def generate_text(self, system, user):
+        out = self.llm.generate([self._prompt(system, user)], self.text_params)
+        self.call_count += 1
+        return out[0].outputs[0].text.strip()
+
+    def batch_score(self, prompts):
+        fmt = [self._prompt(p["system"], p["user"]) for p in prompts]
+        out = self.llm.generate(fmt, self.score_params)
+        self.call_count += len(prompts)
+        return [self._parse_int(o.outputs[0].text, lo=1, hi=5, default=3) for o in out]
+
+    def judge_steps(self, system, user):
+        out = self.llm.generate([self._prompt(system, user)], self.steps_params)
+        self.call_count += 1
+        raw = out[0].outputs[0].text
+        if len(self.debug_steps_outputs) < self.debug_capture_n:
+            self.debug_steps_outputs.append(raw)
+        return self._parse_steps(raw)
+
+    def batch_importance(self, prompts):
+        fmt = [self._prompt(p["system"], p["user"]) for p in prompts]
+        out = self.llm.generate(fmt, self.importance_params)
+        self.call_count += len(prompts)
+        return [self._parse_int(o.outputs[0].text, lo=1, hi=10, default=5) for o in out]
+
+    def batch_steps(self, prompts):
+        fmt = [self._prompt(p["system"], p["user"]) for p in prompts]
+        out = self.llm.generate(fmt, self.steps_params)
+        self.call_count += len(prompts)
+        results = []
+        for o in out:
+            raw = o.outputs[0].text
+            if len(self.debug_steps_outputs) < self.debug_capture_n:
+                self.debug_steps_outputs.append(raw)
+            results.append(self._parse_steps(raw))
+        return results
+
+    def batch_text(self, prompts):
+        fmt = [self._prompt(p["system"], p["user"]) for p in prompts]
+        out = self.llm.generate(fmt, self.text_params)
+        self.call_count += len(prompts)
+        return [o.outputs[0].text.strip() for o in out]
+
+    # parse 方法跟 8B 完全一样,直接复用
+    @staticmethod
+    def _parse_steps(text: str) -> int:
+        s = text.strip()
+        n = 0
+        found_digit = False
+        for ch in s:
+            if ch.isdigit():
+                found_digit = True
+                n = n * 10 + int(ch)
+                if n > 9999:
+                    return 9999
+            elif found_digit:
+                break
+        return min(n, 9999) if found_digit else 0
+
+    @staticmethod
+    def _parse_int(text: str, lo: int, hi: int, default: int) -> int:
+        s = text.strip()
+        n = 0
+        found = False
+        for ch in s:
+            if ch.isdigit():
+                found = True
+                n = n * 10 + int(ch)
+                if n > hi:
+                    return hi
+            elif found:
+                break
+        if not found:
+            return default
+        return max(lo, min(hi, n))
+
+
+
 
 class SimulatedLLM:
     def __init__(self): self.call_count = 0
@@ -165,3 +310,20 @@ class SimulatedLLM:
     def batch_steps(self, p): self.call_count += len(p); return [int(np.random.lognormal(4.5, 1.2)) for _ in p]
 
     def batch_text(self, p): self.call_count += len(p); return ["Simulated inference." for _ in p]
+
+
+if __name__ == '__main__':
+    llm = Qwen32BLLM(model_path="/root/autodl-tmp/models/Qwen3-32B-AWQ")
+    # 验证 1: structured 输出
+    score = llm.score_importance(
+        "You score events 1-10.",
+        "An event: walked 1500 steps after a sedentary morning. Score: ##N##"
+    )
+    print(f"score: {score}")  # 应该是 1-10 的数字
+
+    # 验证 2: text 输出 (reassess 用的)
+    texts = llm.batch_text([{
+        "system": "Output 50 integers comma-separated wrapped in ##...##.",
+        "user": "Generate 50 random integers 1-10. Output: ##N1,N2,N3,N4,N5...##, where each Ni is an integer 1-10"
+    }])
+    print(f"text: {texts[0]}")  # 应该形如 "##3,7,2,9,4##"
