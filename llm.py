@@ -183,7 +183,7 @@ class Qwen32BLLM:
         # text: 反思生成、reassess 重打分都用这个
         self.text_params = SamplingParams(
             temperature=0.7, top_p=0.8, top_k=20,    # ← NEW
-            max_tokens=500
+            max_tokens=1000
         )
 
         # steps choices (跟 8B 完全一样,不动)

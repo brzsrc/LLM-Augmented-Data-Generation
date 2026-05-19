@@ -97,9 +97,19 @@ def _parse_reassess_scores(text: str, expected_n: int) -> Optional[List[int]]:
     cleaned = _strip_think_tags(text)
     # 取最后一个 ##...## 块（最终答案通常在末尾）
     matches = re.findall(r'##\s*([\d,\s]+?)\s*##', cleaned)
-    if not matches:
-        return None
-    nums_str = matches[-1]   # 用最后一个
+
+    if matches:
+        nums_str = matches[-1]  # 取最后一个 (修上次提的 bug)
+    else:
+        # Fallback: 只有开头 ## 没有结尾 ## (max_tokens 截断的常见情况)
+        m = re.search(r'##\s*([\d,\s]+?)$', cleaned)
+        if m:
+            nums_str = m.group(1)
+        else:
+            return None
+    # if not matches:
+    #     return None
+    # nums_str = matches[-1]   # 用最后一个
     try:
         nums = [int(x.strip()) for x in nums_str.split(',') if x.strip()]
     except ValueError:

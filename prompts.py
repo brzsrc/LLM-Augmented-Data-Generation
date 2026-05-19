@@ -207,7 +207,18 @@ Format your output as a single line of plain text — no preamble, no bullet
 points, no quotes, no special wrappers. Start your response directly with
 the inference sentence.
 
-No other text. Just the one sentence."""
+## Output format Rule
+- A single sentence stating the conclusion.
+- Do NOT include reasoning steps, analysis, or "let me think". Just the conclusion.
+- No other text. Just the one sentence.
+
+## Examples of BAD output (do NOT do this):
+- "Let me look at the data. First I notice that..."
+- "Okay, the user is asking about..."
+- A multi-paragraph analysis.
+
+Your single-sentence conclusion:
+"""
 
 SYS_STEPS = """
 You are a participant who is interested in increasing your walking and 
