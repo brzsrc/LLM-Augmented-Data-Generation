@@ -57,7 +57,7 @@ class Qwen3BLLM:
         self.call_count += 1
         return self._parse_int(out[0].outputs[0].text, lo=1, hi=10, default=5)
 
-    def generate_text(self, system, user):
+    def generate_text(self, system, user, thinking: bool=False):
         out = self.llm.generate([self._prompt(system, user)], self.text_params)
         self.call_count += 1;
         return out[0].outputs[0].text.strip()
@@ -140,7 +140,7 @@ class Qwen3BLLM:
             return default
         return max(lo, min(hi, n))
 
-    def batch_text(self, prompts):
+    def batch_text(self, prompts, thinking: bool=False):
         fmt = [self._prompt(p["system"], p["user"]) for p in prompts]
         out = self.llm.generate(fmt, self.text_params)
         self.call_count += len(prompts);
@@ -180,10 +180,22 @@ class Qwen32BLLM:
             structured_outputs=self.importance_guided
         )
 
-        # text: 反思生成、reassess 重打分都用这个
-        self.text_params = SamplingParams(
-            temperature=0.7, top_p=0.8, top_k=20,    # ← NEW
-            max_tokens=1000
+        # # text: 反思生成、reassess 重打分都用这个
+        # self.text_params = SamplingParams(
+        #     temperature=0.7, top_p=0.8, top_k=20,    # ← NEW
+        #     max_tokens=1000
+        # )
+
+        # ⚠️ thinking 任务用大 max_tokens
+        self.text_params_thinking = SamplingParams(
+            temperature=0.7, top_p=0.8, top_k=20,
+            max_tokens=2048,  # ← thinking 需要足够空间
+        )
+
+        # ⚠️ no-think 任务用小 max_tokens
+        self.text_params_no_think = SamplingParams(
+            temperature=0.7, top_p=0.8, top_k=20,
+            max_tokens=300,  # ← 直接答案,不需要太长
         )
 
         # steps choices (跟 8B 完全一样,不动)
@@ -204,30 +216,50 @@ class Qwen32BLLM:
         self.call_count = 0
         print(f"Model loaded! steps choices = {len(steps_choices)}")
 
-    def _prompt(self, system: str, user: str) -> str:
-        # Qwen3-32B 支持 /no_think 模式开关,跟 8B 一样保留
+    # def _prompt(self, system: str, user: str) -> str:
+    #     # Qwen3-32B 支持 /no_think 模式开关,跟 8B 一样保留
+    #     return (f"<|im_start|>system\n{system}<|im_end|>\n"
+    #             f"<|im_start|>user\n{user}<|im_end|>\n"
+    #             f"<|im_start|>assistant\n/no_think\n")
+
+    # 两种 prompt 风格
+    def _prompt_thinking(self, system: str, user: str) -> str:
+        """强制 LLM 进入 thinking 模式 — 预填 <think>"""
         return (f"<|im_start|>system\n{system}<|im_end|>\n"
                 f"<|im_start|>user\n{user}<|im_end|>\n"
-                f"<|im_start|>assistant\n/no_think\n")
+                f"<|im_start|>assistant\n<think>\n")
+
+    def _prompt_no_think(self, system: str, user: str) -> str:
+        """跳过 thinking — 预填空 <think></think>"""
+        return (f"<|im_start|>system\n{system}<|im_end|>\n"
+                f"<|im_start|>user\n{user}<|im_end|>\n"
+                f"<|im_start|>assistant\n<think>\n\n</think>\n\n")
 
     def score_importance(self, system, user):
-        out = self.llm.generate([self._prompt(system, user)], self.importance_params)
+        out = self.llm.generate([self._prompt_no_think(system, user)], self.importance_params)
         self.call_count += 1
         return self._parse_int(out[0].outputs[0].text, lo=1, hi=10, default=5)
 
-    def generate_text(self, system, user):
-        out = self.llm.generate([self._prompt(system, user)], self.text_params)
+    def generate_text(self, system, user, thinking: bool=False):
+        """
+        thinking=False (default): 跳过思考, 适合 questions 生成、短答案
+        thinking=True: 允许思考, 适合 reflection inference 和 reassess
+        """
+        if thinking:
+            out = self.llm.generate([self._prompt_thinking(system, user)], self.text_params_thinking)
+        else:
+            out = self.llm.generate([self._prompt_no_think(system, user)], self.text_params_no_think)
         self.call_count += 1
         return out[0].outputs[0].text.strip()
 
     def batch_score(self, prompts):
-        fmt = [self._prompt(p["system"], p["user"]) for p in prompts]
+        fmt = [self._prompt_no_think(p["system"], p["user"]) for p in prompts]
         out = self.llm.generate(fmt, self.score_params)
         self.call_count += len(prompts)
         return [self._parse_int(o.outputs[0].text, lo=1, hi=5, default=3) for o in out]
 
     def judge_steps(self, system, user):
-        out = self.llm.generate([self._prompt(system, user)], self.steps_params)
+        out = self.llm.generate([self._prompt_no_think(system, user)], self.steps_params)
         self.call_count += 1
         raw = out[0].outputs[0].text
         if len(self.debug_steps_outputs) < self.debug_capture_n:
@@ -235,13 +267,13 @@ class Qwen32BLLM:
         return self._parse_steps(raw)
 
     def batch_importance(self, prompts):
-        fmt = [self._prompt(p["system"], p["user"]) for p in prompts]
+        fmt = [self._prompt_no_think(p["system"], p["user"]) for p in prompts]
         out = self.llm.generate(fmt, self.importance_params)
         self.call_count += len(prompts)
         return [self._parse_int(o.outputs[0].text, lo=1, hi=10, default=5) for o in out]
 
     def batch_steps(self, prompts):
-        fmt = [self._prompt(p["system"], p["user"]) for p in prompts]
+        fmt = [self._prompt_no_think(p["system"], p["user"]) for p in prompts]
         out = self.llm.generate(fmt, self.steps_params)
         self.call_count += len(prompts)
         results = []
@@ -252,9 +284,20 @@ class Qwen32BLLM:
             results.append(self._parse_steps(raw))
         return results
 
-    def batch_text(self, prompts):
-        fmt = [self._prompt(p["system"], p["user"]) for p in prompts]
-        out = self.llm.generate(fmt, self.text_params)
+        # text 任务: 有两个版本 - thinking 和 no_think
+    def batch_text(self, prompts, thinking: bool=False):
+        """
+        thinking=False (default): 跳过思考, 适合 questions 生成、短答案
+        thinking=True: 允许思考, 适合 reflection inference 和 reassess
+        """
+        if thinking:
+            fmt = [self._prompt_thinking(p["system"], p["user"]) for p in prompts]
+            params = self.text_params_thinking
+        else:
+            fmt = [self._prompt_no_think(p["system"], p["user"]) for p in prompts]
+            params = self.text_params_no_think
+
+        out = self.llm.generate(fmt, params)
         self.call_count += len(prompts)
         return [o.outputs[0].text.strip() for o in out]
 
@@ -299,7 +342,7 @@ class SimulatedLLM:
 
     def score_importance(self, s, u): self.call_count += 1; return int(np.random.randint(3, 8))
 
-    def generate_text(self, s, u): self.call_count += 1; return "Simulated inference."
+    def generate_text(self, s, u, thinking: bool=False): self.call_count += 1; return "Simulated inference."
 
     def batch_score(self, p): self.call_count += len(p); return [int(np.random.randint(1, 6)) for _ in p]
 
@@ -309,7 +352,7 @@ class SimulatedLLM:
 
     def batch_steps(self, p): self.call_count += len(p); return [int(np.random.lognormal(4.5, 1.2)) for _ in p]
 
-    def batch_text(self, p): self.call_count += len(p); return ["Simulated inference." for _ in p]
+    def batch_text(self, p, thinking: bool=False): self.call_count += len(p); return ["Simulated inference." for _ in p]
 
 
 if __name__ == '__main__':

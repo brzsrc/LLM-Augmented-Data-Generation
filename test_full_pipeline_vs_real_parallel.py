@@ -378,7 +378,7 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
                 # batch 调用 (跳过 None — 这些 uid 没东西可重打)
                 valid_indices = [i for i, p in enumerate(reassess_prompts) if p is not None]
                 valid_prompts = [reassess_prompts[i] for i in valid_indices]
-                valid_responses = llm.batch_text(valid_prompts) if valid_prompts else []
+                valid_responses = llm.batch_text(valid_prompts, thinking=True) if valid_prompts else []
 
                 # 应用新分数
                 for vi, resp in zip(valid_indices, valid_responses):
@@ -459,7 +459,7 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
 
                 valid_idx = [i for i, p in enumerate(refl_reassess_prompts) if p is not None]
                 valid_prompts = [refl_reassess_prompts[i] for i in valid_idx]
-                valid_responses = llm.batch_text(valid_prompts) if valid_prompts else []
+                valid_responses = llm.batch_text(valid_prompts, thinking=True) if valid_prompts else []
 
                 for vi, resp in zip(valid_idx, valid_responses):
                     uid = reflect_uids[vi]
@@ -520,7 +520,7 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
                         })
                         inf_map.append((j, uid, q))
 
-                inf_responses = llm.batch_text(inf_prompts) if inf_prompts else []
+                inf_responses = llm.batch_text(inf_prompts, thinking=True) if inf_prompts else []
                 # 写入记忆流 — 清洗 <think>...</think> 块
                 for k_inf, (j, uid, q) in enumerate(inf_map):
                     resp = inf_responses[k_inf] if k_inf < len(inf_responses) else ""
