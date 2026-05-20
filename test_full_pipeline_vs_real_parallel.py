@@ -830,8 +830,11 @@ def main():
                              train_uids_path=args.train,
                              test_uids_path=args.test_uids)
 
-    if args.llm != 'simulated':
-        print(f'[llm] loading {args.llm} from {args.qwen_path}')
+    if args.llm == 'qwen3_32B':
+        print(f'[qwen3_32B] loading {args.llm} from {args.qwen_path}')
+        llm = LM.Qwen32BLLM(model_path=args.qwen_path)
+    elif args.llm == 'qwen3_8B':
+        print(f'[qwen3_8B] loading {args.llm} from {args.qwen_path}')
         llm = LM.Qwen3BLLM(model_path=args.qwen_path)
     else:
         print('[llm] using SimulatedLLM (random)')
