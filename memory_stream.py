@@ -123,32 +123,55 @@ class MemoryStream:
 
         return all_candidates
 
+
 def create_observation(day: int, slot: int, ctx: dict, action: int, steps: int) -> str:
     ts = f"Day{day}_Slot{slot}"
     obs = f"[{ts}] Location: {ctx['location']}. "
     obs += f"Weather: {ctx['weather']}, {ctx['temperature']}. "
     obs += f"Steps in prior 30min: {ctx['prior_30min_steps']}. Activity: {ctx['activity']}. "
 
-    # Map raw response label to clearer phrasing that won't confuse the LLM
-    response_map = {
-        'good': 'I rated the suggestion as helpful',
-        'bad':  'I rated the suggestion as unhelpful',
-        'no_response': 'I did not rate the suggestion',
-    }
-
     if action == 1:
         obs += "System sent an ACTIVE walking suggestion. "
-        obs += f"Steps in following 30min: {steps}. "
+        obs += f"Steps in following 30min: {steps} after suggestion. "
         if ctx.get('response'):
-            desc = response_map.get(ctx['response'], ctx['response'])
-            obs += f"My rating of the suggestion: {desc} (this is my subjective opinion, NOT a measure of how much I walked). "
+            obs += f"Participant response: {ctx['response']}. "
     elif action == 2:
         obs += "System sent a SEDENTARY/stand-up suggestion. "
         obs += f"Steps in following 30min: {steps}. "
         if ctx.get('response'):
-            desc = response_map.get(ctx['response'], ctx['response'])
-            obs += f"My rating of the suggestion: {desc} (this is my subjective opinion, NOT a measure of how much I walked). "
+            obs += f"Participant response: {ctx['response']}. "
     else:
         obs += f"No suggestion sent. Steps in following 30min: {steps}. "
 
     return obs
+
+
+# def create_observation(day: int, slot: int, ctx: dict, action: int, steps: int) -> str:
+#     ts = f"Day{day}_Slot{slot}"
+#     obs = f"[{ts}] Location: {ctx['location']}. "
+#     obs += f"Weather: {ctx['weather']}, {ctx['temperature']}. "
+#     obs += f"Steps in prior 30min: {ctx['prior_30min_steps']}. Activity: {ctx['activity']}. "
+#
+#     # Map raw response label to clearer phrasing that won't confuse the LLM
+#     response_map = {
+#         'good': 'I rated the suggestion as helpful',
+#         'bad':  'I rated the suggestion as unhelpful',
+#         'no_response': 'I did not rate the suggestion',
+#     }
+#
+#     if action == 1:
+#         obs += "System sent an ACTIVE walking suggestion. "
+#         obs += f"Steps in following 30min: {steps}. "
+#         if ctx.get('response'):
+#             desc = response_map.get(ctx['response'], ctx['response'])
+#             obs += f"My rating of the suggestion: {desc} (this is my subjective opinion, NOT a measure of how much I walked). "
+#     elif action == 2:
+#         obs += "System sent a SEDENTARY/stand-up suggestion. "
+#         obs += f"Steps in following 30min: {steps}. "
+#         if ctx.get('response'):
+#             desc = response_map.get(ctx['response'], ctx['response'])
+#             obs += f"My rating of the suggestion: {desc} (this is my subjective opinion, NOT a measure of how much I walked). "
+#     else:
+#         obs += f"No suggestion sent. Steps in following 30min: {steps}. "
+#
+#     return obs

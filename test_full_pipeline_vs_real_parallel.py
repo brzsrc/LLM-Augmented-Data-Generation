@@ -506,7 +506,7 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
                     recent_ref = runtimes[uid].stream.get_recent_weighted_ref(n=5)
                     obs_text = runtimes[uid].stream.format_memories(recent_obs)
                     ref_text = runtimes[uid].stream.format_memories(recent_ref)
-                    q_user = REFLECTION_Q_PROMPT.format(recent_obs=obs_text, recent_ref=ref_text)
+                    q_user = REFLECTION_Q_PROMPT.format(recent_obs=obs_text)
                     per_uid_q_prompt_text[uid] = q_user
                     per_uid_recent_text[uid] = (obs_text, ref_text)
                     q_prompts.append({
@@ -529,7 +529,7 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
                         inf_prompts.append({
                             "system": REFLECTION_GEN_SYS,
                             "user": REFLECTION_GEN_PROMPT.format(
-                                question=q, recent_obs=obs_text, recent_ref=ref_text)
+                                question=q, recent_obs=obs_text)
                         })
                         inf_map.append((j, uid, q))
 
