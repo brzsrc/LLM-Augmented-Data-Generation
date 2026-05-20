@@ -59,7 +59,7 @@ class Qwen3BLLM:
 
     def generate_text(self, system, user, thinking: bool=False):
         out = self.llm.generate([self._prompt(system, user)], self.text_params)
-        self.call_count += 1;
+        self.call_count += 1
         return out[0].outputs[0].text.strip()
 
     def batch_score(self, prompts):
@@ -143,7 +143,7 @@ class Qwen3BLLM:
     def batch_text(self, prompts, thinking: bool=False):
         fmt = [self._prompt(p["system"], p["user"]) for p in prompts]
         out = self.llm.generate(fmt, self.text_params)
-        self.call_count += len(prompts);
+        self.call_count += len(prompts)
         return [o.outputs[0].text.strip() for o in out]
 
 # ================================================================
@@ -162,6 +162,8 @@ class Qwen32BLLM:
             gpu_memory_utilization=0.90,
             max_model_len=8192,                 # ← CHANGED: 从 4096 提到 8192 (reassess prompt 可能到 2K)
             trust_remote_code=True,
+            enable_prefix_caching=True,  # ← 加这行
+            enable_chunked_prefill=True,  # ← 加这行
         )
 
         # score (1-5): 反思打分用
