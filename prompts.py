@@ -136,6 +136,10 @@ At each decision point, the system observes your current situation and sometimes
 sends a suggestion to encourage you walking or not being still more.
 
 You are now pausing to reflect on how you react to these suggestions based on your recent memories.
+
+Note: "My rating of the suggestion" is your subjective opinion of the 
+suggestion. The ACTUAL behavior is "Steps in following 30min". These two 
+are different — focus on actual steps when investigating patterns.
 """
 
 REFLECTION_Q_PROMPT = """
@@ -175,7 +179,6 @@ Q3: <your third question>
 
 No other text. No preamble. No explanation. Just the three lines."""
 
-
 REFLECTION_GEN_SYS = """
 You are a participant who is interested in increasing your walking and 
 enrolled in a study helping individuals increase and sustain physical activity. 
@@ -186,6 +189,17 @@ At each decision point, the system observes your current situation and sometimes
 sends a suggestion to encourage you walking or not being still more.
 
 You are now reflecting on your own behavior of how you react to these suggestions based on your recent memories.
+
+CRITICAL — How to read the data:
+- "Steps in following 30min: N" is the actual behavior — how many steps you 
+  walked. This is the ground truth for whether you moved or not.
+- "My rating of the suggestion: good/bad/no_response" is your SUBJECTIVE 
+  opinion of whether the suggestion was helpful. It is NOT a measure of how 
+  much you walked.
+- You can rate a suggestion as "bad" (you disliked it) but still walk many 
+  steps. You can rate a suggestion as "good" but walk few steps.
+- When analyzing whether you respond to suggestions, ALWAYS look at the 
+  actual step count, NEVER infer behavior from the rating label alone.
 """
 
 REFLECTION_GEN_PROMPT = """
@@ -237,62 +251,6 @@ Your response must be ONLY a single non-negative integer wrapped in the format:
 ##N## (for example, ##250##). No other text.
 """
 
-# PROMPT_STEPS = """
-# Your background:
-# {persona}
-#
-# Your historical step counts at this same time-of-day slot (most recent first;
-# these are YOUR actual past behavior, not averages):
-# {slot_history}
-#
-# Recent records of your own behavior and reflections from earlier in the study (most recent
-# first; includes both raw events and higher-level patterns you have noticed
-# about yourself):
-# {recent_obs}
-#
-# Reference points (long-run averages — these are summaries, NOT predictions
-# of this specific moment; individual moments are highly variable):
-# - Your typical mean at this slot + location: ~{user_bin_mean} steps (source: {user_bin_source})
-# - Your typical mean across all slots: ~{user_overall_mean} steps
-# - Population mean at this slot + location: ~{pop_bin_mean} steps
-#
-# Your current situation:
-# - Day {study_day} of the study, slot {slot} ({weekday_desc})
-# - Location: {location}
-# - Current activity state: {activity}
-# - Weather: {weather}, {temperature}°C
-# - Steps you walked in the prior 30 minutes: {prior_30min_steps}
-# - Suggestion the system is sending you now: {action_desc}
-#
-# Key considerations:
-# - A high step count at a previous slot does NOT necessarily imply a high
-#   step count now; a zero at a previous slot does NOT necessarily imply
-#   another zero. About 30% of slots have zero steps even for active users.
-# - Engagement should depend on your specific circumstances this moment
-#   (current location, prior activity, whether you feel like walking, whether
-#   the suggestion appeals to you).
-# - If your prior 30 minutes were zero AND your recent same-slot history
-#   shows zeros, you are probably still sitting; output a low or zero value.
-# - If your prior 30 minutes were high AND you are in a walking-conducive
-#   location, momentum often continues; output a high value.
-# - If the system is sending an active walking suggestion AND your
-#   reflections show you respond to suggestions, you may walk more than
-#   your typical baseline.
-# - Being in a sedentary location (Home, Work, Electronics Store) during
-#   a non-active activity state often means low or zero steps regardless
-#   of suggestion.
-# - The reference means above are averages over many weeks; do not copy them:
-#     pick the value that fits THIS moment's specific signals.
-#
-# Decide how many steps you will walk in the next 30 minutes. Your response
-# must be a single non-negative integer wrapped in this exact format:
-#
-# ##N##
-#
-# For example: ##0## or ##250## or ##1800##.
-#
-# No other text. No explanation. Just ##N##."""
-
 PROMPT_STEPS = """
 Your background:
 {persona}
@@ -331,6 +289,11 @@ Key considerations:
 - Being in a sedentary location (Home, Work, Electronics Store etc) during
   a non-active activity state might means low or zero steps regardless
   of suggestion.
+- "My rating of the suggestion: good/bad/no_response" is your SUBJECTIVE 
+  opinion of whether the suggestion was helpful. It is NOT a measure of how 
+  much you walked.
+- You can rate a suggestion as "bad" (you disliked it) but still walk many 
+  steps. You can rate a suggestion as "good" but walk few steps.
 
 Decide how many steps you will walk in the next 30 minutes. Your response
 must be a single non-negative integer wrapped in this exact format:

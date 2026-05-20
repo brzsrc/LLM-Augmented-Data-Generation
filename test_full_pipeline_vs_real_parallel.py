@@ -22,10 +22,23 @@ matplotlib.rcParams['font.family'] = 'DejaVu Sans'
 
 
 def _strip_think_tags(text: str) -> str:
-    """Remove <think>...</think> blocks and any stray tags from LLM output."""
-    # 移除完整的 <think>...</think> 块（包括跨行）
+    """Remove thinking content from LLM output.
+
+    Three cases to handle:
+    1. Prompt pre-filled <think>\n (so output is "<thinking>...</think>\n\n<answer>"):
+       Take everything AFTER the first </think>.
+    2. Full <think>...</think> block in middle of text: remove via regex.
+    3. Stray <think> or </think> tags: clean up.
+    """
+    # Case 1 (主要场景): 如果有 </think>, 丢掉它及之前的全部内容
+    # 这处理了 prompt 预填 <think> 导致开头标签不在输出里的情况
+    if '</think>' in text:
+        text = text.split('</think>', 1)[1]
+
+    # Case 2: 残留的完整 <think>...</think> 块
     text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
-    # 移除残留的孤立标签
+
+    # Case 3: 残留标签清理
     text = text.replace('<think>', '').replace('</think>', '')
     return text.strip()
 

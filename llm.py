@@ -198,7 +198,7 @@ class Qwen32BLLM:
         # ⚠️ no-think 任务用小 max_tokens
         self.text_params_no_think = SamplingParams(
             temperature=0.7, top_p=0.8, top_k=20,
-            max_tokens=300,  # ← 直接答案,不需要太长
+            max_tokens=400,  # ← 直接答案,不需要太长
         )
 
         # steps choices (跟 8B 完全一样,不动)
