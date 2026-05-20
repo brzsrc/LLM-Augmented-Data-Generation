@@ -162,8 +162,9 @@ class Qwen32BLLM:
             gpu_memory_utilization=0.90,
             max_model_len=8192,                 # ← CHANGED: 从 4096 提到 8192 (reassess prompt 可能到 2K)
             trust_remote_code=True,
-            enable_prefix_caching=True,  # ← 加这行
-            enable_chunked_prefill=True,  # ← 加这行
+            # enable_prefix_caching=True,  # ← 加这行
+            # enable_chunked_prefill=True,  # ← 加这行
+            tensor_parallel_size=2,
         )
 
         # score (1-5): 反思打分用
