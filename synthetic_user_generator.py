@@ -1,613 +1,718 @@
-# """
-# synthetic_user_generator_v3_cleaned.py
-# ======================================
-# 基于 cleaned_output.csv 重写的合成用户生成器。
-#
-# 与 v3 原版相比的所有修改：
-#   【修改1】输入数据：suggestions.csv + users.csv → cleaned_output.csv + users.csv
-#   【修改2】列名映射：user.index→uid, sugg.select.slot→day_slot,
-#            dec.temperature→temperature, recognized.activity→activity,
-#            dec.location.category→location, dec.weather.condition→weather
-#   【修改3】send 编码：True/False → 0/1/2 (0=no_send, 1=active, 2=sedentary)
-#   【修改4】location 分类：3类(home/work/other) → 16类(直接用cleaned的分类)
-#   【修改5】avail 率：硬编码(70%/83%) → 从数据按slot提取实际值
-#   【修改6】步数统计：global_mean=276 → 从cleaned计算=246.5
-#   【修改7】零值率：0.27 → 从cleaned计算=0.371
-#   【修改8】activity 名称：WALKING → ON_FOOT
-#   【修改9】发送概率：固定π_b=0.3 → 基于is_randomized的三值概率
-#   【修改10】TE 计算：send==True vs False → send>0 vs send==0
-#   【修改11】response 列：新增 good/bad/no_response/snoozed 信息用于观察记录
-#   【修改12】dosage 计算：适配 send=1 和 send=2 都算发送
-#   【修改13】create_observation：区分 active suggestion 和 sedentary suggestion
-# """
-#
-# import os
-# import sys
-# import json
-# import time
-# import numpy as np
-# import pandas as pd
-# from typing import List, Optional, Dict, Tuple
-# from collections import Counter
-# from pathlib import Path
-# import argparse
-# import warnings
-#
-# from data_extractor import V1DataExtractor, generate_base_steps, generate_context, generate_baseline_vectors
-# from llm import Qwen3BLLM, SimulatedLLM
-# from memory_stream import Memory, create_observation, MemoryStream
-# from prompts import REFLECTION_GEN_PROMPT, MOTIVATION_PROMPT, HABIT_PROMPT, RECEPTIVITY_PROMPT, SYSTEM_SCORE, \
-#     REFLECTION_Q_PROMPT, IMPORTANCE_SYSTEM, IMPORTANCE_USER, PROMPT_ADJUSTMENT, SYS_ADJUSTMENT
-#
-# warnings.filterwarnings('ignore')
-#
-#
-# import re
-#
-# def _strip_think_tags(text: str) -> str:
-#     """Remove <think>...</think> blocks and any stray tags from LLM output."""
-#     # 移除完整的 <think>...</think> 块（包括跨行）
-#     text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
-#     # 移除残留的孤立标签
-#     text = text.replace('<think>', '').replace('</think>', '')
-#     return text.strip()
-#
-#
-# def _parse_questions(raw: str, max_n: int = 3) -> List[str]:
-#     """
-#     Robustly parse a list of questions out of LLM output.
-#     Handles: leading </think> tags, blank lines, numbered list prefixes
-#     like '1.', '1)', '- ', '* '. Only keeps lines that look like real questions.
-#     """
-#     cleaned = _strip_think_tags(raw)
-#     questions = []
-#     for line in cleaned.split('\n'):
-#         line = line.strip()
-#         if not line:
-#             continue
-#         # 去掉行首的列表序号: "1.", "1)", "1:", "- ", "* ", "Q1:", etc.
-#         line = re.sub(r'^\s*(?:Q\s*\d+[.):]?|\d+[.):]|[-*•])\s*', '', line, flags=re.IGNORECASE).strip()
-#         if not line:
-#             continue
-#         # 只保留像问题的行：有一定长度，且形式上像一句话/问句
-#         # 排除明显不是问题的残留标签或元注释
-#         if len(line) < 15:
-#             continue
-#         if line.lower().startswith(('<think', '</think', 'note:', 'here are', 'list ')):
-#             continue
-#         questions.append(line)
-#         if len(questions) >= max_n:
-#             break
-#     return questions
-#
-#
-# # ================================================================
-# # 第六部分：单用户模拟（逐步串行，结构不变）
-# # ================================================================
-#
-# def simulate_user(
-#     user_id: int, user_params: dict, ext: V1DataExtractor, llm,
-#     n_days: int = 42, slots_per_day: int = 5, n_samples: int = 3,
-#     output_dir: str = "./output", verbose: bool = True,
-# ) -> pd.DataFrame:
-#     from trace_logger import TraceLogger
-#     os.makedirs(output_dir, exist_ok=True)
-#
-#     print(f"\n{'='*60}")
-#     print(f"Simulating Synthetic User {user_id} ({n_days} days × {slots_per_day} slots)")
-#     print(f"{'='*60}")
-#
-#     stream = MemoryStream()
-#     persona = (f"Age {int(user_params['age'])}, {user_params['gender']}. "
-#                f"Self-efficacy {user_params['selfeff.intake']:.1f}/25, "
-#                f"conscientiousness {user_params['consc']:.1f}/30. "
-#                f"Baseline ~{int(user_params['predicted_mean_steps'])} steps/decision. "
-#                f"Initial treatment effect {user_params['predicted_te']:+.0f} steps.")
-#     for line in persona.strip().split('. '):
-#         if line.strip():
-#             stream.add(Memory("study_start", line.strip() + ".", "background", 7))
-#
-#     logger = TraceLogger(output_dir, user_id=user_id, user_params=user_params)
-#     logger.log_user_init(user_params,
-#         {'motivation': 3, 'habit': 1, 'receptivity': 4}, persona)
-#
-#     trajectory = []
-#     dosage = 0.0
-#     motivation_raw, habit_raw, receptivity_raw = [], [], []
-#     start_time = time.time()
-#     T = n_days * slots_per_day
-#     step_idx = 0
-#
-#     for day in range(1, n_days + 1):
-#         for slot in range(1, slots_per_day + 1):
-#             step_idx += 1
-#             ctx = generate_context(ext, user_params, day, slot, trajectory)
-#             action = ctx['action']
-#
-#             # 生成步数
-#             if ctx['avail']:
-#                 base = generate_base_steps(user_params, ctx, action, dosage, ext)
-#                 obs_text = stream.format_memories(stream.get_recent(5, "observation"))
-#                 # 【修改3】action_desc 区分 0/1/2
-#                 action_desc = {0: "No", 1: "Active walking suggestion", 2: "Sedentary stand-up suggestion"}.get(action, "No")
-#                 adj_prompt = PROMPT_ADJUSTMENT.format(
-#                     persona=persona[:200],
-#                     motivation=motivation_raw[-1] if motivation_raw else 3,
-#                     habit=habit_raw[-1] if habit_raw else 1,
-#                     receptivity=receptivity_raw[-1] if receptivity_raw else 4,
-#                     study_day=day, slot=slot, location=ctx['location'],
-#                     action_desc=action_desc, base_steps=base,
-#                     recent_obs=obs_text[:400] if obs_text else "No prior observations.")
-#                 adj = llm.judge_adjustment(SYS_ADJUSTMENT, adj_prompt)
-#                 adj = max(-50, min(100, adj))
-#                 steps = max(0, int(base * (1 + adj / 100)))
-#             else:
-#                 base, adj, steps, adj_prompt = 0, 0, 0, ""
-#
-#             reward = np.log(steps + 0.5)
-#             # 【修改12】dosage: send=1 和 send=2 都累加
-#             dosage = 0.95 * dosage + (1 if action > 0 else 0)
-#
-#             observation = create_observation(day, slot, ctx, action, steps)
-#
-#             imp_prompt = IMPORTANCE_USER.format(observation=observation)
-#             imp_str = llm.score_importance(IMPORTANCE_SYSTEM, imp_prompt)
-#             try: importance = max(1, min(10, int(imp_str)))
-#             except: importance = 5
-#
-#             stream.add(Memory(f"Day{day}_Slot{slot}", observation, "observation", importance))
-#             logger.log_observation(day, slot, observation, importance,
-#                                    stream.importance_since_reflection)
-#
-#             # 反思触发（不变）
-#             if stream.should_reflect():
-#                 recent = stream.get_recent(15)
-#                 recent_text = stream.format_memories(recent)
-#                 q_prompt_text = REFLECTION_Q_PROMPT.format(recent_memories=recent_text)
-#                 q_response = llm.generate_text("You are a behavioral analysis system.", q_prompt_text)
-#                 questions = _parse_questions(q_response, max_n=3)
-#                 reflection_details = []
-#                 for q in questions:
-#                     ref_gen_prompt = REFLECTION_GEN_PROMPT.format(question=q, relevant_memories=recent_text)
-#                     ref_text = llm.generate_text("You are a behavioral analysis system. Write concise inferences.", ref_gen_prompt)
-#                     ref_text_clean = _strip_think_tags(ref_text)
-#                     stream.add(Memory(f"Day{day}_Slot{slot}", ref_text_clean, "reflection", 8))
-#                     reflection_details.append({"question": q, "prompt": ref_gen_prompt, "response": ref_text_clean})
-#                 stream.reset_reflection_counter()
-#
-#                 cur_state = {
-#                     'motivation': motivation_raw[-1] if motivation_raw else 3,
-#                     'habit': habit_raw[-1] if habit_raw else 1,
-#                     'receptivity': receptivity_raw[-1] if receptivity_raw else 4,
-#                 }
-#                 reflection_text = "\n".join(d['response'] for d in reflection_details)
-#                 logger.log_reflection(
-#                     day=day,
-#                     reflection_text=reflection_text,
-#                     old_state=cur_state,
-#                     new_state=cur_state,  # 反思不直接改状态，状态在评分时更新
-#                     raw_llm_state=(cur_state['motivation'], cur_state['habit'], cur_state['receptivity']),
-#                     constrained_state=cur_state,
-#                     reflect_prompt=q_prompt_text,
-#                     recent_obs_text=recent_text[:600],
-#                     questions=[d['question'] for d in reflection_details],
-#                     inferences=[d['response'] for d in reflection_details],
-#                 )
-#                 if verbose: print(f"  [D{day}S{slot}] Reflection triggered ({len(questions)} questions)")
-#
-#             # 评分（不变）
-#             recent_obs = stream.get_recent(10, "observation")
-#             recent_ref = stream.get_recent(3, "reflection")
-#             recent_obs_text = stream.format_memories(recent_obs)
-#             recent_ref_text = stream.format_memories(recent_ref) if recent_ref else "No reflections yet."
-#             same_slot_data = [t for t in trajectory if t['slot'] == slot][-7:]
-#             slot_pattern = ", ".join(f"D{t['study_day']}={t['jbsteps30']}" for t in same_slot_data) or "No data"
-#             if len(same_slot_data) >= 3:
-#                 ss = [t['jbsteps30'] for t in same_slot_data]
-#                 cv = np.std(ss) / (np.mean(ss) + 1)
-#                 consistency_desc = f"CV={cv:.2f}"
-#             else:
-#                 consistency_desc = "Too few data points"
-#
-#             action_desc = {0: "No", 1: "Active suggestion", 2: "Sedentary suggestion"}.get(action, "No")
-#             score_prompts = []
-#             m_user = MOTIVATION_PROMPT.format(seed_memory=persona[:400], recent_reflections=recent_ref_text,
-#                 recent_observations=recent_obs_text, study_day=day, slot=slot,
-#                 pre30_steps=ctx['prior_30min_steps'], action_desc=action_desc, post_steps=steps)
-#             for _ in range(n_samples): score_prompts.append({"system": SYSTEM_SCORE, "user": m_user})
-#             h_user = HABIT_PROMPT.format(seed_memory=persona[:400], recent_observations=recent_obs_text,
-#                 slot_pattern=slot_pattern, consistency_desc=consistency_desc, study_day=day)
-#             for _ in range(n_samples): score_prompts.append({"system": SYSTEM_SCORE, "user": h_user})
-#             r_user = RECEPTIVITY_PROMPT.format(seed_memory=persona[:400], recent_reflections=recent_ref_text,
-#                 recent_observations=recent_obs_text, study_day=day, slot=slot, dosage=dosage)
-#             for _ in range(n_samples): score_prompts.append({"system": SYSTEM_SCORE, "user": r_user})
-#
-#             all_scores = llm.batch_score(score_prompts)
-#             def parse_scores(raw):
-#                 parsed = [max(1, min(5, int(s))) if s.isdigit() else 3 for s in raw]
-#                 return Counter(parsed).most_common(1)[0][0]
-#             m_score = parse_scores(all_scores[0:n_samples])
-#             h_score = parse_scores(all_scores[n_samples:2*n_samples])
-#             r_score = parse_scores(all_scores[2*n_samples:3*n_samples])
-#             motivation_raw.append(m_score); habit_raw.append(h_score); receptivity_raw.append(r_score)
-#
-#             logger.log_decision_point(
-#                 day=day, slot=slot, ctx=ctx, action=action,
-#                 base_steps=base, llm_adj_pct=adj, final_steps=steps,
-#                 state={'motivation': m_score, 'habit': h_score, 'receptivity': r_score},
-#                 dosage=dosage,
-#                 prompt_text=adj_prompt if ctx['avail'] else "",
-#                 llm_raw_output=str(adj),
-#                 importance=importance,
-#                 importance_acc=stream.importance_since_reflection,
-#                 reflection_triggered=False,
-#             )
-#
-#             # 【修改3】send 列记录 0/1/2
-#             trajectory.append(dict(
-#                 user_id=user_id, study_day=day, slot=slot, avail=ctx['avail'],
-#                 send=action, jbsteps30=steps, base_steps=base, llm_adj_pct=adj,
-#                 jbsteps30pre=ctx['prior_30min_steps'], location=ctx['location'],
-#                 temperature=ctx['temperature'], weather=ctx['weather'],
-#                 dosage=round(dosage, 3), reward=round(reward, 4),
-#                 motivation_raw=m_score, habit_raw=h_score, receptivity_raw=r_score,
-#                 weekday=ctx['weekday'], activity=ctx['activity'],
-#                 response=ctx.get('response', 'no_send'),
-#             ))
-#
-#             if step_idx % 35 == 0 and verbose:
-#                 elapsed = time.time() - start_time
-#                 print(f"  [{step_idx}/{T}] M={m_score} H={h_score} R={r_score}, LLM calls={llm.call_count}, {elapsed:.0f}s")
-#
-#     # 时序平滑
-#     def smooth(scores, alpha=0.7):
-#         result = [float(scores[0])]
-#         for i in range(1, len(scores)):
-#             result.append(alpha * scores[i] + (1 - alpha) * result[-1])
-#         return [max(1, min(5, round(s))) for s in result]
-#
-#     df = pd.DataFrame(trajectory)
-#     df['motivation'] = smooth(motivation_raw)
-#     df['habit'] = smooth(habit_raw)
-#     df['receptivity'] = smooth(receptivity_raw)
-#
-#     logger.finalize(
-#         final_state={'motivation': motivation_raw[-1] if motivation_raw else 3,
-#                      'habit': habit_raw[-1] if habit_raw else 1,
-#                      'receptivity': receptivity_raw[-1] if receptivity_raw else 4},
-#         summary_stats={'total_steps': len(df), 'llm_calls': llm.call_count,
-#                        'elapsed_seconds': round(time.time() - start_time, 1)}
-#     )
-#     memory_log = [m.to_dict() for m in stream.memories]
-#     with open(os.path.join(output_dir, f"user{user_id}_memory_log.json"), 'w', encoding='utf-8') as f:
-#         json.dump(memory_log, f, ensure_ascii=False, indent=2)
-#
-#     total_time = time.time() - start_time
-#     print(f"\nUser {user_id} done: {len(df)} points, {llm.call_count} LLM calls, {total_time:.0f}s")
-#     return df
-#
-#
-# # ================================================================
-# # 第八部分：跨用户并行批量推理
-# # ================================================================
-#
-# class UserState:
-#     """一个用户的全部运行时状态"""
-#     def __init__(self, uid: int, params: dict):
-#         self.uid = uid
-#         self.params = params
-#         self.stream = MemoryStream()
-#         self.trajectory = []
-#         self.dosage = 0.0
-#         self.motivation_raw = []
-#         self.habit_raw = []
-#         self.receptivity_raw = []
-#
-#         # 初始心理状态
-#         selfeff_z = (params.get('selfeff.intake', 14.5) - 14.5) / 3.3
-#         self.last_m = int(np.clip(3 + selfeff_z, 2, 5))
-#         self.last_h = 1
-#         self.last_r = 4
-#
-#         self.persona = (f"Age {int(params['age'])}, {params['gender']}. "
-#                         f"Self-efficacy {params['selfeff.intake']:.1f}/25, "
-#                         f"conscientiousness {params['consc']:.1f}/30. "
-#                         f"Baseline ~{int(params['predicted_mean_steps'])} steps/decision. "
-#                         f"Initial treatment effect {params['predicted_te']:+.0f} steps.")
-#
-#         for line in self.persona.strip().split('. '):
-#             if line.strip():
-#                 self.stream.add(Memory("study_start", line.strip() + ".", "background", 7))
-#
-#
-# def simulate_parallel(
-#     baseline_df: pd.DataFrame,
-#     ext: V1DataExtractor,
-#     llm,
-#     n_days: int = 42,
-#     n_samples: int = 3,
-#     output_dir: str = "./output",
-#     verbose: bool = True,
-# ) -> pd.DataFrame:
-#     """
-#     N 个用户同步推进，每一步把所有用户的 LLM 调用合成一个大 batch。
-#
-#     每个 (day, slot) 分 6 个 Phase:
-#       A: 程序化生成上下文 + 基础步数（无 LLM）
-#       B: 批量步数调节 → N 个 prompt 一次提交
-#       C: 批量重要性评分 → N 个 prompt 一次提交
-#       D: 写入记忆流 + 收集需要反思的用户
-#       E: 批量反思（问题 + 推断）
-#       F: 批量评分 → N × 3 × n_samples 个 prompt 一次提交
-#     """
-#     os.makedirs(output_dir, exist_ok=True)
-#     N = len(baseline_df)
-#
-#     print(f"\n{'='*60}")
-#     print(f"Parallel simulation: {N} users × {n_days} days × 5 slots")
-#     print(f"Estimated batch sizes: adj={N}, imp={N}, score={N*3*n_samples}")
-#     print(f"{'='*60}")
-#
-#     # 初始化所有用户
-#     users = []
-#     for i, row in baseline_df.iterrows():
-#         users.append(UserState(uid=i+1, params=row.to_dict()))
-#
-#     start_time = time.time()
-#
-#     for day in range(1, n_days + 1):
-#         for slot in range(1, 6):
-#
-#             # ── Phase A: 程序化（无 LLM） ──
-#             all_ctx = []
-#             all_action = []
-#             all_base = []
-#
-#             for u in users:
-#                 ctx = generate_context(ext, u.params, day, slot, u.trajectory)
-#                 action = ctx['action']
-#
-#                 base = generate_base_steps(u.params, ctx, action, u.dosage, ext) if ctx['avail'] else 0
-#                 all_ctx.append(ctx)
-#                 all_action.append(action)
-#                 all_base.append(base)
-#
-#             # ── Phase B: 批量步数调节 ──
-#             adj_prompts = []
-#             adj_user_idx = []
-#
-#             for i, u in enumerate(users):
-#                 if all_ctx[i]['avail'] and all_base[i] > 0:
-#                     obs_text = u.stream.format_memories(u.stream.get_recent(5, "observation"))
-#                     action_desc = {0: "No", 1: "Active walking suggestion", 2: "Sedentary stand-up suggestion"}.get(all_action[i], "No")
-#                     p = PROMPT_ADJUSTMENT.format(
-#                         persona=u.persona[:200],
-#                         motivation=u.last_m, habit=u.last_h, receptivity=u.last_r,
-#                         study_day=day, slot=slot, location=all_ctx[i]['location'],
-#                         action_desc=action_desc, base_steps=all_base[i],
-#                         recent_obs=obs_text[:400] if obs_text else "No prior observations.")
-#                     adj_prompts.append({"system": SYS_ADJUSTMENT, "user": p})
-#                     adj_user_idx.append(i)
-#
-#             adj_results = llm.batch_adjustment(adj_prompts) if adj_prompts else []
-#
-#             # 计算最终步数
-#             all_steps = [0] * N
-#             all_adj = [0] * N
-#             for j, i in enumerate(adj_user_idx):
-#                 adj = max(-50, min(100, adj_results[j]))
-#                 all_adj[i] = adj
-#                 all_steps[i] = max(0, int(all_base[i] * (1 + adj / 100)))
-#
-#             # ── Phase C: 批量重要性评分 ──
-#             all_obs = []
-#             for i, u in enumerate(users):
-#                 obs = create_observation(day, slot, all_ctx[i], all_action[i], all_steps[i])
-#                 all_obs.append(obs)
-#
-#             imp_prompts = [{"system": IMPORTANCE_SYSTEM,
-#                             "user": IMPORTANCE_USER.format(observation=obs)} for obs in all_obs]
-#             imp_results = llm.batch_importance(imp_prompts)
-#
-#             all_imp = []
-#             for r in imp_results:
-#                 try: all_imp.append(max(1, min(10, int(r))))
-#                 except: all_imp.append(5)
-#
-#             # ── Phase D: 写入记忆流 + 收集反思用户 ──
-#             reflect_users = []
-#
-#             for i, u in enumerate(users):
-#                 u.stream.add(Memory(f"Day{day}_S{slot}", all_obs[i], "observation", all_imp[i]))
-#                 u.dosage = 0.95 * u.dosage + (1 if all_action[i] > 0 else 0)
-#
-#                 if u.stream.should_reflect():
-#                     reflect_users.append(i)
-#
-#             # ── Phase E: 批量反思 ──
-#             if reflect_users:
-#                 # Step 1: 批量生成问题
-#                 q_prompts = []
-#                 for i in reflect_users:
-#                     recent = users[i].stream.get_recent(15)
-#                     recent_text = users[i].stream.format_memories(recent)
-#                     q_prompts.append({
-#                         "system": "You are a behavioral analysis system.",
-#                         "user": REFLECTION_Q_PROMPT.format(recent_memories=recent_text)
-#                     })
-#                 q_responses = llm.batch_text(q_prompts)
-#
-#                 # Step 2: 批量推断
-#                 inf_prompts = []
-#                 inf_map = []  # (reflect_local_idx, user_idx, question)
-#
-#                 for j, i in enumerate(reflect_users):
-#                     recent_text = users[i].stream.format_memories(users[i].stream.get_recent(15))
-#                     questions = _parse_questions(q_responses[j], max_n=3)
-#                     for q in questions:
-#                         inf_prompts.append({
-#                             "system": "You are a behavioral analysis system. Write concise inferences.",
-#                             "user": REFLECTION_GEN_PROMPT.format(question=q, relevant_memories=recent_text)
-#                         })
-#                         inf_map.append((j, i, q))
-#
-#                 inf_responses = llm.batch_text(inf_prompts) if inf_prompts else []
-#
-#                 # 写入记忆流
-#                 for k, (j, i, q) in enumerate(inf_map):
-#                     resp = inf_responses[k] if k < len(inf_responses) else ""
-#                     # 清洗 think 标签（包括完整 <think>...</think> 块）
-#                     resp = _strip_think_tags(resp)
-#                     users[i].stream.add(Memory(f"Day{day}_S{slot}", resp, "reflection", 8))
-#
-#                 for i in reflect_users:
-#                     users[i].stream.reset_reflection_counter()
-#
-#             # ── Phase F: 批量评分 ──
-#             score_prompts = []
-#
-#             for i, u in enumerate(users):
-#                 recent_obs = u.stream.get_recent(10, "observation")
-#                 recent_ref = u.stream.get_recent(3, "reflection")
-#                 obs_text = u.stream.format_memories(recent_obs)
-#                 ref_text = u.stream.format_memories(recent_ref) if recent_ref else "No reflections yet."
-#
-#                 same_slot_data = [t for t in u.trajectory if t['slot'] == slot][-7:]
-#                 slot_pattern = ", ".join(f"D{t['study_day']}={t['jbsteps30']}" for t in same_slot_data) or "No data"
-#                 if len(same_slot_data) >= 3:
-#                     ss = [t['jbsteps30'] for t in same_slot_data]
-#                     cv_val = np.std(ss) / (np.mean(ss) + 1)
-#                     con = f"CV={cv_val:.2f}"
-#                 else:
-#                     con = "Too few data points"
-#
-#                 action_desc = {0: "No", 1: "Active suggestion", 2: "Sedentary suggestion"}.get(all_action[i], "No")
-#
-#                 m_user = MOTIVATION_PROMPT.format(
-#                     seed_memory=u.persona[:400], recent_reflections=ref_text,
-#                     recent_observations=obs_text, study_day=day, slot=slot,
-#                     pre30_steps=all_ctx[i]['prior_30min_steps'],
-#                     action_desc=action_desc, post_steps=all_steps[i])
-#                 h_user = HABIT_PROMPT.format(
-#                     seed_memory=u.persona[:400], recent_observations=obs_text,
-#                     slot_pattern=slot_pattern, consistency_desc=con, study_day=day)
-#                 r_user = RECEPTIVITY_PROMPT.format(
-#                     seed_memory=u.persona[:400], recent_reflections=ref_text,
-#                     recent_observations=obs_text, study_day=day, slot=slot, dosage=u.dosage)
-#
-#                 for _ in range(n_samples):
-#                     score_prompts.append({"system": SYSTEM_SCORE, "user": m_user})
-#                 for _ in range(n_samples):
-#                     score_prompts.append({"system": SYSTEM_SCORE, "user": h_user})
-#                 for _ in range(n_samples):
-#                     score_prompts.append({"system": SYSTEM_SCORE, "user": r_user})
-#
-#             all_scores = llm.batch_score(score_prompts)
-#
-#             # 解析评分
-#             def parse_scores(raw):
-#                 parsed = [max(1, min(5, int(s))) if s.isdigit() else 3 for s in raw]
-#                 return Counter(parsed).most_common(1)[0][0]
-#
-#             cursor = 0
-#             for i, u in enumerate(users):
-#                 m_s = all_scores[cursor:cursor+n_samples]; cursor += n_samples
-#                 h_s = all_scores[cursor:cursor+n_samples]; cursor += n_samples
-#                 r_s = all_scores[cursor:cursor+n_samples]; cursor += n_samples
-#
-#                 m, h, r = parse_scores(m_s), parse_scores(h_s), parse_scores(r_s)
-#                 u.last_m, u.last_h, u.last_r = m, h, r
-#                 u.motivation_raw.append(m)
-#                 u.habit_raw.append(h)
-#                 u.receptivity_raw.append(r)
-#
-#                 reward = np.log(all_steps[i] + 0.5)
-#                 u.trajectory.append(dict(
-#                     user_id=u.uid, study_day=day, slot=slot, avail=all_ctx[i]['avail'],
-#                     send=all_action[i], jbsteps30=all_steps[i], base_steps=all_base[i],
-#                     llm_adj_pct=all_adj[i], jbsteps30pre=all_ctx[i]['prior_30min_steps'],
-#                     location=all_ctx[i]['location'], temperature=all_ctx[i]['temperature'],
-#                     dosage=round(u.dosage, 3), reward=round(reward, 4),
-#                     motivation_raw=m, habit_raw=h, receptivity_raw=r,
-#                     weekday=all_ctx[i]['weekday'], activity=all_ctx[i]['activity'],
-#                     response=all_ctx[i].get('response', 'no_send'),
-#                 ))
-#
-#         # 每周打印进度
-#         if verbose and day % 7 == 0:
-#             elapsed = time.time() - start_time
-#             avg_steps = np.mean([t['jbsteps30'] for u in users for t in u.trajectory[-35:]])
-#             print(f"  Week {day//7}: avg_steps={avg_steps:.0f}, "
-#                   f"reflections_this_slot={len(reflect_users)}, "
-#                   f"LLM calls={llm.call_count}, {elapsed:.0f}s")
-#
-#     # ── 后处理：平滑 + 保存 ──
-#     def smooth(scores, alpha=0.7):
-#         result = [float(scores[0])]
-#         for i in range(1, len(scores)):
-#             result.append(alpha * scores[i] + (1 - alpha) * result[-1])
-#         return [max(1, min(5, round(s))) for s in result]
-#
-#     all_dfs = []
-#     for u in users:
-#         df = pd.DataFrame(u.trajectory)
-#         df['motivation'] = smooth(u.motivation_raw)
-#         df['habit'] = smooth(u.habit_raw)
-#         df['receptivity'] = smooth(u.receptivity_raw)
-#         all_dfs.append(df)
-#
-#         # # 保存单用户
-#         # udir = os.path.join(output_dir, f"user{u.uid}")
-#         # os.makedirs(udir, exist_ok=True)
-#         # df.to_csv(os.path.join(udir, f"user{u.uid}_trajectory.csv"), index=False)
-#
-#     combined = pd.concat(all_dfs, ignore_index=True)
-#     combined.to_csv(os.path.join(output_dir, "all_trajectories.csv"), index=False)
-#
-#     total = time.time() - start_time
-#     print(f"\n{'='*60}")
-#     print(f"Parallel simulation complete: {N} users, {n_days} days")
-#     print(f"Total time: {total:.0f}s ({total/60:.1f} min)")
-#     print(f"Total LLM calls: {llm.call_count}")
-#     print(f"Output: {output_dir}/all_trajectories.csv")
-#     print(f"{'='*60}")
-#
-#     return combined
-#
-#
-# def main():
-#     users_csv = 'data/users.csv'
-#     cleaned_csv = 'data/cleaned_output.csv'
-#
-#     ext = V1DataExtractor(users_csv, cleaned_csv)
-#
-#     # llm = Qwen3BLLM()
-#     llm = SimulatedLLM()
-#
-#     n_users = 100
-#     n_days = 42
-#     n_samples = 3
-#
-#     baseline_df = generate_baseline_vectors(ext, n_users)
-#
-#     if n_users == 1:
-#         # 单用户：逐步串行，有完整 trace logger
-#         params = baseline_df.iloc[0].to_dict()
-#         user_output_dir = os.path.join('data/outputs', "user1")
-#         df = simulate_user(user_id=1, user_params=params, ext=ext, llm=llm,
-#                            n_days=n_days, slots_per_day=5, n_samples=n_samples,
-#                            output_dir=user_output_dir, verbose=True)
-#         df.to_csv(os.path.join(user_output_dir, "user1_trajectory.csv"), index=False)
-#     else:
-#         # 多用户：跨用户并行批量推理
-#         df = simulate_parallel(
-#             baseline_df=baseline_df,
-#             ext=ext, llm=llm,
-#             n_days=n_days, n_samples=n_samples,
-#             output_dir='data/outputs', verbose=True)
-#
-#     print(f"\nTotal LLM calls: {llm.call_count}")
-#
-#
-# if __name__ == "__main__":
-#     main()
+import argparse
+import sys
+import time
+from pathlib import Path
+from typing import List
+
+import numpy as np
+import pandas as pd
+import matplotlib
+import matplotlib.pyplot as plt
+from scipy.stats import wasserstein_distance
+import re
+
+from memory_stream import create_observation, MemoryStream, Memory
+from prompts import REFLECTION_Q_SYS, REFLECTION_GEN_SYS, PROMPT_STEPS, SYS_STEPS, IMPORTANCE_SYSTEM, IMPORTANCE_USER, \
+    REFLECTION_Q_PROMPT, REFLECTION_GEN_PROMPT
+
+matplotlib.rcParams['axes.unicode_minus'] = False
+matplotlib.rcParams['font.family'] = 'DejaVu Sans'
+
+
+def _build_rich_persona(udf):
+    """
+    从all_df数据 derive 一段自然语言 persona, 用于 LLM prompt.
+    """
+    ref = udf
+
+    # 基本面: 真实步数均值 (over all rows, including unavail)
+    overall_mean = float(ref['jbsteps30pre'].mean()) if len(ref) > 0 else 0.0
+
+    # 各 slot 的均值, 找最活跃 / 最不活跃
+    slot_means = {}
+    for s in [1, 2, 3, 4, 5]:
+        sub = ref[ref['day_slot'] == s]
+        if len(sub) > 0:
+            slot_means[s] = float(sub['jbsteps30pre'].mean())
+    if slot_means:
+        most_active_slot = max(slot_means, key=slot_means.get)
+        least_active_slot = min(slot_means, key=slot_means.get)
+        slot_desc_map = {1: "early morning", 2: "morning", 3: "midday",
+                         4: "afternoon", 5: "evening"}
+        most_desc = slot_desc_map.get(most_active_slot, f"slot {most_active_slot}")
+        least_desc = slot_desc_map.get(least_active_slot, f"slot {least_active_slot}")
+        most_steps = int(slot_means[most_active_slot])
+        least_steps = int(slot_means[least_active_slot])
+    else:
+        most_desc, least_desc, most_steps, least_steps = "midday", "early morning", 0, 0
+
+    # 整体零率
+    zero_rate = float((ref['jbsteps30pre'] == 0).mean()) if len(ref) > 0 else 0.0
+
+    # location 分布
+    loc_counts = ref['location'].value_counts(normalize=True)
+    top3_locs = loc_counts.head(5)
+    loc_strs = [f"{l} ({p * 100:.0f}%)" for l, p in top3_locs.items()]
+    loc_desc = ", ".join(loc_strs) if loc_strs else "various"
+
+    text = (
+        f"Behavioral profile (user general walking behavior without intervention):\n"
+        f"- Walks ~{int(overall_mean)} steps per 30-min slot on average; "
+        f"{int(zero_rate * 100)}% of slots have zero steps.\n"
+        f"- Most active in the {most_desc} (slot {most_active_slot if slot_means else '?'}, "
+        f"~{most_steps} steps); least active in the {least_desc} "
+        f"(slot {least_active_slot if slot_means else '?'}, ~{least_steps} steps).\n"
+        f"- Top5 most frequent locations visited: {loc_desc}.\n"
+    )
+    return text
+
+
+def _strip_think_tags(text: str) -> str:
+    """Remove <think>...</think> blocks and any stray tags from LLM output."""
+    # 移除完整的 <think>...</think> 块（包括跨行）
+    text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+    # 移除残留的孤立标签
+    text = text.replace('<think>', '').replace('</think>', '')
+    return text.strip()
+
+
+def _parse_questions(raw: str, max_n: int = 3) -> List[str]:
+    """
+    Robustly parse a list of questions out of LLM output.
+    Handles: leading </think> tags, blank lines, numbered list prefixes
+    like '1.', '1)', '- ', '* '. Only keeps lines that look like real questions.
+    """
+    cleaned = _strip_think_tags(raw)
+    questions = []
+    for line in cleaned.split('\n'):
+        line = line.strip()
+        if not line:
+            continue
+        # 去掉行首的列表序号: "1.", "1)", "1:", "- ", "* ", "Q1:", etc.
+        line = re.sub(r'^\s*(?:Q\s*\d+[.):]?|\d+[.):]|[-*•])\s*', '', line, flags=re.IGNORECASE).strip()
+        if not line:
+            continue
+        # 只保留像问题的行：有一定长度，且形式上像一句话/问句
+        # 排除明显不是问题的残留标签或元注释
+        if len(line) < 15:
+            continue
+        if line.lower().startswith(('<think', '</think', 'note:', 'here are', 'list ')):
+            continue
+        questions.append(line)
+        if len(questions) >= max_n:
+            break
+    return questions
+
+
+def prepare_real_rows(cleaned_path: str, avail_only: bool = False) -> pd.DataFrame:
+    df = pd.read_csv(cleaned_path)
+    if avail_only:
+        df = df[df['avail'] == True].copy()
+
+    df['date'] = pd.to_datetime(df['date'])
+    df = df.sort_values(['uid', 'date', 'day_slot']).reset_index(drop=True)
+
+    dosage_list = []
+    for uid, ud in df.groupby('uid', sort=False):
+        d = 0.0
+        for s in ud['send'].values:
+            d = 0.95 * d + (1.0 if int(s) > 0 else 0.0)
+            dosage_list.append(d)
+    df['dosage'] = dosage_list
+
+    return df
+
+
+# =============================================================================
+# 用户运行时状态: 一个用户一个 stream + cursor
+# =============================================================================
+class UserRuntime:
+    def __init__(self, uid, all_rows, prompt_persona, logger=None):
+        self.uid = uid
+        self.prompt_persona = prompt_persona
+        self.logger = logger
+        # 重要: reset_index 让 .iloc[k] 工作; 排序确保 personal time order
+        self.all_rows = all_rows.sort_values(['date', 'day_slot']).reset_index(drop=True)
+        self.N = len(self.all_rows)
+
+        self.stream = MemoryStream()
+        for line in prompt_persona.strip().split('. '):
+            if line.strip():
+                self.stream.add(Memory(
+                    "study_start", line.strip() + ".", "background", 7))
+
+        # 输出缓冲: 一行一个 dict, 与 all_rows 同顺序; 未处理保持 None
+        self.results = [None] * self.N
+
+
+# =============================================================================
+# 核心: 按 step k 推进, 每 step 内 batch active users × n_runs 个 prompt
+# =============================================================================
+def run_parallel_pipeline(real_df, llm, n_runs, with_reflection,
+                          progress_every_step: int = 25,
+                          verbose: bool = True,
+                          logger_dir: 'Path' = None):
+    """跑完所有用户, 返回 runtimes 字典。
+
+    logger_dir: 若给了 Path, 每个用户会创建 TraceLogger 写到 {logger_dir}/user{uid}/.
+                每个 runtime.logger 也会被赋上, 让 Phase D/E 钩子可以调用.
+    """
+    # logger 可选
+    LoggerCls = None
+    if logger_dir is not None:
+        try:
+            from trace_logger import TraceLogger
+            LoggerCls = TraceLogger
+        except ImportError as e:
+            print(f'[logger] 不能 import trace_logger ({e}), 禁用')
+            LoggerCls = None
+
+    # ── Step 1: 给每个用户初始化 runtime ────────────────────────────
+    runtimes = {}
+    for uid, udf in real_df.groupby('uid'):
+        # per-user logger (可选)
+        user_logger = None
+        prompt_persona = _build_rich_persona(udf)
+        if LoggerCls is not None:
+            user_dir = logger_dir / f'user{int(uid)}'
+            user_logger = LoggerCls(str(user_dir),
+                                    user_id=int(uid))
+            user_logger.log_user_init(persona=prompt_persona)
+
+        runtimes[uid] = UserRuntime(uid, udf, prompt_persona, logger=user_logger)
+
+    sorted_uids = sorted(runtimes.keys())
+    max_steps = max(rt.N for rt in runtimes.values())
+    total_rows = sum(rt.N for rt in runtimes.values())
+    print(f'[parallel] {len(runtimes)} users, max_steps={max_steps}, '
+          f'total_rows={total_rows}')
+
+    # ── Step 2: 按 k 推进 ───────────────────────────────────────────
+    t0 = time.time()
+    rows_done = 0
+    # rolling 累计: 用于进度日志的 MAE/bias
+    accum_abs_err = 0.0
+    accum_signed_err = 0.0
+
+    for k in range(max_steps):
+        active_uids = [uid for uid in sorted_uids if k < runtimes[uid].N]
+        if not active_uids:
+            break
+
+        t_step_start = time.time()
+        llm_calls_at_step_start = llm.call_count
+
+        # ── Phase A: 给每个 active 用户构造 n_runs 个 prompt ─
+        all_prompts = []     # 全部 prompt
+        prompt_meta = []     # 同长 (uid, run_idx)
+        active_ctx = {}      # uid -> (ctx, action, dosage, row, recent_obs)
+
+        for uid in active_uids:
+            rt = runtimes[uid]
+            row = rt.all_rows.iloc[k]
+
+            ctx = {
+                'slot': int(row['day_slot']),
+                'location': row['location'],
+                'weekday': bool(row['is_weekday']),
+                'activity': row['activity'],
+                'weather': row['weather'],
+                'temperature': row['temperature'],
+                'study_day': int(row['study_day']),
+                'prior_30min_steps': int(row['jbsteps30pre']),
+                'response': row['response']
+                    if 'response' in rt.all_rows.columns and isinstance(row['response'], str)
+                    else 'no_send',
+            }
+            action = int(row['send'])
+            dosage = float(row['dosage'])
+
+            obs_text = rt.stream.format_memories(rt.stream.get_recent(10, "observation"))
+            ref_text = rt.stream.format_memories(rt.stream.get_recent(3, "reflection"))
+
+            recent_obs = obs_text if obs_text else "No prior observations."
+            recent_ref = ref_text if ref_text else "No prior reflections."
+
+            active_ctx[uid] = (ctx, action, dosage, row, recent_obs)
+
+            action_desc = {0: "No suggestion", 1: "Active walking suggestion",
+                           2: "Sedentary stand-up suggestion"}.get(action, "No suggestion")
+            weekday_desc = "weekday" if ctx['weekday'] else "weekend"
+
+
+            # n_runs prompts for this row — all identical (memory stream is the same
+            # at this step); n_runs only captures LLM stochasticity
+            for run_idx in range(n_runs):
+                p = PROMPT_STEPS.format(
+                    persona=rt.prompt_persona,
+                    study_day=int(row['study_day']),
+                    slot=int(row['day_slot']),
+                    weekday_desc=weekday_desc,
+                    location=ctx['location'], activity=ctx['activity'],
+                    weather=ctx['weather'], temperature=ctx['temperature'],
+                    prior_30min_steps=ctx['prior_30min_steps'],
+                    action_desc=action_desc,
+                    recent_obs=recent_obs,
+                    recent_ref=recent_ref,
+                )
+                all_prompts.append({"system": SYS_STEPS, "user": p})
+                prompt_meta.append((uid, run_idx))
+
+        # ── Phase B: 一次大 batch ─────────────────────────────────
+        steps_results = llm.batch_steps(all_prompts) if all_prompts else []
+
+        # ── Phase C: 把 steps 填回 + 写 results ─────────────────────
+        steps_buffers = {uid: [0] * n_runs for uid in active_uids}
+        for k_p, (uid, run_idx) in enumerate(prompt_meta):
+            s = max(0, int(steps_results[k_p]))
+            steps_buffers[uid][run_idx] = s
+
+        for uid in active_uids:
+            rt = runtimes[uid]
+            ctx, action, _, row, _ = active_ctx[uid]
+            steps_arr = np.array(steps_buffers[uid])
+            rt.results[k] = {
+                'steps_mean': float(steps_arr.mean()),
+                'steps_one':  int(steps_arr[0]),
+                'steps_std':  float(steps_arr.std()),
+            }
+            err = float(steps_arr.mean()) - float(row['jbsteps30'])
+            accum_abs_err += abs(err)
+            accum_signed_err += err
+
+        # ── Phase D: importance + 加入 observation memory  ─────────
+        # 完整对应 synthetic_user_generator.simulate_parallel 的 Phase C+D.
+        all_obs = []  # uid 顺序与 active_uids 对齐
+        for uid in active_uids:
+            rt = runtimes[uid]
+            ctx, action, _, row, _ = active_ctx[uid]
+            obs = create_observation(
+                day=row['study_day'], slot=int(row['day_slot']),
+                ctx=ctx, action=action, steps=int(rt.results[k]['steps_mean']))
+            all_obs.append(obs)
+
+        if with_reflection:
+            imp_prompts = [{"system": IMPORTANCE_SYSTEM,
+                            "user": IMPORTANCE_USER.format(observation=obs)}
+                           for obs in all_obs]
+            imp_results = llm.batch_importance(imp_prompts) if imp_prompts else []
+            all_imp = []
+            for r in imp_results:
+                try: all_imp.append(max(1, min(10, int(r))))
+                except: all_imp.append(5)
+        else:
+            all_imp = [5] * len(active_uids)
+
+        for idx_u, uid in enumerate(active_uids):
+            rt = runtimes[uid]
+            ctx, action, _, row, _ = active_ctx[uid]
+            rt.stream.add(Memory(f"Day{row['study_day']}_S{int(row['day_slot'])}",
+                                 all_obs[idx_u], "observation", all_imp[idx_u]))
+
+            # ── Logger 钩子 1: log_observation + log_decision_point ──
+            if rt.logger is not None:
+                slot_n = int(row['day_slot'])
+                rt.logger.log_observation(
+                    day=row['study_day'], slot=slot_n,
+                    obs_text=all_obs[idx_u],
+                    importance=all_imp[idx_u],
+                    importance_acc=rt.stream.importance_since_reflection,
+                )
+
+                ctx_for_log = dict(ctx)
+                ctx_for_log.setdefault('avail', 1)
+                ctx_for_log.setdefault('yesterday_steps', 0)
+                rt.logger.log_decision_point(
+                    day=row['study_day'], slot=slot_n, ctx=ctx_for_log,
+                    action=action,
+                    final_steps=int(rt.results[k]['steps_mean']),
+                    dosage=float(active_ctx[uid][2]),  # dosage from active_ctx tuple
+                    prompt_text="",  # parallel 不留 prompt 文本副本, 太占空间
+                    llm_raw_output=str(int(rt.results[k]['steps_mean'])),
+                    importance=all_imp[idx_u],
+                    importance_acc=rt.stream.importance_since_reflection,
+                    reflection_triggered=False,  # 反思如果触发, log_reflection 另存
+                )
+
+        # ── Phase E: 反思 — 逐字搬 simulate_parallel 的逻辑 ─────────
+        if with_reflection:
+            reflect_uids = [uid for uid in active_uids
+                            if runtimes[uid].stream.should_reflect()]
+            if reflect_uids:
+                # 同时缓存每个 uid 的 recent_text + q_prompt 给 logger 用
+                q_prompts = []
+                per_uid_q_prompt_text = {}   # uid -> q_prompt user content
+                per_uid_recent_text = {}     # uid -> recent_text fed to LLM
+                for uid in reflect_uids:
+                    recent = runtimes[uid].stream.get_recent(25)
+                    recent_text = runtimes[uid].stream.format_memories(recent)
+                    q_user = REFLECTION_Q_PROMPT.format(recent_memories=recent_text)
+                    per_uid_q_prompt_text[uid] = q_user
+                    per_uid_recent_text[uid] = recent_text
+                    q_prompts.append({
+                        "system": REFLECTION_Q_SYS,
+                        "user": q_user
+                    })
+                q_responses = llm.batch_text(q_prompts)
+
+                # Step 2: 批量推断 — 用 _parse_questions, get_recent(15)
+                # 同时按 uid 分组 questions, 之后好喂给 log_reflection
+                inf_prompts = []
+                inf_map = []  # (reflect_local_idx j, uid, question)
+                per_uid_questions = {uid: [] for uid in reflect_uids}
+                per_uid_inferences = {uid: [] for uid in reflect_uids}
+                for j, uid in enumerate(reflect_uids):
+                    recent_text = per_uid_recent_text[uid]
+                    questions = _parse_questions(q_responses[j], max_n=3)
+                    per_uid_questions[uid] = questions
+                    for q in questions:
+                        inf_prompts.append({
+                            "system": REFLECTION_GEN_SYS,
+                            "user": REFLECTION_GEN_PROMPT.format(
+                                question=q, relevant_memories=recent_text)
+                        })
+                        inf_map.append((j, uid, q))
+
+                inf_responses = llm.batch_text(inf_prompts) if inf_prompts else []
+                # 写入记忆流 — 清洗 <think>...</think> 块
+                for k_inf, (j, uid, q) in enumerate(inf_map):
+                    resp = inf_responses[k_inf] if k_inf < len(inf_responses) else ""
+                    resp = _strip_think_tags(resp)
+                    per_uid_inferences[uid].append(resp)
+                    _, _, _, row, _ = active_ctx[uid]
+                    runtimes[uid].stream.add(Memory(
+                        f"Day{row['study_day']}_S{int(row['day_slot'])}",
+                        resp, "reflection", 8))
+
+                for uid in reflect_uids:
+                    runtimes[uid].stream.reset_reflection_counter()
+
+                # ── Logger 钩子 3: log_reflection per uid ──────────
+                # 对每个反思了的 uid, 写一条 log_reflection
+                for uid in reflect_uids:
+                    rt = runtimes[uid]
+                    _, _, _, row, _ = active_ctx[uid]
+                    if rt.logger is None:
+                        continue
+                    inferences = per_uid_inferences[uid]
+                    questions = per_uid_questions[uid]
+                    combined_text = "\n\n".join(inferences) if inferences else ""
+                    rt.logger.log_reflection(
+                        day=row['study_day'],
+                        reflection_text=combined_text,
+                        reflect_prompt=per_uid_q_prompt_text[uid],
+                        recent_obs_text=per_uid_recent_text[uid],
+                        recent_ref_text="",
+                        questions=questions,
+                        inferences=inferences,
+                    )
+
+        rows_done += len(active_uids)
+        step_elapsed_ms = (time.time() - t_step_start) * 1000
+        llm_calls_this_step = llm.call_count - llm_calls_at_step_start
+
+        # ── 进度日志 ────────────────────────────────────────────
+        if verbose and progress_every_step and (k + 1) % progress_every_step == 0:
+            elapsed = time.time() - t0
+            eta = elapsed / (k + 1) * (max_steps - k - 1)
+            mae_so_far  = accum_abs_err / rows_done
+            bias_so_far = accum_signed_err / rows_done
+            print(f'  [step {k+1}/{max_steps}] '
+                  f'active={len(active_uids):>2} users, '
+                  f'batch={len(all_prompts):>3} prompts '
+                  f'({llm_calls_this_step} LLM calls in {step_elapsed_ms:.0f}ms), '
+                  f'rows_done={rows_done}/{total_rows} '
+                  f'(MAE={mae_so_far:.1f} bias={bias_so_far:+.1f}), '
+                  f'LLM_total={llm.call_count}, '
+                  f'elapsed={elapsed:.0f}s, ETA={eta:.0f}s')
+
+    print(f'[parallel] done: {rows_done}/{total_rows} rows in '
+          f'{time.time()-t0:.0f}s, total LLM calls={llm.call_count}')
+    return runtimes
+
+
+def assemble_output(real_df: pd.DataFrame, runtimes: dict) -> pd.DataFrame:
+    """把 runtimes.results 拼回 real_df, 加 steps_mean/steps_one/steps_std。"""
+    real_df = real_df.copy()
+    real_df = real_df.sort_values(['uid', 'date', 'day_slot']).reset_index(drop=True)
+
+    sm_col   = np.zeros(len(real_df), dtype=float)
+    so_col   = np.zeros(len(real_df), dtype=int)
+    sstd_col = np.zeros(len(real_df), dtype=float)
+
+    cursor = 0
+    for uid, ud in real_df.groupby('uid', sort=False):
+        rt = runtimes[uid]
+        if len(ud) != rt.N:
+            print(f'[warn] uid={uid}: real_df slice n={len(ud)} != runtime.N={rt.N}')
+        for k_local in range(len(ud)):
+            r = rt.results[k_local] if k_local < rt.N and rt.results[k_local] is not None \
+                else {'steps_mean': 0.0, 'steps_one': 0, 'steps_std': 0.0}
+            i = cursor + k_local
+            sm_col[i]   = r['steps_mean']
+            so_col[i]   = r['steps_one']
+            sstd_col[i] = r.get('steps_std', 0.0)
+        cursor += len(ud)
+
+    real_df['steps_mean'] = sm_col
+    real_df['steps_one']  = so_col
+    real_df['steps_std']  = sstd_col
+    real_df['err_mean']   = real_df['steps_mean'] - real_df['jbsteps30']
+    real_df['abs_err']    = real_df['err_mean'].abs()
+    return real_df
+
+
+# =============================================================================
+# 报告 + 绘图 (跟 serial 完全一致)
+# =============================================================================
+def report(out_df, save_dir: Path):
+    real = out_df['jbsteps30']
+    pm = out_df['steps_mean']
+    one = out_df['steps_one']
+
+    print('\n' + '=' * 72)
+    print('总体: pipeline steps_mean (n_runs 次平均) vs real jbsteps30')
+    print('=' * 72)
+    print(f"  n_rows                       : {len(out_df)}")
+    print(f"  real     jbsteps30      mean : {real.mean():>7.1f},  "
+          f"median : {real.median():>5.0f},  std : {real.std():>6.1f}")
+    print(f"  pipeline steps_mean     mean : {pm.mean():>7.1f},  "
+          f"median : {pm.median():>5.0f},  std : {pm.std():>6.1f}")
+    print()
+    print(f"  MAE                          : {out_df['abs_err'].mean():>7.1f}")
+    print(f"  bias  (mean signed err)      : {out_df['err_mean'].mean():>+7.1f}")
+    print(f"  RMSE                         : "
+          f"{np.sqrt((out_df['err_mean']**2).mean()):>7.1f}")
+    print(f"  median |error|               : {out_df['abs_err'].median():>7.1f}")
+    r2 = 1 - ((out_df['err_mean']**2).sum() / ((real-real.mean())**2).sum())
+    print(f"  R² of steps_mean ~ jbsteps30 : {r2:.4f}")
+    print(f"  Pearson  corr                : "
+          f"{out_df[['steps_mean','jbsteps30']].corr().iloc[0,1]:+.3f}")
+    print(f"  Spearman corr                : "
+          f"{out_df[['steps_mean','jbsteps30']].corr(method='spearman').iloc[0,1]:+.3f}")
+    print(f"  Wasserstein(real, steps_one) = "
+          f"{wasserstein_distance(real, one):.1f}")
+    print(f"  Wasserstein / mean(real)     = "
+          f"{wasserstein_distance(real, one)/real.mean()*100:.1f}%")
+
+    print()
+    print(f"  LLM steps_mean over rows mean: {pm.mean():>7.1f},  "
+          f"std (per-row var) mean: {out_df['steps_std'].mean():>6.1f}")
+    print(f"  P(steps_mean == 0)         : {(pm == 0).mean()*100:>6.1f}%")
+    print(f"  P(real == 0)               : {(real == 0).mean()*100:>6.1f}%")
+
+    print(); print('=' * 72); print('按 send 分组'); print('=' * 72)
+    print(f"  {'send':>5} | {'n':>5} | {'real':>7} | "
+          f"{'steps':>7} | {'bias':>7} | {'MAE':>6}")
+    print('  ' + '-' * 60)
+    for s in sorted(out_df['send'].unique()):
+        sub = out_df[out_df['send'] == s]
+        print(f"  {int(s):>5} | {len(sub):>5} | {sub['jbsteps30'].mean():>7.1f} | "
+              f"{sub['steps_mean'].mean():>7.1f} | "
+              f"{(sub['steps_mean']-sub['jbsteps30']).mean():>+7.1f} | "
+              f"{sub['abs_err'].mean():>6.1f}")
+
+    print(); print('=' * 72); print('按 day_slot 分组'); print('=' * 72)
+    print(f"  {'slot':>5} | {'n':>5} | {'real':>7} | "
+          f"{'steps':>7} | {'bias':>7} | {'MAE':>6}")
+    print('  ' + '-' * 60)
+    for s in sorted(out_df['day_slot'].unique()):
+        sub = out_df[out_df['day_slot'] == s]
+        print(f"  {int(s):>5} | {len(sub):>5} | {sub['jbsteps30'].mean():>7.1f} | "
+              f"{sub['steps_mean'].mean():>7.1f} | "
+              f"{(sub['steps_mean']-sub['jbsteps30']).mean():>+7.1f} | "
+              f"{sub['abs_err'].mean():>6.1f}")
+
+    print(); print('=' * 72); print('按 location top-8 分组'); print('=' * 72)
+    print(f"  {'location':<40} | {'n':>5} | {'real':>7} | "
+          f"{'steps':>7} | {'bias':>7}")
+    print('  ' + '-' * 80)
+    top_locs = out_df['location'].value_counts().head(8).index.tolist()
+    for loc in top_locs:
+        sub = out_df[out_df['location'] == loc]
+        print(f"  {loc[:40]:<40} | {len(sub):>5} | "
+              f"{sub['jbsteps30'].mean():>7.1f} | "
+              f"{sub['steps_mean'].mean():>7.1f} | "
+              f"{(sub['steps_mean']-sub['jbsteps30']).mean():>+7.1f}")
+
+    print(); print('=' * 72)
+    print('桶级 Wasserstein: W(real_jbsteps30, steps_one)')
+    print('=' * 72)
+    rows = []
+    for (slot, send, loc), grp in out_df.groupby(['day_slot', 'send', 'location']):
+        if len(grp) >= 10:
+            w = wasserstein_distance(grp['jbsteps30'].values,
+                                     grp['steps_one'].values)
+            rows.append({'slot': slot, 'send': send, 'loc': loc,
+                         'n': len(grp), 'mean_real': grp['jbsteps30'].mean(),
+                         'W': w})
+    bw = pd.DataFrame(rows)
+    if len(bw) > 0:
+        avg_W = bw['W'].mean(); avg_mean = bw['mean_real'].mean()
+        print(f"  桶定义: (slot, send, location), 门槛 n>=10")
+        print(f"  桶数: {len(bw)},  平均 W: {avg_W:.1f}, "
+              f"中位 W: {bw['W'].median():.1f},  最差 W: {bw['W'].max():.1f}")
+        print(f"  桶级真实均值 (各桶 real 均值的均值): {avg_mean:.1f}")
+        print(f"  W / 桶均值 = {avg_W / avg_mean * 100:.1f}%")
+
+    fig, axes = plt.subplots(2, 2, figsize=(13, 9))
+    ax = axes[0, 0]
+    ax.scatter(real, pm, alpha=0.15, s=8, color='crimson', edgecolors='none')
+    lim = min(2500, max(real.quantile(.99), pm.quantile(.99)) * 1.05)
+    ax.plot([0, lim], [0, lim], 'k--', lw=1, label='y = x')
+    ax.set_xlabel('real jbsteps30'); ax.set_ylabel('pipeline steps_mean')
+    ax.set_xlim(0, lim); ax.set_ylim(0, lim)
+    ax.set_title(f'(a) Pipeline (real prior + base + LLM adj) vs real\n'
+                 f'MAE={out_df["abs_err"].mean():.0f}, '
+                 f'bias={out_df["err_mean"].mean():+.0f}, R²={r2:.3f}')
+    ax.legend(); ax.grid(alpha=0.3)
+
+    ax = axes[0, 1]
+    ax.hist(out_df['err_mean'].clip(-1500, 1500), bins=80,
+            color='salmon', edgecolor='black', linewidth=0.4)
+    ax.axvline(0, color='black', lw=1)
+    ax.axvline(out_df['err_mean'].mean(), color='red', lw=2,
+               label=f"mean = {out_df['err_mean'].mean():+.0f}")
+    ax.set_xlabel('error = steps_mean − real jbsteps30'); ax.set_ylabel('count')
+    ax.set_title('(b) Signed error distribution (clipped to ±1500)')
+    ax.legend(); ax.grid(alpha=0.3)
+
+    ax = axes[1, 0]
+    bins = np.linspace(0, 1500, 50)
+    ax.hist(real, bins=bins, alpha=0.55, density=True,
+            color='steelblue', edgecolor='black', linewidth=0.4,
+            label=f'real jbsteps30 (mean={real.mean():.0f})')
+    ax.hist(one, bins=bins, alpha=0.55, density=True,
+            color='salmon', edgecolor='black', linewidth=0.4,
+            label=f'pipeline steps_one (mean={one.mean():.0f})')
+    ax.hist(pm, bins=bins, alpha=0.35, density=True,
+            color='gold', edgecolor='black', linewidth=0.4,
+            label=f'pipeline steps_mean (mean={pm.mean():.0f})')
+    ax.set_xlabel('steps'); ax.set_ylabel('density')
+    ax.set_title(f'(c) Distribution overlay (truncated 1500)\n'
+                 f'W(real, steps_one)={wasserstein_distance(real, one):.1f}')
+    ax.legend(fontsize=8); ax.grid(alpha=0.3)
+
+    ax = axes[1, 1]
+    grp = out_df.groupby(['day_slot', 'send']).agg(
+        real=('jbsteps30', 'mean'),
+        steps=('steps_mean', 'mean'), n=('jbsteps30', 'size')
+    ).reset_index()
+    grp = grp[grp['n'] >= 10]
+    x = np.arange(len(grp)); w = 0.4
+    ax.bar(x - w/2, grp['real'], w, color='steelblue', edgecolor='black', label='real')
+    ax.bar(x + w/2, grp['steps'], w, color='salmon', edgecolor='black', label='pipeline')
+    ax.set_xticks(x)
+    ax.set_xticklabels([f"s{int(r.day_slot)}/k{int(r.send)}" for r in grp.itertuples()],
+                       rotation=45, ha='right', fontsize=8)
+    ax.set_ylabel('mean steps')
+    ax.set_title('(d) Per-(slot, send): real vs pipeline')
+    ax.legend(fontsize=8); ax.grid(alpha=0.3, axis='y')
+
+    plt.suptitle('Plan B pipeline (PARALLEL, LLM predicts absolute steps)  vs  real jbsteps30 — train set',
+                 fontsize=12, fontweight='bold', y=1.0)
+    plt.tight_layout()
+    fig_path = save_dir / 'full_pipeline_vs_real.png'
+    plt.savefig(fig_path, dpi=120, bbox_inches='tight')
+    plt.close()
+    print(f'\n  图保存: {fig_path}')
+
+    csv_path = save_dir / 'full_pipeline_vs_real_rows.csv'
+    keep = ['uid', 'date', 'day_slot', 'location', 'activity', 'is_weekday',
+            'weather', 'temperature',
+            'send', 'response', 'jbsteps30pre', 'jbsteps30',
+            'steps_mean', 'steps_one', 'steps_std',
+            'err_mean', 'abs_err']
+    out_df[keep].to_csv(csv_path, index=False)
+    print(f'  逐行结果保存: {csv_path}')
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument('--cleaned',   default='./sft/synthetic_trajectories.csv')
+    p.add_argument('--data_extractor_dir', default='.')
+    p.add_argument('--out',       default='./full_pipeline_parallel_output')
+    p.add_argument('--runs',      type=int, default=5,
+                   help='每行抽样次数, 平均掉 base + LLM 的随机性')
+    p.add_argument('--seed',      type=int, default=42)
+    p.add_argument('--with-reflection', action='store_true',
+                   help='打开后做 importance scoring + reflection (慢)')
+    p.add_argument('--max_users', type=int, default=None,
+                   help='只跑前 N 个 train user (smoke test 用)')
+    p.add_argument('--llm', choices=['simulated', 'qwen'], default='qwen')
+    p.add_argument('--qwen-path', default='../models/Qwen3-8B-AWQ')
+    p.add_argument('--progress-every-step', type=int, default=25,
+                   help='每 N step 打一次进度 (active users / batch / ETA / rolling MAE). 0=关掉')
+    p.add_argument('--no-logger', action='store_true',
+                   help='关闭 per-user trace logger (默认每用户写一个子目录的 trace 文件)')
+    args = p.parse_args()
+
+    np.random.seed(args.seed)
+    out_dir = Path(args.out); out_dir.mkdir(exist_ok=True, parents=True)
+
+
+    sys.path.insert(0, args.data_extractor_dir)
+    import llm as LM
+
+    if args.llm == 'qwen':
+        print(f'[llm] loading Qwen3BLLM from {args.qwen_path}')
+        llm = LM.Qwen3BLLM(model_path=args.qwen_path)
+    else:
+        print('[llm] using SimulatedLLM (random)')
+        llm = LM.SimulatedLLM()
+
+    real_df = prepare_real_rows(args.cleaned, avail_only=False)
+    print(f'[real_rows] {len(real_df)} rows')
+
+    t0 = time.time()
+    # 默认开启 logger; --no-logger 关
+    logger_dir_arg = None if args.no_logger else out_dir
+    if logger_dir_arg is not None:
+        print(f'[logger] enabled, per-user traces -> {out_dir}/user<uid>/')
+
+    runtimes = run_parallel_pipeline(
+        real_df, llm, n_runs=args.runs,
+        with_reflection=args.with_reflection,
+        progress_every_step=args.progress_every_step, verbose=True,
+        logger_dir=logger_dir_arg)
+    out_df = assemble_output(real_df, runtimes)
+    print(f'\n[done] total rows={len(out_df)}, '
+          f'total LLM calls={llm.call_count}, '
+          f'time={time.time()-t0:.0f}s')
+
+    # finalize per-user logger 用 assemble_output 后的总结指标
+    if logger_dir_arg is not None:
+        for uid, rt in runtimes.items():
+            if rt.logger is None:
+                continue
+            sub = out_df[out_df['uid'] == uid]
+            if len(sub) == 0:
+                rt.logger.finalize(
+                    final_state={'motivation': 0, 'habit': 0, 'receptivity': 0},
+                    summary_stats={'n_rows': 0})
+                continue
+            rt.logger.finalize(
+                final_state={'motivation': 0, 'habit': 0, 'receptivity': 0},
+                summary_stats={
+                    'n_rows': int(len(sub)),
+                    'mae': float(sub['abs_err'].mean()),
+                    'bias': float(sub['err_mean'].mean()),
+                    'mean_real': float(sub['jbsteps30'].mean()),
+                    'mean_pred': float(sub['steps_mean'].mean()),
+                })
+
+    # 调试: 打印前 10 个原始 LLM 输出, 帮助诊断"全是 0"这类问题
+    if hasattr(llm, 'debug_steps_outputs') and llm.debug_steps_outputs:
+        print()
+        print('=' * 72)
+        print('LLM raw outputs (前 10 次调用, 用于 debug parsing):')
+        print('=' * 72)
+        for i, raw in enumerate(llm.debug_steps_outputs[:10]):
+            print(f'  [{i}] {raw!r}')
+        print('=' * 72)
+
+    report(out_df, out_dir)
+
+
+if __name__ == '__main__':
+    main()

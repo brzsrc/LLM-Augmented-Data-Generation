@@ -320,6 +320,7 @@ def main():
         print("⚠️ 生成数据为空！")
         return
 
+    df['send'] = df['send'].map({'no_send': 0, 'non_activity': 2, 'activity': 1})
     df.to_csv(args.output, index=False)
     print(f"Saved {len(df)} rows to {args.output}")
 
