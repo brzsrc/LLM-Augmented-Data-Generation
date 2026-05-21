@@ -94,10 +94,11 @@ def get_args():
 # ============================================================================
 # Constants
 # ============================================================================
-STATE_COLS = ["slot", "study_day", "weekend", "avail", "dosage",
-              "temperature", "jbsteps30pre", "loc_enc", "act_enc"]
+STATE_COLS = ["day_slot", "study_day", "is_weekday", "dosage", 'weather_enc',
+              "temp_enc", "jbsteps30pre", "loc_enc"]
 NUM_ACTIONS = 3
 GAMMA = 0.9
+
 
 
 # ============================================================================
@@ -107,42 +108,48 @@ def load_and_preprocess(orig_csv, sim_csv):
     orig = pd.read_csv(orig_csv)
     sim = pd.read_csv(sim_csv)
 
-    orig["avail"] = orig["avail"].astype(int)
-    orig["date_dt"] = pd.to_datetime(orig["date"])
-    orig["study_day"] = orig.groupby("uid")["date_dt"].transform(
-        lambda s: (s - s.min()).dt.days + 1)
-    orig["weekend"] = (orig["date_dt"].dt.dayofweek >= 5).astype(int)
-    orig["slot"] = orig["day_slot"]
+    orig = orig.sort_values(['uid', 'study_day', 'day_slot']).reset_index(drop=True)
+    dosage_list = []
+    for uid, ud in orig.groupby('uid', sort=False):
+        d = 0.0
+        for s in ud['send'].values:
+            d = 0.95 * d + (1.0 if int(s) > 0 else 0.0)
+            dosage_list.append(d)
+    orig['dosage'] = dosage_list
 
-    orig = orig.sort_values(["uid", "datetime"]).reset_index(drop=True)
-    dosages = []
-    for _, g in orig.groupby("uid", sort=False):
-        d, prev_a = 0.0, 0
-        out = []
-        for a in g["send"].values:
-            d = 0.95 * d + (1 if prev_a > 0 else 0)
-            out.append(d)
-            prev_a = a
-        dosages.extend(out)
-    orig["dosage"] = dosages
-
-    sim["weekend"] = sim["weekday"].astype(int)
-    sim = sim.sort_values(["user_id", "study_day", "slot"]).reset_index(drop=True)
-    sim["avail"] = sim["avail"].astype(int)
+    sim = sim.sort_values(['uid', 'study_day', 'day_slot']).reset_index(drop=True)
+    dosage_list = []
+    for uid, ud in sim.groupby('uid', sort=False):
+        d = 0.0
+        for s in ud['send'].values:
+            d = 0.95 * d + (1.0 if int(s) > 0 else 0.0)
+            dosage_list.append(d)
+    sim['dosage'] = dosage_list
 
     orig["reward_calc"] = np.log(orig["jbsteps30"].astype(float) + 0.5)
     sim["reward_calc"] = np.log(sim["jbsteps30"].astype(float) + 0.5)
 
     loc_cats = sorted(set(orig["location"].astype(str)) | set(sim["location"].astype(str)))
-    act_cats = sorted(set(orig["activity"].astype(str)) | set(sim["activity"].astype(str)))
+    weather_cats = sorted(set(orig["weather"].astype(str)) | set(sim["weather"].astype(str)))
+    temp_cats = sorted(set(orig["temperature"].astype(str)) | set(sim["temperature"].astype(str)))
+
     loc_map = {c: i for i, c in enumerate(loc_cats)}
-    act_map = {c: i for i, c in enumerate(act_cats)}
+    act_map = {c: i for i, c in enumerate(weather_cats)}
+    temp_map = {c: i for i, c in enumerate(temp_cats)}
+
     orig["loc_enc"] = orig["location"].astype(str).map(loc_map).astype(int)
     sim["loc_enc"] = sim["location"].astype(str).map(loc_map).astype(int)
-    orig["act_enc"] = orig["activity"].astype(str).map(act_map).astype(int)
-    sim["act_enc"] = sim["activity"].astype(str).map(act_map).astype(int)
 
-    return orig, sim, {"loc_cats": loc_cats, "act_cats": act_cats}
+    orig["weather_enc"] = orig["weather"].astype(str).map(act_map).astype(int)
+    sim["weather_enc"] = sim["weather"].astype(str).map(act_map).astype(int)
+
+    orig["temp_enc"] = orig["temperature"].astype(str).map(temp_map).astype(int)
+    sim["temp_enc"] = sim["temperature"].astype(str).map(temp_map).astype(int)
+
+    orig = orig.loc[orig['activity'] == 'STILL']
+    sim = sim.loc[sim['activity'] == 'STILL']
+
+    return orig, sim, {"loc_cats": loc_cats, "weather_cats": weather_cats}
 
 
 def build_transitions(df, user_col, sort_cols):
@@ -177,10 +184,13 @@ def to_arrays(trans):
 
 def make_splits(orig_trans, sim_trans, train_uids, test_uids, seed=42):
     rng = np.random.default_rng(seed)
+
     orig_pats_all = set(t["patient_id"] for t in orig_trans)
     expected = train_uids | test_uids
+
     extra_in_data = orig_pats_all - expected
     extra_in_split = expected - orig_pats_all
+
     if extra_in_data:
         print(f"    WARNING: orig patients not in split file: {sorted(extra_in_data)}")
     if extra_in_split:
@@ -436,8 +446,9 @@ def main():
     print(f"    sim:  {len(sim)} rows, {sim['user_id'].nunique()} patients")
 
     print("\n>>> Building transitions ...")
-    orig_trans = build_transitions(orig, "uid", ["datetime"])
-    sim_trans = build_transitions(sim, "user_id", ["study_day", "slot"])
+    orig_trans = build_transitions(orig, "uid", ["study_day", "slot"])
+    sim_trans = build_transitions(sim, "uid", ["study_day", "slot"])
+
     # Avoid id collision between sim user_id and orig uid in merged datasets
     for t in sim_trans:
         t["patient_id"] = f"sim_{t['patient_id']}"
