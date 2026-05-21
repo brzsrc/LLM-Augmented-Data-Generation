@@ -189,9 +189,6 @@ def run_parallel_pipeline(real_df, llm, n_runs, with_reflection,
     # ── Step 2: 按 k 推进 ───────────────────────────────────────────
     t0 = time.time()
     rows_done = 0
-    # rolling 累计: 用于进度日志的 MAE/bias
-    accum_abs_err = 0.0
-    accum_signed_err = 0.0
 
     for k in range(max_steps):
         active_uids = [uid for uid in sorted_uids if k < runtimes[uid].N]
@@ -275,9 +272,6 @@ def run_parallel_pipeline(real_df, llm, n_runs, with_reflection,
                 'steps_one':  int(steps_arr[0]),
                 'steps_std':  float(steps_arr.std()),
             }
-            err = float(steps_arr.mean()) - float(row['jbsteps30'])
-            accum_abs_err += abs(err)
-            accum_signed_err += err
 
         # ── Phase D: importance + 加入 observation memory  ─────────
         # 完整对应 synthetic_user_generator.simulate_parallel 的 Phase C+D.
@@ -414,14 +408,11 @@ def run_parallel_pipeline(real_df, llm, n_runs, with_reflection,
         if verbose and progress_every_step and (k + 1) % progress_every_step == 0:
             elapsed = time.time() - t0
             eta = elapsed / (k + 1) * (max_steps - k - 1)
-            mae_so_far  = accum_abs_err / rows_done
-            bias_so_far = accum_signed_err / rows_done
             print(f'  [step {k+1}/{max_steps}] '
                   f'active={len(active_uids):>2} users, '
                   f'batch={len(all_prompts):>3} prompts '
                   f'({llm_calls_this_step} LLM calls in {step_elapsed_ms:.0f}ms), '
                   f'rows_done={rows_done}/{total_rows} '
-                  f'(MAE={mae_so_far:.1f} bias={bias_so_far:+.1f}), '
                   f'LLM_total={llm.call_count}, '
                   f'elapsed={elapsed:.0f}s, ETA={eta:.0f}s')
 
@@ -456,180 +447,12 @@ def assemble_output(real_df: pd.DataFrame, runtimes: dict) -> pd.DataFrame:
     real_df['steps_mean'] = sm_col
     real_df['steps_one']  = so_col
     real_df['steps_std']  = sstd_col
-    real_df['err_mean']   = real_df['steps_mean'] - real_df['jbsteps30']
-    real_df['abs_err']    = real_df['err_mean'].abs()
     return real_df
-
-
-# =============================================================================
-# 报告 + 绘图 (跟 serial 完全一致)
-# =============================================================================
-def report(out_df, save_dir: Path):
-    real = out_df['jbsteps30']
-    pm = out_df['steps_mean']
-    one = out_df['steps_one']
-
-    print('\n' + '=' * 72)
-    print('总体: pipeline steps_mean (n_runs 次平均) vs real jbsteps30')
-    print('=' * 72)
-    print(f"  n_rows                       : {len(out_df)}")
-    print(f"  real     jbsteps30      mean : {real.mean():>7.1f},  "
-          f"median : {real.median():>5.0f},  std : {real.std():>6.1f}")
-    print(f"  pipeline steps_mean     mean : {pm.mean():>7.1f},  "
-          f"median : {pm.median():>5.0f},  std : {pm.std():>6.1f}")
-    print()
-    print(f"  MAE                          : {out_df['abs_err'].mean():>7.1f}")
-    print(f"  bias  (mean signed err)      : {out_df['err_mean'].mean():>+7.1f}")
-    print(f"  RMSE                         : "
-          f"{np.sqrt((out_df['err_mean']**2).mean()):>7.1f}")
-    print(f"  median |error|               : {out_df['abs_err'].median():>7.1f}")
-    r2 = 1 - ((out_df['err_mean']**2).sum() / ((real-real.mean())**2).sum())
-    print(f"  R² of steps_mean ~ jbsteps30 : {r2:.4f}")
-    print(f"  Pearson  corr                : "
-          f"{out_df[['steps_mean','jbsteps30']].corr().iloc[0,1]:+.3f}")
-    print(f"  Spearman corr                : "
-          f"{out_df[['steps_mean','jbsteps30']].corr(method='spearman').iloc[0,1]:+.3f}")
-    print(f"  Wasserstein(real, steps_one) = "
-          f"{wasserstein_distance(real, one):.1f}")
-    print(f"  Wasserstein / mean(real)     = "
-          f"{wasserstein_distance(real, one)/real.mean()*100:.1f}%")
-
-    print()
-    print(f"  LLM steps_mean over rows mean: {pm.mean():>7.1f},  "
-          f"std (per-row var) mean: {out_df['steps_std'].mean():>6.1f}")
-    print(f"  P(steps_mean == 0)         : {(pm == 0).mean()*100:>6.1f}%")
-    print(f"  P(real == 0)               : {(real == 0).mean()*100:>6.1f}%")
-
-    print(); print('=' * 72); print('按 send 分组'); print('=' * 72)
-    print(f"  {'send':>5} | {'n':>5} | {'real':>7} | "
-          f"{'steps':>7} | {'bias':>7} | {'MAE':>6}")
-    print('  ' + '-' * 60)
-    for s in sorted(out_df['send'].unique()):
-        sub = out_df[out_df['send'] == s]
-        print(f"  {int(s):>5} | {len(sub):>5} | {sub['jbsteps30'].mean():>7.1f} | "
-              f"{sub['steps_mean'].mean():>7.1f} | "
-              f"{(sub['steps_mean']-sub['jbsteps30']).mean():>+7.1f} | "
-              f"{sub['abs_err'].mean():>6.1f}")
-
-    print(); print('=' * 72); print('按 day_slot 分组'); print('=' * 72)
-    print(f"  {'slot':>5} | {'n':>5} | {'real':>7} | "
-          f"{'steps':>7} | {'bias':>7} | {'MAE':>6}")
-    print('  ' + '-' * 60)
-    for s in sorted(out_df['day_slot'].unique()):
-        sub = out_df[out_df['day_slot'] == s]
-        print(f"  {int(s):>5} | {len(sub):>5} | {sub['jbsteps30'].mean():>7.1f} | "
-              f"{sub['steps_mean'].mean():>7.1f} | "
-              f"{(sub['steps_mean']-sub['jbsteps30']).mean():>+7.1f} | "
-              f"{sub['abs_err'].mean():>6.1f}")
-
-    print(); print('=' * 72); print('按 location top-8 分组'); print('=' * 72)
-    print(f"  {'location':<40} | {'n':>5} | {'real':>7} | "
-          f"{'steps':>7} | {'bias':>7}")
-    print('  ' + '-' * 80)
-    top_locs = out_df['location'].value_counts().head(8).index.tolist()
-    for loc in top_locs:
-        sub = out_df[out_df['location'] == loc]
-        print(f"  {loc[:40]:<40} | {len(sub):>5} | "
-              f"{sub['jbsteps30'].mean():>7.1f} | "
-              f"{sub['steps_mean'].mean():>7.1f} | "
-              f"{(sub['steps_mean']-sub['jbsteps30']).mean():>+7.1f}")
-
-    print(); print('=' * 72)
-    print('桶级 Wasserstein: W(real_jbsteps30, steps_one)')
-    print('=' * 72)
-    rows = []
-    for (slot, send, loc), grp in out_df.groupby(['day_slot', 'send', 'location']):
-        if len(grp) >= 10:
-            w = wasserstein_distance(grp['jbsteps30'].values,
-                                     grp['steps_one'].values)
-            rows.append({'slot': slot, 'send': send, 'loc': loc,
-                         'n': len(grp), 'mean_real': grp['jbsteps30'].mean(),
-                         'W': w})
-    bw = pd.DataFrame(rows)
-    if len(bw) > 0:
-        avg_W = bw['W'].mean(); avg_mean = bw['mean_real'].mean()
-        print(f"  桶定义: (slot, send, location), 门槛 n>=10")
-        print(f"  桶数: {len(bw)},  平均 W: {avg_W:.1f}, "
-              f"中位 W: {bw['W'].median():.1f},  最差 W: {bw['W'].max():.1f}")
-        print(f"  桶级真实均值 (各桶 real 均值的均值): {avg_mean:.1f}")
-        print(f"  W / 桶均值 = {avg_W / avg_mean * 100:.1f}%")
-
-    fig, axes = plt.subplots(2, 2, figsize=(13, 9))
-    ax = axes[0, 0]
-    ax.scatter(real, pm, alpha=0.15, s=8, color='crimson', edgecolors='none')
-    lim = min(2500, max(real.quantile(.99), pm.quantile(.99)) * 1.05)
-    ax.plot([0, lim], [0, lim], 'k--', lw=1, label='y = x')
-    ax.set_xlabel('real jbsteps30'); ax.set_ylabel('pipeline steps_mean')
-    ax.set_xlim(0, lim); ax.set_ylim(0, lim)
-    ax.set_title(f'(a) Pipeline (real prior + base + LLM adj) vs real\n'
-                 f'MAE={out_df["abs_err"].mean():.0f}, '
-                 f'bias={out_df["err_mean"].mean():+.0f}, R²={r2:.3f}')
-    ax.legend(); ax.grid(alpha=0.3)
-
-    ax = axes[0, 1]
-    ax.hist(out_df['err_mean'].clip(-1500, 1500), bins=80,
-            color='salmon', edgecolor='black', linewidth=0.4)
-    ax.axvline(0, color='black', lw=1)
-    ax.axvline(out_df['err_mean'].mean(), color='red', lw=2,
-               label=f"mean = {out_df['err_mean'].mean():+.0f}")
-    ax.set_xlabel('error = steps_mean − real jbsteps30'); ax.set_ylabel('count')
-    ax.set_title('(b) Signed error distribution (clipped to ±1500)')
-    ax.legend(); ax.grid(alpha=0.3)
-
-    ax = axes[1, 0]
-    bins = np.linspace(0, 1500, 50)
-    ax.hist(real, bins=bins, alpha=0.55, density=True,
-            color='steelblue', edgecolor='black', linewidth=0.4,
-            label=f'real jbsteps30 (mean={real.mean():.0f})')
-    ax.hist(one, bins=bins, alpha=0.55, density=True,
-            color='salmon', edgecolor='black', linewidth=0.4,
-            label=f'pipeline steps_one (mean={one.mean():.0f})')
-    ax.hist(pm, bins=bins, alpha=0.35, density=True,
-            color='gold', edgecolor='black', linewidth=0.4,
-            label=f'pipeline steps_mean (mean={pm.mean():.0f})')
-    ax.set_xlabel('steps'); ax.set_ylabel('density')
-    ax.set_title(f'(c) Distribution overlay (truncated 1500)\n'
-                 f'W(real, steps_one)={wasserstein_distance(real, one):.1f}')
-    ax.legend(fontsize=8); ax.grid(alpha=0.3)
-
-    ax = axes[1, 1]
-    grp = out_df.groupby(['day_slot', 'send']).agg(
-        real=('jbsteps30', 'mean'),
-        steps=('steps_mean', 'mean'), n=('jbsteps30', 'size')
-    ).reset_index()
-    grp = grp[grp['n'] >= 10]
-    x = np.arange(len(grp)); w = 0.4
-    ax.bar(x - w/2, grp['real'], w, color='steelblue', edgecolor='black', label='real')
-    ax.bar(x + w/2, grp['steps'], w, color='salmon', edgecolor='black', label='pipeline')
-    ax.set_xticks(x)
-    ax.set_xticklabels([f"s{int(r.day_slot)}/k{int(r.send)}" for r in grp.itertuples()],
-                       rotation=45, ha='right', fontsize=8)
-    ax.set_ylabel('mean steps')
-    ax.set_title('(d) Per-(slot, send): real vs pipeline')
-    ax.legend(fontsize=8); ax.grid(alpha=0.3, axis='y')
-
-    plt.suptitle('Plan B pipeline (PARALLEL, LLM predicts absolute steps)  vs  real jbsteps30 — train set',
-                 fontsize=12, fontweight='bold', y=1.0)
-    plt.tight_layout()
-    fig_path = save_dir / 'full_pipeline_vs_real.png'
-    plt.savefig(fig_path, dpi=120, bbox_inches='tight')
-    plt.close()
-    print(f'\n  图保存: {fig_path}')
-
-    csv_path = save_dir / 'full_pipeline_vs_real_rows.csv'
-    keep = ['uid', 'day_slot', 'location', 'activity', 'is_weekday',
-            'weather', 'temperature',
-            'send', 'response', 'jbsteps30pre', 'jbsteps30',
-            'steps_mean', 'steps_one', 'steps_std',
-            'err_mean', 'abs_err']
-    out_df[keep].to_csv(csv_path, index=False)
-    print(f'  逐行结果保存: {csv_path}')
 
 
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--cleaned',   default='./sft/synthetic_trajectories.csv')
-    p.add_argument('--data_extractor_dir', default='.')
     p.add_argument('--out',       default='./synthetic_trajectories')
     p.add_argument('--runs',      type=int, default=5,
                    help='每行抽样次数, 平均掉 base + LLM 的随机性')
@@ -649,8 +472,6 @@ def main():
     np.random.seed(args.seed)
     out_dir = Path(args.out); out_dir.mkdir(exist_ok=True, parents=True)
 
-
-    sys.path.insert(0, args.data_extractor_dir)
     import llm as LM
 
     if args.llm == 'qwen':
@@ -678,6 +499,14 @@ def main():
     print(f'\n[done] total rows={len(out_df)}, '
           f'total LLM calls={llm.call_count}, '
           f'time={time.time()-t0:.0f}s')
+
+    csv_path = out_dir / 'full_pipeline_vs_real_rows.csv'
+    keep = ['uid', 'day_slot', 'location', 'activity', 'is_weekday',
+            'weather', 'temperature',
+            'send', 'response', 'jbsteps30pre',
+            'steps_mean', 'steps_one', 'steps_std']
+    out_df[keep].to_csv(csv_path, index=False)
+    print(f'  逐行结果保存: {csv_path}')
 
     # finalize per-user logger 用 assemble_output 后的总结指标
     if logger_dir_arg is not None:
@@ -710,7 +539,7 @@ def main():
             print(f'  [{i}] {raw!r}')
         print('=' * 72)
 
-    report(out_df, out_dir)
+
 
 
 if __name__ == '__main__':
