@@ -138,12 +138,48 @@ sends a suggestion to encourage you walking or not being still more.
 You are now pausing to reflect on how you react to these suggestions based on your recent memories.
 """
 
+REFLECTION_Q_PROMPT = """
+Recent records of your own behavior from earlier in the study (most recent first):
+{recent_obs}
+
+Recent reflections of your own behavior from earlier in the study:
+{recent_ref}
+
+Based on these records,
+list exactly 3 questions worth investigating the most about YOUR own behavior.
+
+## Question design rules
+Each question must cover a DIFFERENT analytical angle. Pick 3 different
+angles worth investigating the most from this list — do not pick two from the same angle:
+  (a) BASELINE: when do I walk more/less even without any intervention (when send=0)?
+  (b) IMMEDIATE RESPONSE: among slots where I received a suggestion, what conditions
+      can predict whether I actually move vs stay still in the next 30 minutes?
+  (c) DOSE EFFECT: does receiving suggestions more frequently in recent
+      days change my behavior?
+  (d) CONTEXT × INTERVENTION: does the same suggestion type work
+      differently across locations/slots/weather/temperature/weekday-weekend?
+  (e) CARRYOVER: does my prior 30min steps in one slot predict my prior 30min steps 
+      in the next slot or the next day?
+  (f) STABILITY: which conditions show consistent behavior vs which
+      are highly variable?
+  (g) REFLECTION REFINE: do my recent behavior indicate any change in my thoughts compared 
+      with my recent reflections?
+            
+Each question must be specific and grounded in the evidence above (not
+generic).
+
+Format your output as exactly 3 lines, one question per line, in this exact
+format (note: NO ## wrappers for questions; use Q1: / Q2: / Q3: prefix):
+
+Q1: <your first question>
+Q2: <your second question>
+Q3: <your third question>
+
+No other text. No preamble. No explanation. Just the three lines."""
+
 # REFLECTION_Q_PROMPT = """
 # Recent records of your own behavior from earlier in the study (most recent first):
 # {recent_obs}
-#
-# Recent reflections of your own behavior from earlier in the study:
-# {recent_ref}
 #
 # Based on these records,
 # list exactly 3 questions worth investigating about YOUR own behavior.
@@ -175,43 +211,6 @@ You are now pausing to reflect on how you react to these suggestions based on yo
 #
 # No other text. No preamble. No explanation. Just the three lines."""
 
-REFLECTION_Q_PROMPT = """
-Recent records of your own behavior from earlier in the study (most recent first):
-{recent_obs}
-
-Based on these records, 
-list exactly 3 questions worth investigating about YOUR own behavior. 
-
-## Question design rules
-Each question must cover a DIFFERENT analytical angle. Pick 3 different 
-angles from this list — do not pick two from the same angle:
-  (a) BASELINE: when do I walk more/less even without any intervention (when send=0)?
-  (b) IMMEDIATE RESPONSE: among slots where send>0, what conditions 
-      predict whether I actually move vs stay still in the next 30 minutes?
-  (c) DOSE EFFECT: does receiving suggestions more frequently in recent 
-      days change my behavior?
-  (d) CONTEXT × INTERVENTION: does the same suggestion type work 
-      differently across locations / slots / weekday-weekend?
-  (e) CARRYOVER: does my activity in one slot predict my activity 
-      in the next slot or the next day?
-  (f) STABILITY: which conditions show consistent behavior vs which 
-      are highly variable?
-
-Each question must be specific and grounded in the evidence above (not
-generic). 
-
-Format your output as exactly 3 lines, one question per line, in this exact
-format (note: NO ## wrappers for questions; use Q1: / Q2: / Q3: prefix):
-
-Q1: <your first question>
-Q2: <your second question>
-Q3: <your third question>
-
-No other text. No preamble. No explanation. Just the three lines."""
-
-
-
-
 
 REFLECTION_GEN_SYS = """
 You are a participant who is interested in increasing your walking and 
@@ -225,44 +224,14 @@ sends a suggestion to encourage you walking or not being still more.
 You are now reflecting on your own behavior of how you react to these suggestions based on your recent memories.
 """
 
-# REFLECTION_GEN_PROMPT = """
-# A question about yourself: "{question}"
-#
-# Relevant recent records of your own behavior from earlier in the study (most recent first):
-# {recent_obs}
-#
-# Relevant recent reflections of your own behavior from earlier in the study:
-# {recent_ref}
-#
-# Based ONLY on the evidence above, write a single 1-2 sentence inference about
-# yourself that answers the question and be specific.
-#
-# If the evidence is too thin to draw a confident inference, say so briefly
-# rather than inventing a pattern.
-#
-# Format your output as a single line of plain text — no preamble, no bullet
-# points, no quotes, no special wrappers. Start your response directly with
-# the inference sentence.
-#
-# ## Output format Rule
-# - A single sentence stating the conclusion.
-# - Do NOT include reasoning steps, analysis, or "let me think". Just the conclusion.
-# - No other text. Just the one sentence.
-#
-# ## Examples of BAD output (do NOT do this):
-# - "Let me look at the data. First I notice that..."
-# - "Okay, the user is asking about..."
-# - A multi-paragraph analysis.
-#
-# Your single-sentence conclusion:
-# """
-
-
 REFLECTION_GEN_PROMPT = """
 A question about yourself: "{question}"
 
 Relevant recent records of your own behavior from earlier in the study (most recent first):
 {recent_obs}
+
+Relevant recent reflections of your own behavior from earlier in the study:
+{recent_ref}
 
 Based ONLY on the evidence above, write a single 1-2 sentence inference about
 yourself that answers the question and be specific.
@@ -287,6 +256,36 @@ the inference sentence.
 Your single-sentence conclusion:
 """
 
+
+# REFLECTION_GEN_PROMPT = """
+# A question about yourself: "{question}"
+#
+# Relevant recent records of your own behavior from earlier in the study (most recent first):
+# {recent_obs}
+#
+# Based ONLY on the evidence above, write a single 1-2 sentence inference about
+# yourself that answers the question and be specific.
+#
+# If the evidence is too thin to draw a confident inference, say so briefly
+# rather than inventing a pattern.
+#
+# Format your output as a single line of plain text — no preamble, no bullet
+# points, no quotes, no special wrappers. Start your response directly with
+# the inference sentence.
+#
+# ## Output format Rule
+# - A single sentence stating the conclusion.
+# - Do NOT include reasoning steps, analysis, or "let me think". Just the conclusion.
+# - No other text. Just the one sentence.
+#
+# ## Examples of BAD output (do NOT do this):
+# - "Let me look at the data. First I notice that..."
+# - "Okay, the user is asking about..."
+# - A multi-paragraph analysis.
+#
+# Your single-sentence conclusion:
+# """
+#
 
 
 SYS_STEPS = """

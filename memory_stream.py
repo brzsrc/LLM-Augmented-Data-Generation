@@ -124,54 +124,47 @@ class MemoryStream:
         return all_candidates
 
 
-def create_observation(day: int, slot: int, ctx: dict, action: int, steps: int) -> str:
-    ts = f"Day{day}_Slot{slot}"
-    obs = f"[{ts}] Location: {ctx['location']}. "
-    obs += f"Weather: {ctx['weather']}, {ctx['temperature']}. "
-    obs += f"Steps in prior 30min: {ctx['prior_30min_steps']}. Activity: {ctx['activity']}. "
-
-    if action == 1:
-        obs += "System sent an ACTIVE walking suggestion. "
-        obs += f"Steps in following 30min: {steps} after suggestion. "
-        if ctx.get('response'):
-            obs += f"Participant response: {ctx['response']}. "
-    elif action == 2:
-        obs += "System sent a SEDENTARY/stand-up suggestion. "
-        obs += f"Steps in following 30min: {steps}. "
-        if ctx.get('response'):
-            obs += f"Participant response: {ctx['response']}. "
-    else:
-        obs += f"No suggestion sent. Steps in following 30min: {steps}. "
-
-    return obs
-
-
 # def create_observation(day: int, slot: int, ctx: dict, action: int, steps: int) -> str:
 #     ts = f"Day{day}_Slot{slot}"
 #     obs = f"[{ts}] Location: {ctx['location']}. "
 #     obs += f"Weather: {ctx['weather']}, {ctx['temperature']}. "
 #     obs += f"Steps in prior 30min: {ctx['prior_30min_steps']}. Activity: {ctx['activity']}. "
 #
-#     # Map raw response label to clearer phrasing that won't confuse the LLM
-#     response_map = {
-#         'good': 'I rated the suggestion as helpful',
-#         'bad':  'I rated the suggestion as unhelpful',
-#         'no_response': 'I did not rate the suggestion',
-#     }
-#
 #     if action == 1:
 #         obs += "System sent an ACTIVE walking suggestion. "
-#         obs += f"Steps in following 30min: {steps}. "
+#         obs += f"Steps in following 30min: {steps} after suggestion. "
 #         if ctx.get('response'):
-#             desc = response_map.get(ctx['response'], ctx['response'])
-#             obs += f"My rating of the suggestion: {desc} (this is my subjective opinion, NOT a measure of how much I walked). "
+#             obs += f"Participant response: {ctx['response']}. "
 #     elif action == 2:
 #         obs += "System sent a SEDENTARY/stand-up suggestion. "
 #         obs += f"Steps in following 30min: {steps}. "
 #         if ctx.get('response'):
-#             desc = response_map.get(ctx['response'], ctx['response'])
-#             obs += f"My rating of the suggestion: {desc} (this is my subjective opinion, NOT a measure of how much I walked). "
+#             obs += f"Participant response: {ctx['response']}. "
 #     else:
 #         obs += f"No suggestion sent. Steps in following 30min: {steps}. "
 #
 #     return obs
+
+
+def create_observation(day: int, slot: int, ctx: dict, action: int, steps: int) -> str:
+    ts = f"Day{day}_Slot{slot}"
+    obs = f"[{ts}], I am at {ctx['location']}. "
+    obs += f"The weather is {ctx['weather']}, {ctx['temperature']}. "
+    obs += f"I walked {ctx['prior_30min_steps']} steps within 30min before I received any suggestion. "
+    obs += f'I am currently {ctx['activity']}.'
+
+    if action == 1:
+        obs += "Now My phone sent an ACTIVE walking suggestion to me. "
+        if ctx.get('response'):
+            obs += f"I responded: {ctx['response']} to the suggestion. "
+        obs += f"Then I walked {steps} steps in following 30min after the suggestion. "
+    elif action == 2:
+        obs += "Now My phone sent a SEDENTARY/stand-up suggestion to me. "
+        if ctx.get('response'):
+            obs += f"I responded: {ctx['response']} to the suggestion. "
+        obs += f"Then I walked {steps} steps in following 30min after the suggestion. "
+    else:
+        obs += f"My phone sent no suggestion to me. "
+        obs += f"Then I walked {steps} steps in following 30min without the suggestion. "
+
+    return obs
