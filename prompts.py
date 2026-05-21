@@ -354,11 +354,3 @@ For example: ##0## or ##252## or ##1837##.
 
 No other text. No explanation. Just ##N##."""
 
-
-# ================================================================
-# 兼容: 保留 PROMPT_ADJUSTMENT / SYS_ADJUSTMENT 让旧 simulator 仍能 import.
-# 测试脚本已迁到 Plan B (PROMPT_STEPS), 不再使用这两个变量.
-# Simulator 也建议尽快迁移; 这里留个 stub 是为了不阻塞测试运行.
-# ================================================================
-SYS_ADJUSTMENT = SYS_STEPS  # 兼容别名
-PROMPT_ADJUSTMENT = PROMPT_STEPS  # 兼容别名 (旧 simulator 跑步骤会出错, 但能 import)
