@@ -507,7 +507,7 @@ def main():
     csv_path = out_dir / 'full_pipeline_vs_real_rows.csv'
     keep = ['uid', 'day_slot', 'location', 'activity', 'is_weekday',
             'weather', 'temperature',
-            'send', 'response', 'jbsteps30pre', 'jbsteps30'
+            'send', 'response', 'jbsteps30pre', 'jbsteps30',
             'steps_mean', 'steps_one', 'steps_std']
     out_df[keep].to_csv(csv_path, index=False)
     print(f'  逐行结果保存: {csv_path}')
