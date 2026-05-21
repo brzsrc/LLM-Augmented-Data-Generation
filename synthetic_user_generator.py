@@ -630,7 +630,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument('--cleaned',   default='./sft/synthetic_trajectories.csv')
     p.add_argument('--data_extractor_dir', default='.')
-    p.add_argument('--out',       default='./full_pipeline_parallel_output')
+    p.add_argument('--out',       default='./synthetic_trajectories')
     p.add_argument('--runs',      type=int, default=5,
                    help='每行抽样次数, 平均掉 base + LLM 的随机性')
     p.add_argument('--seed',      type=int, default=42)
