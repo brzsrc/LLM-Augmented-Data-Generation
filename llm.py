@@ -22,9 +22,11 @@ class Qwen3BLLM:
         from vllm import LLM, SamplingParams
         from vllm.sampling_params import StructuredOutputsParams
         print(f"Loading model: {model_path}")
-        self.llm = LLM(model=model_path, quantization="awq",
-                       gpu_memory_utilization=0.90, max_model_len=4096,
-                       trust_remote_code=True)
+        self.llm = LLM(
+            model=model_path, quantization="awq",
+            gpu_memory_utilization=0.90, max_model_len=4096,
+            trust_remote_code=True,
+            tensor_parallel_size=2)
         self.score_guided = StructuredOutputsParams(choice=[f"##{i}##" for i in range(1, 6)])
         self.score_params = SamplingParams(temperature=0.7, max_tokens=4, structured_outputs=self.score_guided)
         self.importance_guided = StructuredOutputsParams(choice=[f"##{i}##" for i in range(1, 11)])

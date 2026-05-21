@@ -56,12 +56,6 @@ class MemoryStream:
 
 
 def create_observation(day: int, slot: int, ctx: dict, action: int, steps: int) -> str:
-    """
-    【修改3】action 现在是 0/1/2
-    【修改8】activity 用 ON_FOOT 而非 WALKING
-    【修改11】加入 response 信息
-    【修改13】区分 active suggestion (send=1) 和 sedentary suggestion (send=2)
-    """
     ts = f"Day{day}_Slot{slot}"
     obs = f"[{ts}] Location: {ctx['location']}. "
     obs += f"Weather: {ctx['weather']}, {ctx['temperature']}. "
