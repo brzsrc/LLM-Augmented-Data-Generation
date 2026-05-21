@@ -484,6 +484,9 @@ def main():
     real_df = prepare_real_rows(args.cleaned, avail_only=False)
     print(f'[real_rows] {len(real_df)} rows')
 
+    if args.max_users:
+        real_df = real_df[real_df['uid'].isin(range(1, args.max_users+1))]
+
     t0 = time.time()
     # 默认开启 logger; --no-logger 关
     logger_dir_arg = None if args.no_logger else out_dir
