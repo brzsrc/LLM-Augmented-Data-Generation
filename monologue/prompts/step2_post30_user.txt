@@ -1,0 +1,25 @@
+## 用户 {UID} 的预测原则(画像第 6 部分)
+
+{PERSONA_PRINCIPLES}
+
+## 当前时段信息
+
+```
+date: {DATE}({WEEKDAY}), slot {SLOT}({HOUR}点)
+location: {LOCATION}, activity: {ACTIVITY}
+weather: {WEATHER}, temperature: {TEMPERATURE}，
+is_weekday: {IS_WEEKDAY}，send: {SEND}, response: {RESPONSE}
+jbsteps30pre: {PRE30}
+```
+
+## 你刚刚为这个时段写的心理揣测
+
+{MONOLOGUE}
+
+{REASONING}
+
+---
+
+基于以上信息,该用户在接下来 30 分钟内的步数是多少?
+
+只输出 ##数字## 形式,例如 ##251##， ##1736##， ##84##， ##595##。不要解释。

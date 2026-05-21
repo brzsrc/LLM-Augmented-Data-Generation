@@ -1,0 +1,41 @@
+## 用户 {UID} 的心理画像
+
+{PERSONA}
+
+## 该用户之前已被揣测过的时段(保持叙事和心理状态的连续性)
+
+{HISTORY}
+
+## 当前要揣测的时段
+
+```
+study_day: {STUDY_DAY}
+date: {DATE}({WEEKDAY})
+day_slot: {SLOT}(对应小时:{HOUR}点)
+location: {LOCATION}
+activity: {ACTIVITY}
+weather: {WEATHER}
+temperature: {TEMPERATURE}
+is_weekday: {IS_WEEKDAY}
+send: {SEND}
+response: {RESPONSE}
+jbsteps30pre: {PRE30}
+```
+
+请输出 3 个部分,严格按以下格式:
+
+### MONOLOGUE
+用 80-150 字写出该用户在这个时段的心理活动揣测。要解释:
+- 为什么 pre30 是这个数字?(他此刻在做什么场景下的什么事)
+- 他看到 send / response 这个组合时心里的反应是什么
+- 这个时段在他整体叙事里处于什么位置
+
+### REASONING
+用 1-2 句话简短说明:基于画像中的哪条原则,以及当前场景特点,你认为接下来 30 分钟他的步数趋势是什么(上升 / 平稳 / 衰减),大致水平如何。
+必须引用画像中的至少 1 条预测原则。
+
+### SUMMARY
+用一句话(20 字以内)概括这个时段,供后续轮次作为压缩历史使用。例如:
+"d8 s3 在家焦虑性走动 1335 步,未发提示。"
+
+不要输出 POST30 数字,数字会在下一步单独询问。
