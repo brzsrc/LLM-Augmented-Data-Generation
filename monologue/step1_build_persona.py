@@ -23,7 +23,6 @@ def main():
     add_uid_args(parser)
     parser.add_argument("--force", action="store_true",
                         help="强制重生成已有的画像文件")
-    parser.add_argument("--qwen-path", default="../models/Qwen3-32B-AWQ")
     parser.add_argument("--thinking", action="store_true", default=True,
                         help="画像生成使用 thinking 模式(默认开)")
     parser.add_argument("--max-tokens", type=int, default=4096,
@@ -54,8 +53,8 @@ def main():
         print("[done] 无事可做")
         return
 
-    print(f"[load] Qwen3-32B from {args.qwen_path}")
-    llm = Qwen32BLLM(model_path=args.qwen_path)
+    print(f"[load] Qwen3-32B...")
+    llm = Qwen32BLLM()
     llm.text_params_thinking.max_tokens = args.max_tokens
 
     sys_tmpl = open(PROMPT_PATHS["step1_sys"], encoding="utf-8").read()

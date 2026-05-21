@@ -168,10 +168,9 @@ def catch_up_lagging_users(states: dict, llm: Qwen32BLLM,
 def main():
     parser = argparse.ArgumentParser()
     add_uid_args(parser)
-    parser.add_argument("--qwen-path", default="../models/Qwen3-32B-AWQ")
     parser.add_argument("--thinking", action="store_true", default=False,
                         help="独白生成用 thinking 模式(慢 3-5x,质量更高)")
-    parser.add_argument("--max-batch", type=int, default=0,
+    parser.add_argument("--max_batch", type=int, default=0,
                         help="单次 batch 最大 prompt 数,0=无限制(默认)")
     parser.add_argument("--progress-every", type=int, default=10,
                         help="每 N step 打一次进度")
@@ -193,8 +192,8 @@ def main():
     post_usr_tmpl = open(PROMPT_PATHS["post_usr"], encoding="utf-8").read()
 
     # 加载 LLM
-    print(f"[load] Qwen3-32B from {args.qwen_path}")
-    llm = Qwen32BLLM(model_path=args.qwen_path)
+    print(f"[load] Qwen3-32B...")
+    llm = Qwen32BLLM()
     llm.text_params_no_think.max_tokens = args.mono_max_tokens
 
     # 创建 UserState

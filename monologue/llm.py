@@ -18,7 +18,7 @@ warnings.filterwarnings('ignore')
 # ================================================================
 
 class Qwen3BLLM:
-    def __init__(self, model_path: str = "../models/Qwen3-8B-AWQ"):
+    def __init__(self, model_path: str = "../../models/Qwen3-8B-AWQ"):
         from vllm import LLM, SamplingParams
         from vllm.sampling_params import StructuredOutputsParams
         print(f"Loading model: {model_path}")
@@ -151,7 +151,7 @@ class Qwen3BLLM:
 # ================================================================
 
 class Qwen32BLLM:
-    def __init__(self, model_path: str = "../models/Qwen3-32B-AWQ"):
+    def __init__(self, model_path: str = "../../models/Qwen3-32B-AWQ"):
         from vllm import LLM, SamplingParams
         from vllm.sampling_params import StructuredOutputsParams
         print(f"Loading model: {model_path}")
