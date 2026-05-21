@@ -109,8 +109,7 @@ def prepare_real_rows(cleaned_path: str, avail_only: bool = False) -> pd.DataFra
     if avail_only:
         df = df[df['avail'] == True].copy()
 
-    df['date'] = pd.to_datetime(df['date'])
-    df = df.sort_values(['uid', 'date', 'day_slot']).reset_index(drop=True)
+    df = df.sort_values(['uid', 'study_day', 'day_slot']).reset_index(drop=True)
 
     dosage_list = []
     for uid, ud in df.groupby('uid', sort=False):
@@ -132,7 +131,7 @@ class UserRuntime:
         self.prompt_persona = prompt_persona
         self.logger = logger
         # 重要: reset_index 让 .iloc[k] 工作; 排序确保 personal time order
-        self.all_rows = all_rows.sort_values(['date', 'day_slot']).reset_index(drop=True)
+        self.all_rows = all_rows.sort_values(['study_day', 'day_slot']).reset_index(drop=True)
         self.N = len(self.all_rows)
 
         self.stream = MemoryStream()
@@ -434,7 +433,7 @@ def run_parallel_pipeline(real_df, llm, n_runs, with_reflection,
 def assemble_output(real_df: pd.DataFrame, runtimes: dict) -> pd.DataFrame:
     """把 runtimes.results 拼回 real_df, 加 steps_mean/steps_one/steps_std。"""
     real_df = real_df.copy()
-    real_df = real_df.sort_values(['uid', 'date', 'day_slot']).reset_index(drop=True)
+    real_df = real_df.sort_values(['uid', 'study_day', 'day_slot']).reset_index(drop=True)
 
     sm_col   = np.zeros(len(real_df), dtype=float)
     so_col   = np.zeros(len(real_df), dtype=int)
@@ -618,7 +617,7 @@ def report(out_df, save_dir: Path):
     print(f'\n  图保存: {fig_path}')
 
     csv_path = save_dir / 'full_pipeline_vs_real_rows.csv'
-    keep = ['uid', 'date', 'day_slot', 'location', 'activity', 'is_weekday',
+    keep = ['uid', 'day_slot', 'location', 'activity', 'is_weekday',
             'weather', 'temperature',
             'send', 'response', 'jbsteps30pre', 'jbsteps30',
             'steps_mean', 'steps_one', 'steps_std',
