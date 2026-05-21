@@ -367,7 +367,7 @@ def run_parallel_pipeline(real_df, ext, llm, n_runs, with_reflection,
 
                 for uid in reflect_uids:
                     recent_obs = runtimes[uid].stream.get_recent(n=25, mem_type='observation')
-                    recent_ref = runtimes[uid].stream.get_recent_weighted_ref(n=5, mem_type='reflection')
+                    recent_ref = runtimes[uid].stream.get_recent(n=5, mem_type='reflection')
 
                     obs_text = runtimes[uid].stream.format_memories(recent_obs)
                     ref_text = runtimes[uid].stream.format_memories(recent_ref)
