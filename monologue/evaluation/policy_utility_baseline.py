@@ -96,6 +96,7 @@ def load_and_preprocess(orig_csv):
     Produces dosage, weekend, slot, loc_enc, act_enc, reward_calc columns.
     """
     orig = pd.read_csv(orig_csv)
+    orig = orig.loc[orig['activity'] == 'STILL']
 
     orig["avail"] = orig["avail"].astype(int)
     orig["date_dt"] = pd.to_datetime(orig["date"])
