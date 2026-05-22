@@ -9,7 +9,7 @@ Step 2 (PARALLEL): 跨用户同步推进 step k,vLLM 批量调用
   python step2_predict_rows_parallel.py --thinking                   # 独白用 thinking 模式(慢但质量高)
 
 设计:
-- 每个用户独立按 (date, day_slot) 顺序前进,所有用户在同一 k 对齐
+- 每个用户独立按 (study_day, day_slot) 顺序前进,所有用户在同一 k 对齐
 - 单 step 内:active_users 同时构造 prompt -> 一次 batch_text + 一次 batch_steps
 - vLLM 内部 continuous batching 处理并发
 - max_batch 限制:当用户数很多时,单 batch 太大会爆显存,自动切片

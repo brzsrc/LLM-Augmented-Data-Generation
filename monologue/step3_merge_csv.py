@@ -60,7 +60,7 @@ def main():
         with open(path, encoding="utf-8") as f:
             for line in f:
                 r = json.loads(line)
-                preds[(r["uid"], r["date"], r["slot"])] = r
+                preds[(r["uid"], r["study_day"], r["slot"])] = r
                 n += 1
         loaded_uids.append((uid, n))
 
@@ -70,7 +70,7 @@ def main():
 
     # 字段查找
     def lookup(row, field):
-        rec = preds.get((row["uid"], row["date"], row["day_slot"]))
+        rec = preds.get((row["uid"], row["study_day"], row["day_slot"]))
         return rec[field] if rec else None
 
     df["post30_pred"] = df.apply(lambda r: lookup(r, "post30"), axis=1)

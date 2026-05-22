@@ -149,7 +149,7 @@ def build_history(prior_rows: list) -> str:
         lines.append("【早期时段摘要】")
         for r in early:
             lines.append(
-                f"- d{r['study_day']} {r['date']} s{r['slot']}: {r['summary']} "
+                f"- d{r['study_day']} s{r['slot']}: {r['summary']} "
                 f"(pre30={r['pre30']:.0f}, 预测post30={r['post30']})"
             )
         lines.append("")
@@ -157,7 +157,7 @@ def build_history(prior_rows: list) -> str:
         lines.append(f"【最近 {len(recent)} 个时段(完整独白)】")
         for r in recent:
             lines.append(
-                f"--- d{r['study_day']} {r['date']} s{r['slot']} "
+                f"--- d{r['study_day']} s{r['slot']} "
                 f"(loc={r['location']}, send={r['send']}, resp={r['response']}, "
                 f"pre30={r['pre30']:.0f}, 预测post30={r['post30']}) ---"
             )
@@ -168,7 +168,7 @@ def build_history(prior_rows: list) -> str:
 
 def build_rows_table(df: pd.DataFrame) -> str:
     """把一个用户的数据压缩成紧凑文本表,给 step1 画像 prompt 用。"""
-    df = df.sort_values(["date", "day_slot"]).reset_index(drop=True).copy()
+    df = df.sort_values(["study_day", "day_slot"]).reset_index(drop=True).copy()
     df["datetime"] = pd.to_datetime(df["datetime"])
     df["hour"] = df["datetime"].dt.hour
     df["dow"] = df["datetime"].dt.dayofweek
@@ -176,7 +176,7 @@ def build_rows_table(df: pd.DataFrame) -> str:
     lines = []
     for _, r in df.iterrows():
         lines.append(
-            f"d{int(r['study_day']):>2} {r['date']} {dow_en[r['dow']]} "
+            f"d{int(r['study_day']):>2} {dow_en[r['dow']]} "
             f"s{int(r['day_slot'])}({int(r['hour']):02d}h) | "
             f"loc={r['location']:<14} | act={r['activity']:<7} | "
             f"wx={r['weather']:<12} {r['temperature']:<13} | "
