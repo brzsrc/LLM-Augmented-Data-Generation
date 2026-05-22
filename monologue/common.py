@@ -19,8 +19,8 @@ import pandas as pd
 # 路径(全部相对当前工作目录)
 # ============================================
 DEFAULT_INPUT_CSV = "data/cleaned_output_to_predict.csv"
-DEFAULT_PERSONA_DIR = "outputs/personas"
-DEFAULT_MONOLOGUE_DIR = "outputs/monologues"
+DEFAULT_PERSONA_DIR = "evaluation/outputs/personas"
+DEFAULT_MONOLOGUE_DIR = "evaluation/outputs/monologues"
 DEFAULT_PREDICTIONS_CSV = "outputs/predictions.csv"
 
 PROMPT_PATHS = {
