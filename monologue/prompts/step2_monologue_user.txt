@@ -10,7 +10,7 @@
 
 ```
 study_day: {STUDY_DAY}
-date: {DATE}({WEEKDAY})
+weekday: {WEEKDAY}
 day_slot: {SLOT}(对应小时:{HOUR}点)
 location: {LOCATION}
 activity: {ACTIVITY}

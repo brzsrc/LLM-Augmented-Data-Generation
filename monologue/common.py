@@ -339,7 +339,6 @@ def make_result_record(uid: int, row, post30: int, parsed: dict, raw: str = "",
     rec = {
         "uid": uid,
         "study_day": int(row["study_day"]),
-        "date": str(row["date"].date() if hasattr(row["date"], "date") else row["date"]),
         "slot": int(row["day_slot"]),
         "location": str(row["location"]),
         "send": int(row["send"]),
