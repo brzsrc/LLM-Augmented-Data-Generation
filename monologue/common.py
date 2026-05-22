@@ -199,19 +199,21 @@ class UserState:
 
         sub_df = sub_df.copy()
         sub_df["datetime"] = pd.to_datetime(sub_df["datetime"])
-        self.df = sub_df.sort_values(["date", "day_slot"]).reset_index(drop=True)
+        self.df = sub_df.sort_values(["study_day", "day_slot"]).reset_index(drop=True)
         self.N = len(self.df)
 
-        # 断点续跑
         self.prior_rows = []
         self.done_keys = set()
         self.jsonl_path = jsonl_path
+
+        # 断点续跑
         if os.path.exists(jsonl_path):
             with open(jsonl_path, encoding="utf-8") as f:
                 for line in f:
                     rec = json.loads(line)
                     self.prior_rows.append(rec)
-                    self.done_keys.add((rec["date"], rec["slot"]))
+                    self.done_keys.add((rec["study_day"], rec["slot"]))
+
         self.cursor = len(self.prior_rows)
         self.f_out = None
 
@@ -269,6 +271,7 @@ def load_users_for_prediction(
             persona_text = None
         else:
             persona_text = open(persona_path, encoding="utf-8").read()
+            persona_text = strip_think_tags(persona_text)
 
         sub = df[df["uid"] == uid].copy()
         out.append((uid, sub, persona_text))
@@ -326,9 +329,14 @@ def build_post30_prompt(state: UserState, subs: dict, mono_text: str, reasoning:
     return user_prompt
 
 
-def make_result_record(uid: int, row, post30: int, parsed: dict, raw: str = "") -> dict:
-    """构造一条 jsonl 记录。统一字段名,供所有版本使用。"""
-    return {
+def make_result_record(uid: int, row, post30: int, parsed: dict, raw: str = "",
+                       persona: str = None, principles: str = None) -> dict:
+    """构造一条 jsonl 记录。统一字段名,供所有版本使用。
+
+    可选 persona / principles:传入时会写入每条 jsonl,便于事后单条复盘
+    (不传则不写入,保持向后兼容)
+    """
+    rec = {
         "uid": uid,
         "study_day": int(row["study_day"]),
         "date": str(row["date"].date() if hasattr(row["date"], "date") else row["date"]),
@@ -343,3 +351,8 @@ def make_result_record(uid: int, row, post30: int, parsed: dict, raw: str = "") 
         "summary": parsed["SUMMARY"] or f"d{int(row['study_day'])} s{int(row['day_slot'])}",
         "raw_mono": raw,
     }
+    if persona is not None:
+        rec["persona"] = persona
+    if principles is not None:
+        rec["principles"] = principles
+    return rec

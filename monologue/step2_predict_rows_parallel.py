@@ -116,7 +116,8 @@ def run_parallel(states: dict, llm: Qwen32BLLM,
             s = states[uid]
             subs, parsed, raw = parsed_by_uid[uid]
             row = s.current_row()
-            rec = make_result_record(uid, row, int(post30), parsed, raw)
+            rec = make_result_record(uid, row, int(post30), parsed, raw,
+                                     persona=s.persona, principles=s.principles)
             s.append_result(rec)
             rows_done += 1
 
@@ -159,7 +160,8 @@ def catch_up_lagging_users(states: dict, llm: Qwen32BLLM,
             )
             post30 = llm.judge_steps(system=post_sys, user=post_user)
             row = s.current_row()
-            rec = make_result_record(uid, row, int(post30), parsed, raw)
+            rec = make_result_record(uid, row, int(post30), parsed, raw,
+                                     persona=s.persona, principles=s.principles)
             s.append_result(rec)
             print(f"  catch-up User {uid}: cursor={s.cursor}/{max_c}")
     print(f"[align] 全部对齐到 cursor={max_c}, 进入并行模式")
