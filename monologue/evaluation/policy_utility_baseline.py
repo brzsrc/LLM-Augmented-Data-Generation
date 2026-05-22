@@ -97,6 +97,7 @@ def load_and_preprocess(orig_csv):
     """
     orig = pd.read_csv(orig_csv)
     orig = orig.loc[orig['activity'] == 'STILL']
+    print(f"{len(orig.index)} rows loaded from {orig_csv}")
 
     orig["avail"] = orig["avail"].astype(int)
     orig["date_dt"] = pd.to_datetime(orig["date"])
