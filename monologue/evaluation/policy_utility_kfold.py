@@ -49,7 +49,7 @@ def get_args():
 # ============================================================================
 # Constants
 # ============================================================================
-STATE_COLS = ['study_day', 'weekday', 'slot', 'weather', 'temp', 'loc', 'resp', 'steps30pre']
+STATE_COLS = ['study_day', 'weekday', 'slot', 'weather', 'temp', 'loc', 'resp', 'steps30pre', 'dosage']
 
 NUM_ACTIONS = 3
 GAMMA = 0.9
