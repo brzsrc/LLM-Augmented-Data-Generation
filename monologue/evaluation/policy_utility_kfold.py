@@ -59,10 +59,21 @@ def get_args():
     p.add_argument("--ddqn_eval_every", type=int, default=6000,
                    help="How often to snapshot a DDQN checkpoint for SWA averaging.")
     p.add_argument("--ddqn_batch", type=int, default=512)
-    p.add_argument("--ddqn_seeds", type=int, default=1,
+    p.add_argument("--ddqn_seeds", type=int, default=3,
                    help="Independent DDQN training seeds per fold (Fix 4).")
     p.add_argument("--ddqn_swa_keep", type=int, default=3,
                    help="Average parameters of the last N checkpoints (Fix 3).")
+    p.add_argument("--cql_alpha", type=float, default=1.0,
+                   help="CQL conservative-penalty weight. 0 = vanilla DDQN. "
+                        "Typical: 0.5–5.0; higher = more conservative (closer to BC). "
+                        "Fixes offline-RL extrapolation by pushing down Q on actions "
+                        "not in the data.")
+    p.add_argument("--gamma", type=float, default=0.95,
+                   help="Discount factor for both DDQN and FQE. Effective horizon "
+                        "≈ 1/(1-gamma). 0.9 -> 10 steps, 0.95 -> 20 steps, "
+                        "0.99 -> 100 steps. Higher = delayed costs (e.g. notification "
+                        "fatigue) get more weight; FQE value-clip bounds scale "
+                        "automatically with 1/(1-gamma).")
 
     # FQE (per fold, repeated over seeds)
     p.add_argument("--fqe_iters", type=int, default=20000)
@@ -84,7 +95,6 @@ def get_args():
 STATE_COLS = ['study_day', 'weekday', 'slot', 'weather', 'temp', 'loc', 'resp',
               'steps30pre', 'dosage']
 NUM_ACTIONS = 3
-GAMMA = 0.95                # Fix 6: was 0.9 (effective horizon 10) -> 20 steps
 DDQN_LR = 5.5e-5
 DDQN_HIDDEN = 128
 
@@ -206,12 +216,18 @@ class MultiQNet(nn.Module):
 def train_ddqn(train_trans, scaler, device,
                n_iters=80000, eval_every=6000,
                batch=512, lr=DDQN_LR, hidden=DDQN_HIDDEN,
-               gamma=GAMMA, tau=1e-4, use_amp=False, verbose=False,
-               swa_keep=5):
+               gamma=0.95, tau=1e-4, use_amp=False, verbose=False,
+               swa_keep=5, cql_alpha=0.0):
     """Train DDQN, then return a QNet whose parameters are the *average* of the
     last `swa_keep` checkpoints. No val set, no early-stop — both were sources
     of run-to-run noise. SWA across late training is a far less biased way to
-    pick weights than max-Q on a 7-patient val."""
+    pick weights than max-Q on a 7-patient val.
+
+    If `cql_alpha > 0`, adds the Conservative Q-Learning penalty
+        L_cql = E_s[logsumexp_a Q(s,a)] - E_(s,a)~data[Q(s,a)]
+    which pushes Q down on actions not seen in the data, preventing the
+    offline-RL extrapolation pathology where argmax picks OOD actions that
+    only look good because their Q was never grounded by data."""
     s, a, r, ns, d, _ = to_arrays(train_trans)
     s = scaler.transform(s); ns = scaler.transform(ns)
     s = torch.tensor(s, dtype=torch.float32, device=device)
@@ -238,8 +254,17 @@ def train_ddqn(train_trans, scaler, device,
                 next_a = online(nsb).argmax(dim=1, keepdim=True)
                 next_q = target(nsb).gather(1, next_a).squeeze(1)
                 y = rb + gamma * (1.0 - db) * next_q
-            q_sa = online(sb).gather(1, ab.unsqueeze(1)).squeeze(1)
-            loss = F.smooth_l1_loss(q_sa, y)
+            q_all_at_sb = online(sb)                                     # (B, num_actions)
+            q_sa = q_all_at_sb.gather(1, ab.unsqueeze(1)).squeeze(1)
+            loss_td = F.smooth_l1_loss(q_sa, y)
+            if cql_alpha > 0.0:
+                # CQL: penalise high Q on unseen actions while leaving Q
+                # at the observed (s, a) intact (cancels out in the diff).
+                logsumexp_q = torch.logsumexp(q_all_at_sb, dim=1)
+                loss_cql = (logsumexp_q - q_sa).mean()
+                loss = loss_td + cql_alpha * loss_cql
+            else:
+                loss = loss_td
         opt.zero_grad()
         loss.backward()
         torch.nn.utils.clip_grad_norm_(online.parameters(), 10.0)
@@ -272,7 +297,7 @@ def train_ddqn(train_trans, scaler, device,
 # ============================================================================
 def train_fqe_multi(policy_actions_at_ns, eval_trans, scaler, state_dim,
                     n_policies, device,
-                    n_iters=20000, batch=512, lr=4e-3, gamma=GAMMA, tau=0.009,
+                    n_iters=20000, batch=512, lr=4e-3, gamma=0.95, tau=0.009,
                     hidden=64, use_amp=False, vmin=None, vmax=None):
     s, a, r, ns, d, _ = to_arrays(eval_trans)
     s = scaler.transform(s); ns = scaler.transform(ns)
@@ -373,7 +398,8 @@ def one_fold(fold_idx, train_pats, test_pats, orig_trans, cfg, device,
                           n_iters=cfg["ddqn_iters"], eval_every=cfg["ddqn_eval_every"],
                           batch=cfg["ddqn_batch"], lr=DDQN_LR, hidden=DDQN_HIDDEN,
                           gamma=cfg["gamma"], use_amp=use_amp, verbose=False,
-                          swa_keep=cfg["ddqn_swa_keep"])
+                          swa_keep=cfg["ddqn_swa_keep"],
+                          cql_alpha=cfg["cql_alpha"])
         if save_dir:
             torch.save(qnet.state_dict(),
                        os.path.join(save_dir, f"ddqn_fold{fold_idx}_seed{ds}.pt"))
@@ -444,7 +470,8 @@ def main():
     devices = [d.strip() for d in args.devices.split(",") if d.strip()]
     print(f"\n>>> Devices: {devices} | n_folds={args.n_folds} "
           f"| ddqn_seeds={args.ddqn_seeds} | fqe_seeds={args.fqe_seeds} "
-          f"| gamma={GAMMA} | amp={args.amp}")
+          f"| cql_alpha={args.cql_alpha} "
+          f"| gamma={args.gamma} | amp={args.amp}")
     print(">>> Determinism: cuDNN.det=True, cuDNN.bench=False, TF32 off, "
           "CUBLAS_WORKSPACE_CONFIG set.")
 
@@ -456,12 +483,12 @@ def main():
     orig_trans = build_transitions(orig)
     print(f"transitions: {len(orig_trans)}")
 
-    # ----- Value-clip bounds from reward range (Fix 6 widens these via gamma) -----
+    # ----- Value-clip bounds from reward range (scales with 1/(1-gamma)) -----
     r_all = orig["reward"].astype(float).values
-    vmin = float(r_all.min() / (1.0 - GAMMA))
-    vmax = float(r_all.max() / (1.0 - GAMMA))
+    vmin = float(r_all.min() / (1.0 - args.gamma))
+    vmax = float(r_all.max() / (1.0 - args.gamma))
     print(f"    reward range [{r_all.min():.3f}, {r_all.max():.3f}] "
-          f"-> FQE value clip [{vmin:.2f}, {vmax:.2f}] (gamma={GAMMA})")
+          f"-> FQE value clip [{vmin:.2f}, {vmax:.2f}] (gamma={args.gamma})")
 
     # ----- Folds -----
     all_pats = sorted(set(t["patient_id"] for t in orig_trans))
@@ -477,10 +504,11 @@ def main():
         "ddqn_iters": args.ddqn_iters, "ddqn_eval_every": args.ddqn_eval_every,
         "ddqn_batch": args.ddqn_batch,
         "ddqn_seeds": args.ddqn_seeds, "ddqn_swa_keep": args.ddqn_swa_keep,
+        "cql_alpha": args.cql_alpha,
         "fqe_iters": args.fqe_iters, "fqe_batch": args.fqe_batch,
         "fqe_seeds": args.fqe_seeds,
         "state_dim": len(STATE_COLS), "vmin": vmin, "vmax": vmax,
-        "gamma": GAMMA,
+        "gamma": args.gamma,
     }
 
     # ----- Run folds -----
@@ -590,9 +618,10 @@ def main():
         pickle.dump({"per_patient_values": V, "patient_ids": pids,
                      "boot_matrix": boot, "policy_names": POLICY_NAMES,
                      "point_estimates": dict(zip(POLICY_NAMES, point.tolist())),
-                     "config": {"gamma": GAMMA, "ddqn_seeds": args.ddqn_seeds,
+                     "config": {"gamma": args.gamma, "ddqn_seeds": args.ddqn_seeds,
                                 "fqe_seeds": args.fqe_seeds,
                                 "ddqn_swa_keep": args.ddqn_swa_keep,
+                                "cql_alpha": args.cql_alpha,
                                 "amp": args.amp, "seed": args.seed,
                                 "n_folds": args.n_folds}}, f)
 
