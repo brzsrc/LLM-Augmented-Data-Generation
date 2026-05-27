@@ -59,7 +59,7 @@ def get_args():
     p.add_argument("--ddqn_eval_every", type=int, default=6000,
                    help="How often to snapshot a DDQN checkpoint for SWA averaging.")
     p.add_argument("--ddqn_batch", type=int, default=512)
-    p.add_argument("--ddqn_seeds", type=int, default=3,
+    p.add_argument("--ddqn_seeds", type=int, default=1,
                    help="Independent DDQN training seeds per fold (Fix 4).")
     p.add_argument("--ddqn_swa_keep", type=int, default=3,
                    help="Average parameters of the last N checkpoints (Fix 3).")
@@ -92,7 +92,7 @@ def get_args():
 # ============================================================================
 # Constants
 # ============================================================================
-STATE_COLS = ['study_day', 'weekday', 'slot', 'weather', 'temp', 'loc', 'resp',
+STATE_COLS = ['study_day', 'weekday', 'slot', 'weather', 'temp', 'loc',
               'steps30pre', 'dosage']
 NUM_ACTIONS = 3
 DDQN_LR = 5.5e-5

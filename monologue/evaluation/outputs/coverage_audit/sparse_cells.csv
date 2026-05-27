@@ -1,0 +1,9 @@
+feature,feat_value,action,count
+slot,6,1,0
+resp_bin,"(1.0, 2.0]",0,0
+resp_bin,"(2.0, 3.0]",0,0
+slot,6,2,1
+slot,6,0,2
+slot,0,0,3
+slot,0,1,4
+slot,0,2,6

@@ -1,0 +1,9 @@
+feature,n_cells,n_sparse,pct_sparse
+slot,21,6,28.57142857142857
+weekday,21,0,0.0
+weather,9,0,0.0
+temp,18,0,0.0
+loc,18,0,0.0
+dosage_bin,12,0,0.0
+steps30pre_bin,9,0,0.0
+resp_bin,9,2,22.22222222222222
