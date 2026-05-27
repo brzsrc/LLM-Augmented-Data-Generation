@@ -1,0 +1,4 @@
+best,compared_to,W,p
+Send a=2,Original (train-only),6408.0,0.0809460025507891
+Send a=2,No message,6607.0,0.03818830004173557
+Send a=2,Send a=1,8091.0,2.6013008372208807e-06
