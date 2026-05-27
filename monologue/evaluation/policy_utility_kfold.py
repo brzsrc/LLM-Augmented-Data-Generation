@@ -22,7 +22,7 @@ def get_args():
     p.add_argument("--out_dir", default="./outputs/kfold")
 
     # K-fold + parallelism
-    p.add_argument("--n_folds", type=int, default=5)
+    p.add_argument("--n_folds", type=int, default=3)
     p.add_argument("--devices", default="cuda:0,cuda:1",
                    help="Comma-separated torch devices. Folds are round-robined "
                         "across them, one process per device. Use a single value "
@@ -404,7 +404,7 @@ def main():
     print(f"transitions: {len(orig_trans)}")
 
     # ----- Value-clip bounds from reward range -----
-    r_all = orig["reward_calc"].astype(float).values
+    r_all = orig["reward"].astype(float).values
     vmin = float(r_all.min() / (1.0 - GAMMA))
     vmax = float(r_all.max() / (1.0 - GAMMA))
     print(f"    reward range [{r_all.min():.3f}, {r_all.max():.3f}] "
