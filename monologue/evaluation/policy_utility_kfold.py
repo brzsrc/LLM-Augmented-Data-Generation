@@ -1,6 +1,34 @@
+"""
+Policy Utility Evaluation — K-FOLD CROSS-FITTED, DUAL-GPU
+========================================================
+Stabilised version. On top of the K-fold + value-clipped FQE + multi-seed median
+design, this revision fixes the run-to-run instability we saw (Original V_hat
+swinging by ~10 between runs):
+
+  Fix 2  CUDA determinism: cuDNN/TF32 turned off, deterministic algos on,
+         CUBLAS_WORKSPACE_CONFIG set. AMP defaults to OFF (--amp opt-in).
+  Fix 3  DDQN early-stop dropped (max-Q on a 7-patient val set was a noisy,
+         positively-biased selection criterion). Replaced with SWA: parameters
+         averaged across the last `--ddqn_swa_keep` checkpoints.
+  Fix 4  DDQN now runs `--ddqn_seeds` independent seeds per fold. Per-patient
+         V_hat = median over (DDQN_seed x FQE_seed) realisations, so the
+         "policy being evaluated" is itself averaged, not a lucky single net.
+  Fix 5  No val split inside each fold (Fix 3 made it unnecessary); the ~7
+         val patients return to DDQN training, slightly more data per fold.
+  Fix 6  GAMMA bumped 0.9 -> 0.95 (effective horizon 10 -> 20 steps), so
+         delayed costs (notification fatigue) get reflected in the Bellman
+         backup. Value-clip bounds widen accordingly (2x).
+
+Everything else (K-fold over patients, paired-diff CIs, dual-GPU) unchanged.
+"""
 import argparse
 import json
 import os
+
+# Must be set BEFORE the first CUDA op for `torch.use_deterministic_algorithms`
+# to work with cuBLAS. spawn'd children inherit os.environ.
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+
 import pickle
 import time
 from collections import defaultdict
@@ -20,8 +48,6 @@ from sklearn.preprocessing import MinMaxScaler
 def get_args():
     p = argparse.ArgumentParser()
     p.add_argument("--out_dir", default="./outputs/kfold")
-
-    # K-fold + parallelism
     p.add_argument("--n_folds", type=int, default=3)
     p.add_argument("--devices", default="cuda:0,cuda:1",
                    help="Comma-separated torch devices. Folds are round-robined "
@@ -30,29 +56,35 @@ def get_args():
 
     # DDQN (per fold)
     p.add_argument("--ddqn_iters", type=int, default=80000)
-    p.add_argument("--ddqn_eval_every", type=int, default=6000)
+    p.add_argument("--ddqn_eval_every", type=int, default=6000,
+                   help="How often to snapshot a DDQN checkpoint for SWA averaging.")
     p.add_argument("--ddqn_batch", type=int, default=512)
+    p.add_argument("--ddqn_seeds", type=int, default=1,
+                   help="Independent DDQN training seeds per fold (Fix 4).")
+    p.add_argument("--ddqn_swa_keep", type=int, default=3,
+                   help="Average parameters of the last N checkpoints (Fix 3).")
 
     # FQE (per fold, repeated over seeds)
     p.add_argument("--fqe_iters", type=int, default=20000)
     p.add_argument("--fqe_batch", type=int, default=512)
-    p.add_argument("--fqe_seeds", type=int, default=5,
-                   help="FQE fits per fold; per-patient value = median over these.")
+    p.add_argument("--fqe_seeds", type=int, default=5)
 
     p.add_argument("--bootstrap_B", type=int, default=2000)
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--amp", action="store_true",
+                   help="Enable bf16 autocast (off by default for determinism, Fix 2).")
     p.add_argument("--no_amp", action="store_true",
-                   help="Disable bf16 autocast (default: enabled on cuda).")
+                   help="(Deprecated; AMP is already off by default. Kept for back-compat.)")
     return p.parse_args()
 
 
 # ============================================================================
 # Constants
 # ============================================================================
-STATE_COLS = ['study_day', 'weekday', 'slot', 'weather', 'temp', 'loc', 'resp', 'steps30pre', 'dosage']
-
+STATE_COLS = ['study_day', 'weekday', 'slot', 'weather', 'temp', 'loc', 'resp',
+              'steps30pre', 'dosage']
 NUM_ACTIONS = 3
-GAMMA = 0.9
+GAMMA = 0.95                # Fix 6: was 0.9 (effective horizon 10) -> 20 steps
 DDQN_LR = 5.5e-5
 DDQN_HIDDEN = 128
 
@@ -60,6 +92,26 @@ POLICY_NAMES = ["Original (cross-fit)", "No message", "Send a=1", "Send a=2"]
 K_POLICIES = len(POLICY_NAMES)
 
 
+# ============================================================================
+# Determinism helper (Fix 2)
+# ============================================================================
+def setup_determinism(seed):
+    """Lock all RNGs + force deterministic CUDA. Call in main and in each worker."""
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+    try:
+        torch.use_deterministic_algorithms(True, warn_only=True)
+    except Exception:
+        pass
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
+
+
+# ============================================================================
+# Data / MDP
+# ============================================================================
 def build_transitions(df):
     df = df.sort_values(['uid', 'study_day', 'slot']).reset_index(drop=True)
     transitions = []
@@ -95,9 +147,6 @@ def filter_trans(trans, pats):
 
 
 def get_initial_states_with_ids(trans):
-    """One initial state per patient, with aligned patient-id list.
-    `trans` is assumed time-sorted within patient (build_transitions guarantees
-    this and filter_trans preserves order)."""
     by_pid = defaultdict(list)
     for t in trans:
         by_pid[t["patient_id"]].append(t)
@@ -107,7 +156,6 @@ def get_initial_states_with_ids(trans):
 
 
 def make_folds(patients, n_folds, seed):
-    """Partition patients into n_folds disjoint test sets."""
     rng = np.random.default_rng(seed)
     pats = list(patients)
     rng.shuffle(pats)
@@ -115,7 +163,7 @@ def make_folds(patients, n_folds, seed):
 
 
 # ============================================================================
-# Networks  (identical to baseline)
+# Networks
 # ============================================================================
 class QNet(nn.Module):
     def __init__(self, state_dim, num_actions, hidden=128):
@@ -149,16 +197,21 @@ class MultiQNet(nn.Module):
         h = torch.einsum("kbh,khj->kbj", h, self.W2) + self.b2
         h = F.relu(h)
         out = torch.einsum("kbh,kha->kba", h, self.W3) + self.b3
-        return out  # (K, B, num_actions)
+        return out
 
 
 # ============================================================================
-# DDQN training  (identical to baseline, verbose off by default)
+# DDQN training — no early-stop, SWA over last N checkpoints  (Fix 3 + Fix 5)
 # ============================================================================
-def train_ddqn(train_trans, val_trans, scaler, device,
+def train_ddqn(train_trans, scaler, device,
                n_iters=80000, eval_every=6000,
                batch=512, lr=DDQN_LR, hidden=DDQN_HIDDEN,
-               gamma=GAMMA, tau=1e-4, use_amp=True, verbose=False):
+               gamma=GAMMA, tau=1e-4, use_amp=False, verbose=False,
+               swa_keep=5):
+    """Train DDQN, then return a QNet whose parameters are the *average* of the
+    last `swa_keep` checkpoints. No val set, no early-stop — both were sources
+    of run-to-run noise. SWA across late training is a far less biased way to
+    pick weights than max-Q on a 7-patient val."""
     s, a, r, ns, d, _ = to_arrays(train_trans)
     s = scaler.transform(s); ns = scaler.transform(ns)
     s = torch.tensor(s, dtype=torch.float32, device=device)
@@ -167,9 +220,6 @@ def train_ddqn(train_trans, val_trans, scaler, device,
     ns = torch.tensor(ns, dtype=torch.float32, device=device)
     d = torch.tensor(d, dtype=torch.float32, device=device)
 
-    vs, _, _, _, _, _ = to_arrays(val_trans)
-    vs = torch.tensor(scaler.transform(vs), dtype=torch.float32, device=device)
-
     state_dim = s.shape[1]
     online = QNet(state_dim, NUM_ACTIONS, hidden).to(device)
     target = QNet(state_dim, NUM_ACTIONS, hidden).to(device)
@@ -177,9 +227,8 @@ def train_ddqn(train_trans, val_trans, scaler, device,
     opt = torch.optim.Adam(online.parameters(), lr=lr)
 
     N = len(s)
-    best_val_q = -np.inf
-    best_state = {k: v.detach().clone() for k, v in online.state_dict().items()}
     autocast = (use_amp and device.type == "cuda")
+    ckpts = []   # rolling buffer of last `swa_keep` parameter snapshots
 
     for it in range(n_iters):
         idx = torch.randint(0, N, (batch,), device=device)
@@ -200,25 +249,31 @@ def train_ddqn(train_trans, val_trans, scaler, device,
                 tp.data.mul_(1.0 - tau).add_(tau * op.data)
 
         if (it + 1) % eval_every == 0:
-            with torch.no_grad():
-                v = online(vs).max(dim=1).values.mean().item()
-            if v > best_val_q:
-                best_val_q = v
-                best_state = {k: vv.detach().clone() for k, vv in online.state_dict().items()}
+            ckpts.append({k: v.detach().clone() for k, v in online.state_dict().items()})
+            if len(ckpts) > swa_keep:
+                ckpts.pop(0)
             if verbose:
-                print(f"      [ddqn] iter {it+1:6d} loss={loss.item():.4f} val_max_q={v:.4f}")
+                print(f"      [ddqn] iter {it+1:6d} loss={loss.item():.4f} "
+                      f"(snapshot, kept={len(ckpts)})")
 
-    online.load_state_dict(best_state)
+    # SWA: average parameters of the last `swa_keep` checkpoints
+    if not ckpts:
+        return online
+    avg_state = {}
+    for k in ckpts[0].keys():
+        stacked = torch.stack([c[k].float() for c in ckpts])
+        avg_state[k] = stacked.mean(dim=0).to(ckpts[0][k].dtype)
+    online.load_state_dict(avg_state)
     return online
 
 
 # ============================================================================
-# FQE — train K policies simultaneously, with VALUE CLIPPING
+# FQE — value-clipped, multi-policy
 # ============================================================================
 def train_fqe_multi(policy_actions_at_ns, eval_trans, scaler, state_dim,
                     n_policies, device,
                     n_iters=20000, batch=512, lr=4e-3, gamma=GAMMA, tau=0.009,
-                    hidden=64, use_amp=True, vmin=None, vmax=None):
+                    hidden=64, use_amp=False, vmin=None, vmax=None):
     s, a, r, ns, d, _ = to_arrays(eval_trans)
     s = scaler.transform(s); ns = scaler.transform(ns)
     s = torch.tensor(s, dtype=torch.float32, device=device)
@@ -239,7 +294,7 @@ def train_fqe_multi(policy_actions_at_ns, eval_trans, scaler, state_dim,
     for it in range(n_iters):
         idx = torch.randint(0, N, (batch,), device=device)
         sb = s[idx]; ab = a[idx]; rb = r[idx]; nsb = ns[idx]; db = d[idx]
-        ns_a_all = policy_actions_at_ns[:, idx]   # (K, B)
+        ns_a_all = policy_actions_at_ns[:, idx]
 
         with torch.amp.autocast(device_type="cuda", enabled=autocast, dtype=torch.bfloat16):
             with torch.no_grad():
@@ -247,7 +302,7 @@ def train_fqe_multi(policy_actions_at_ns, eval_trans, scaler, state_dim,
                 next_q = tgt_q_all.gather(2, ns_a_all.unsqueeze(-1)).squeeze(-1)
                 y = rb.unsqueeze(0) + gamma * (1.0 - db).unsqueeze(0) * next_q
                 if vmin is not None:
-                    y = y.clamp(vmin, vmax)             # <-- divergence guard
+                    y = y.clamp(vmin, vmax)
             q_all = online(sb)
             ab_exp = ab.unsqueeze(0).expand(K, -1).unsqueeze(-1)
             q_sa = q_all.gather(2, ab_exp).squeeze(-1)
@@ -265,19 +320,16 @@ def train_fqe_multi(policy_actions_at_ns, eval_trans, scaler, state_dim,
 
 def per_patient_values_multi(qnet_eval, policy_actions_at_init, init_states_scaled,
                              device, vmin=None, vmax=None):
-    """Return (K, n_patients) — Q^pi(s0, pi(s0)) for each policy at each test
-    patient's initial state."""
     s = torch.tensor(init_states_scaled, dtype=torch.float32, device=device)
     with torch.no_grad():
         q_all = qnet_eval(s)
         gathered = q_all.gather(2, policy_actions_at_init.unsqueeze(-1)).squeeze(-1)
         if vmin is not None:
             gathered = gathered.clamp(vmin, vmax)
-    return gathered.cpu().numpy()  # (K, n)
+    return gathered.cpu().numpy()
 
 
 def policy_actions_for_states(qnet, states_tensor, K, device):
-    """(K, N) action table: row 0 = learned argmax, rows 1-3 = fixed 0/1/2."""
     with torch.no_grad():
         actions = torch.zeros(K, states_tensor.shape[0], dtype=torch.long, device=device)
         actions[0] = qnet(states_tensor).argmax(dim=1)
@@ -288,38 +340,22 @@ def policy_actions_for_states(qnet, states_tensor, K, device):
 
 
 # ============================================================================
-# One fold: train DDQN on train pats, FQE-evaluate held-out test pats
+# One fold: multi-seed DDQN x multi-seed FQE, median over all realisations
+# (Fix 4 + Fix 5)
 # ============================================================================
 def one_fold(fold_idx, train_pats, test_pats, orig_trans, cfg, device,
              save_dir=None):
-    torch.manual_seed(cfg["seed"] + fold_idx)
-    np.random.seed(cfg["seed"] + fold_idx)
-    use_amp = (not cfg["no_amp"]) and device.type == "cuda"
+    setup_determinism(cfg["seed"] + fold_idx)
+    use_amp = cfg["use_amp"] and device.type == "cuda"
 
     train_trans = filter_trans(orig_trans, train_pats)
     test_trans = filter_trans(orig_trans, test_pats)
 
-    # internal val split for DDQN early-stop
-    rng = np.random.default_rng(cfg["seed"] + fold_idx)
-    tp = sorted(train_pats)
-    rng.shuffle(tp)
-    n_val = max(2, len(tp) // 4)
-    val_pats = set(tp[:n_val])
-    tr_pats = set(tp[n_val:])
-    tr = filter_trans(train_trans, tr_pats)
-    vl = filter_trans(train_trans, val_pats)
-
-    s_tr, _, _, _, _, _ = to_arrays(tr)
+    # scaler fit on ALL of this fold's train transitions (Fix 5: no val split)
+    s_tr, _, _, _, _, _ = to_arrays(train_trans)
     scaler = MinMaxScaler().fit(s_tr)
 
-    qnet = train_ddqn(tr, vl, scaler, device,
-                      n_iters=cfg["ddqn_iters"], eval_every=cfg["ddqn_eval_every"],
-                      batch=cfg["ddqn_batch"], lr=DDQN_LR, hidden=DDQN_HIDDEN,
-                      use_amp=use_amp, verbose=False)
-    if save_dir:
-        torch.save(qnet.state_dict(), os.path.join(save_dir, f"ddqn_fold{fold_idx}.pt"))
-
-    # eval prep on held-out test fold
+    # eval-side tensors (don't depend on which DDQN seed)
     pids, init = get_initial_states_with_ids(test_trans)
     init_s = scaler.transform(init)
     init_t = torch.tensor(init_s, dtype=torch.float32, device=device)
@@ -327,37 +363,52 @@ def one_fold(fold_idx, train_pats, test_pats, orig_trans, cfg, device,
     ns_t = torch.tensor(scaler.transform(ns_full), dtype=torch.float32, device=device)
 
     K = K_POLICIES
-    pol_a_ns = policy_actions_for_states(qnet, ns_t, K, device)
-    pol_a_init = policy_actions_for_states(qnet, init_t, K, device)
+    all_vals = []                    # one (K, n_pat) array per (ddqn_seed x fqe_seed)
+    action_counts = [0, 0, 0]        # accumulated across all DDQN seeds in this fold
 
-    # multi-seed FQE -> per-patient median
-    seed_vals = []
-    for sd in range(cfg["fqe_seeds"]):
-        torch.manual_seed(cfg["seed"] + fold_idx * 100 + sd)
-        qe = train_fqe_multi(pol_a_ns, test_trans, scaler, cfg["state_dim"], K, device,
-                             n_iters=cfg["fqe_iters"], batch=cfg["fqe_batch"],
-                             use_amp=use_amp, vmin=cfg["vmin"], vmax=cfg["vmax"])
-        vals = per_patient_values_multi(qe, pol_a_init, init_s, device,
-                                        vmin=cfg["vmin"], vmax=cfg["vmax"])  # (K, n)
-        seed_vals.append(vals)
-    med = np.median(np.stack(seed_vals, axis=0), axis=0)  # (K, n)
+    for ds in range(cfg["ddqn_seeds"]):
+        # distinct seed per (fold, ddqn_seed)
+        torch.manual_seed(cfg["seed"] + fold_idx * 1000 + ds * 100)
+        qnet = train_ddqn(train_trans, scaler, device,
+                          n_iters=cfg["ddqn_iters"], eval_every=cfg["ddqn_eval_every"],
+                          batch=cfg["ddqn_batch"], lr=DDQN_LR, hidden=DDQN_HIDDEN,
+                          gamma=cfg["gamma"], use_amp=use_amp, verbose=False,
+                          swa_keep=cfg["ddqn_swa_keep"])
+        if save_dir:
+            torch.save(qnet.state_dict(),
+                       os.path.join(save_dir, f"ddqn_fold{fold_idx}_seed{ds}.pt"))
 
-    # cross-fitted action distribution on this test fold
-    with torch.no_grad():
-        ts_t = torch.tensor(scaler.transform(s_full), dtype=torch.float32, device=device)
-        ac = qnet(ts_t).argmax(dim=1).cpu().numpy()
-    counts = [int((ac == k).sum()) for k in range(NUM_ACTIONS)]
+        # action distribution from THIS DDQN seed
+        with torch.no_grad():
+            ts_t = torch.tensor(scaler.transform(s_full), dtype=torch.float32, device=device)
+            ac = qnet(ts_t).argmax(dim=1).cpu().numpy()
+        for k in range(NUM_ACTIONS):
+            action_counts[k] += int((ac == k).sum())
 
+        # this DDQN's policy actions at test next-states / init states
+        pol_a_ns = policy_actions_for_states(qnet, ns_t, K, device)
+        pol_a_init = policy_actions_for_states(qnet, init_t, K, device)
+
+        for fs in range(cfg["fqe_seeds"]):
+            torch.manual_seed(cfg["seed"] + fold_idx * 1000 + ds * 100 + fs + 1)
+            qe = train_fqe_multi(pol_a_ns, test_trans, scaler, cfg["state_dim"], K, device,
+                                 n_iters=cfg["fqe_iters"], batch=cfg["fqe_batch"],
+                                 gamma=cfg["gamma"], use_amp=use_amp,
+                                 vmin=cfg["vmin"], vmax=cfg["vmax"])
+            vals = per_patient_values_multi(qe, pol_a_init, init_s, device,
+                                            vmin=cfg["vmin"], vmax=cfg["vmax"])
+            all_vals.append(vals)
+
+    # median over ALL (ddqn_seed x fqe_seed) realisations -> robust per-patient V
+    med = np.median(np.stack(all_vals, axis=0), axis=0)   # (K, n_pat)
     result = {pid: med[:, i].astype(float) for i, pid in enumerate(pids)}
-    return result, counts
+    return result, action_counts
 
 
 def run_folds_on_device(device_str, fold_specs, orig_trans, cfg, save_dir, out_q):
-    """Worker: process this device's folds sequentially, push results to queue."""
+    """Worker: deterministic setup, then process its folds sequentially."""
+    setup_determinism(cfg["seed"])
     device = torch.device(device_str)
-    if device.type == "cuda":
-        torch.backends.cuda.matmul.allow_tf32 = True
-        torch.backends.cudnn.allow_tf32 = True
     for (fi, train_pats, test_pats) in fold_specs:
         t0 = time.time()
         res, counts = one_fold(fi, train_pats, test_pats, orig_trans, cfg, device,
@@ -368,10 +419,9 @@ def run_folds_on_device(device_str, fold_specs, orig_trans, cfg, save_dir, out_q
 
 
 # ============================================================================
-# Bootstrap over patients (cheap: resamples precomputed per-patient values)
+# Bootstrap over patients (cheap; resamples precomputed per-patient values)
 # ============================================================================
 def bootstrap_over_patients(V, B, seed):
-    """V: (n_patients, K). Returns boot matrix (B, K) of resampled means."""
     n, K = V.shape
     rng = np.random.default_rng(seed)
     boot = np.empty((B, K), dtype=float)
@@ -389,11 +439,14 @@ def main():
     os.makedirs(args.out_dir, exist_ok=True)
     fold_dir = os.path.join(args.out_dir, "per_fold_ddqn")
     os.makedirs(fold_dir, exist_ok=True)
-    torch.manual_seed(args.seed)
-    np.random.seed(args.seed)
+    setup_determinism(args.seed)
 
     devices = [d.strip() for d in args.devices.split(",") if d.strip()]
-    print(f"\n>>> Devices: {devices} | n_folds={args.n_folds} | fqe_seeds={args.fqe_seeds}")
+    print(f"\n>>> Devices: {devices} | n_folds={args.n_folds} "
+          f"| ddqn_seeds={args.ddqn_seeds} | fqe_seeds={args.fqe_seeds} "
+          f"| gamma={GAMMA} | amp={args.amp}")
+    print(">>> Determinism: cuDNN.det=True, cuDNN.bench=False, TF32 off, "
+          "CUBLAS_WORKSPACE_CONFIG set.")
 
     # ----- Load + preprocess -----
     print("\n>>> Loading real data ...")
@@ -403,14 +456,14 @@ def main():
     orig_trans = build_transitions(orig)
     print(f"transitions: {len(orig_trans)}")
 
-    # ----- Value-clip bounds from reward range -----
+    # ----- Value-clip bounds from reward range (Fix 6 widens these via gamma) -----
     r_all = orig["reward"].astype(float).values
     vmin = float(r_all.min() / (1.0 - GAMMA))
     vmax = float(r_all.max() / (1.0 - GAMMA))
     print(f"    reward range [{r_all.min():.3f}, {r_all.max():.3f}] "
-          f"-> FQE value clip [{vmin:.2f}, {vmax:.2f}]")
+          f"-> FQE value clip [{vmin:.2f}, {vmax:.2f}] (gamma={GAMMA})")
 
-    # ----- Build folds over patients -----
+    # ----- Folds -----
     all_pats = sorted(set(t["patient_id"] for t in orig_trans))
     folds = make_folds(all_pats, args.n_folds, args.seed)
     print(f"\n>>> Folds (sizes): {[len(f) for f in folds]}")
@@ -420,26 +473,24 @@ def main():
         fold_specs.append((i, train_pats, test_pats))
 
     cfg = {
-        "seed": args.seed, "no_amp": args.no_amp,
+        "seed": args.seed, "use_amp": args.amp,
         "ddqn_iters": args.ddqn_iters, "ddqn_eval_every": args.ddqn_eval_every,
         "ddqn_batch": args.ddqn_batch,
+        "ddqn_seeds": args.ddqn_seeds, "ddqn_swa_keep": args.ddqn_swa_keep,
         "fqe_iters": args.fqe_iters, "fqe_batch": args.fqe_batch,
         "fqe_seeds": args.fqe_seeds,
         "state_dim": len(STATE_COLS), "vmin": vmin, "vmax": vmax,
+        "gamma": GAMMA,
     }
 
-    # ----- Run folds (parallel across devices, or in-process if single device) -----
+    # ----- Run folds -----
     print("\n>>> Running folds ...")
     t0 = time.time()
-    results = {}          # pid -> (K,) value vector
+    results = {}
     action_counts = [0, 0, 0]
 
     if len(devices) == 1:
-        # in-process, sequential (easy debugging / single GPU / CPU)
         dev = torch.device(devices[0])
-        if dev.type == "cuda":
-            torch.backends.cuda.matmul.allow_tf32 = True
-            torch.backends.cudnn.allow_tf32 = True
         for (fi, trp, tep) in fold_specs:
             tf = time.time()
             res, counts = one_fold(fi, trp, tep, orig_trans, cfg, dev, save_dir=fold_dir)
@@ -449,7 +500,6 @@ def main():
             for k in range(NUM_ACTIONS):
                 action_counts[k] += counts[k]
     else:
-        # one process per device; folds round-robined across devices
         ctx = mp.get_context("spawn")
         out_q = ctx.Queue()
         per_dev = defaultdict(list)
@@ -462,7 +512,7 @@ def main():
             p.start()
             procs.append(p)
         for _ in range(len(fold_specs)):
-            fi, res, counts = out_q.get()   # blocks until a fold finishes
+            fi, res, counts = out_q.get()
             results.update(res)
             for k in range(NUM_ACTIONS):
                 action_counts[k] += counts[k]
@@ -472,17 +522,16 @@ def main():
     print(f"    all folds done in {time.time()-t0:.1f}s; "
           f"{len(results)} patients evaluated")
 
-    # ----- Assemble per-patient value matrix -----
+    # ----- Per-patient value matrix -----
     pids = sorted(results.keys())
-    V = np.array([results[p] for p in pids], dtype=float)   # (n_pat, K)
+    V = np.array([results[p] for p in pids], dtype=float)
     point = V.mean(axis=0)
     print("\n>>> Cross-fitted point estimates (mean over patients):")
     for name, v in zip(POLICY_NAMES, point):
         print(f"    {name:25s} V_hat = {v:.4f}")
 
-    # ----- Bootstrap over patients -----
-    boot = bootstrap_over_patients(V, args.bootstrap_B, args.seed)  # (B, K)
-
+    # ----- Bootstrap CI -----
+    boot = bootstrap_over_patients(V, args.bootstrap_B, args.seed)
     rows = []
     print("\n>>> Per-policy bootstrap CIs (B over patients):")
     for k, name in enumerate(POLICY_NAMES):
@@ -501,7 +550,7 @@ def main():
               f"CI=[{ci_lo:7.3f}, {ci_hi:7.3f}]")
     pd.DataFrame(rows).to_csv(os.path.join(args.out_dir, "kfold_summary.csv"), index=False)
 
-    # ----- Paired bootstrap differences (replaces Wilcoxon) -----
+    # ----- Paired diff -----
     print("\n>>> Paired bootstrap differences (A vs B, diff = A - B):")
     order = sorted(range(K_POLICIES), key=lambda k: np.median(boot[:, k]), reverse=True)
     pair_rows = []
@@ -520,7 +569,7 @@ def main():
                   f"P={p_gt:.3f} diffCI=[{lo:+.2f},{hi:+.2f}] -> {verdict}")
     pd.DataFrame(pair_rows).to_csv(os.path.join(args.out_dir, "paired_diff.csv"), index=False)
 
-    # ----- Acceptance gate: can we distinguish 'Send a=1'? -----
+    # ----- Power gate -----
     print("\n>>> Power check — can the pipeline separate 'Send a=1'?")
     k_a1 = POLICY_NAMES.index("Send a=1")
     separated = []
@@ -540,13 +589,19 @@ def main():
     with open(os.path.join(args.out_dir, "boot_values.pkl"), "wb") as f:
         pickle.dump({"per_patient_values": V, "patient_ids": pids,
                      "boot_matrix": boot, "policy_names": POLICY_NAMES,
-                     "point_estimates": dict(zip(POLICY_NAMES, point.tolist()))}, f)
+                     "point_estimates": dict(zip(POLICY_NAMES, point.tolist())),
+                     "config": {"gamma": GAMMA, "ddqn_seeds": args.ddqn_seeds,
+                                "fqe_seeds": args.fqe_seeds,
+                                "ddqn_swa_keep": args.ddqn_swa_keep,
+                                "amp": args.amp, "seed": args.seed,
+                                "n_folds": args.n_folds}}, f)
 
     tot = sum(action_counts)
     dist = {f"a={k}": (action_counts[k] / tot if tot else 0.0) for k in range(NUM_ACTIONS)}
-    print(f"\n>>> Cross-fitted DDQN action distribution: {dist}")
+    print(f"\n>>> Cross-fitted DDQN action distribution (averaged over {args.ddqn_seeds} seeds): {dist}")
     with open(os.path.join(args.out_dir, "action_distributions.json"), "w") as f:
-        json.dump({"original_cross_fit": dist}, f, indent=2)
+        json.dump({"original_cross_fit": dist,
+                   "averaged_over_ddqn_seeds": args.ddqn_seeds}, f, indent=2)
 
     print(f"\n✅ DONE. Outputs in: {args.out_dir}")
 
