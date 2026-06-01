@@ -1,0 +1,200 @@
+"""Single-file config — replaces YAML.
+
+All dataset-/archetype-/variant-specific constants live here as Python.
+If you need a different dataset, edit the constants at the top.
+"""
+from __future__ import annotations
+import os
+
+
+# ============================================================================
+# Dataset paths
+# ============================================================================
+HERE = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.normpath(os.path.join(HERE, "..", "data"))
+
+CSV_PATH = os.path.join(DATA_DIR, "data_gen.csv")
+TRAIN_UIDS_PATH = os.path.join(DATA_DIR, "train_uids.json")
+TEST_UIDS_PATH = os.path.join(DATA_DIR, "test_uids.json")
+
+
+# ============================================================================
+# Column mapping for data_gen.csv
+# Schema: uid, study_day, weekday, hr, slot, weather, temp, loc, avail,
+#         steps30pre, send, resp, steps10
+# (No decision_datetime/date — `study_day` is the day index, `hr` is the hour.)
+# ============================================================================
+COL_PATIENT_ID = "uid"
+COL_ACTION = "send"
+COL_DAY = "study_day"           # integer day index (1..N)
+COL_HOUR = "hr"                 # integer hour-of-day
+COL_SLOT = "slot"               # 1..5
+COL_WEEKDAY = "weekday"         # 0..6 (Mon=0)
+COL_REWARD_SOURCE = "steps10"
+COL_AVAIL = "avail"             # in data_gen this is always True (pre-filtered)
+COL_RESPONSE = "resp"
+
+# Categorical encoders (string → int)
+ENCODERS = {
+    "weather":   {"clear": 0, "cloudy": 1, "bad": 2},
+    "temp":      {"freezing": 0, "cold": 1, "cool": 2,
+                  "mild": 3, "warm": 4, "hot": 5},
+    "loc":       {"home": 0, "work": 1, "dining": 2, "shopping": 3,
+                  "service": 4, "activity": 5, "other": 6},
+}
+
+# Reverse decoders (int → string) for prompt-ready output
+DECODERS = {col: {v: k for k, v in m.items()} for col, m in ENCODERS.items()}
+
+# Columns NEVER allowed in state (causal descendants of current action)
+FORBIDDEN_IN_STATE = ["resp", "steps10"]
+
+
+# ============================================================================
+# State features fed to DDQN
+# ============================================================================
+STATE_FEATURES = [
+    "study_day", "weekday", "slot",
+    "hour_sin", "hour_cos",
+    "weather", "temp", "loc",
+    "steps30pre", "dosage",
+]
+
+
+# ============================================================================
+# Action space
+# ============================================================================
+ACTION_VALUES = [0, 1, 2]
+ACTION_NAMES = {0: "no_message", 1: "walking_suggestion", 2: "anti_sedentary"}
+ACTION_REFERENCE = 0
+IS_RANDOMIZED_WHEN_AVAIL = True
+
+
+# ============================================================================
+# RL / OPE
+# ============================================================================
+GAMMA = 0.95
+REWARD_LOG_OFFSET = 0.5
+
+EVAL = {
+    "n_folds": 3,
+    "bootstrap_B": 2000,
+    "fqe_seeds": 5,
+    "ddqn_seeds": 3,
+    "ddqn_swa_keep": 3,
+    "ddqn_iters": 80000,
+    "fqe_iters": 20000,
+    "cql_alpha": 1.0,
+}
+
+
+# ============================================================================
+# Archetype taxonomy — tier-based decision tree on slot_1_hour + steps10 + steps30pre
+# ----------------------------------------------------------------------------
+# Tier 1: high_activity   — mPED High cluster (~20%);  steps10 OR steps30pre extreme
+# Tier 2: low_activity    — mPED Low cluster  (~34%);  sedentary
+# Tier 3: morning_active  — moderate + early chronotype (M-type)
+# Tier 4: evening_active  — moderate + late chronotype  (E-type, lit: most active)
+# Tier 5: standard        — moderate + mid-day chronotype  (fallback)
+#
+# References:
+#   - Fukuoka et al. 2018 (mPED Trial) — 3 baseline activity clusters
+#   - Chronotype literature — M-type / N-type / E-type schedule clustering
+# Membership tests are evaluated in dict-insertion order; first match wins.
+# ============================================================================
+def _is_high_activity(p):
+    return ((p.activity.steps10.all.mean or 0) > 150
+            or (p.activity.steps30pre.mean or 0) > 300)
+
+def _is_low_activity(p):
+    return ((p.activity.steps10.all.mean or 0) <= 60
+            and (p.activity.steps10.all.zero_pct or 0) >= 0.55)
+
+def _is_morning_active(p):
+    return p.anchor.slot_1_hour <= 11
+
+def _is_evening_active(p):
+    return p.anchor.slot_1_hour >= 14
+
+def _is_standard(p):
+    return True   # catch-all
+
+
+ARCHETYPES = {
+    "high_activity":   {"label": "Highly Active (mPED High)",       "test": _is_high_activity},
+    "low_activity":    {"label": "Sedentary (mPED Low)",            "test": _is_low_activity},
+    "morning_active":  {"label": "Morning Chronotype (M-type)",     "test": _is_morning_active},
+    "evening_active":  {"label": "Evening Chronotype (E-type)",     "test": _is_evening_active},
+    "standard":        {"label": "Standard Mid-day Worker",         "test": _is_standard},
+}
+DEFAULT_ARCHETYPE = "standard"
+
+
+# ============================================================================
+# Variant rules — counts per source + perturbations (DeepPersona 5:3:2 inspired)
+# ============================================================================
+VARIANTS_PER_SOURCE = {"twin": 2, "sibling": 1, "edge": 1}
+
+VARIANT_PERTURBATIONS = {
+    "twin": {
+        "mean_steps_scale": (0.9, 1.1),
+        "slot_1_delta_choices": [0],
+        # No attitude — only activity / lifestyle / compliance fields exist
+        "borrow_fractions": {"lifestyle": 0.0,
+                              "activity": 0.0, "compliance": 0.0},
+        "oversample_sparse_cells": False,
+    },
+    "sibling": {
+        "mean_steps_scale": (0.6, 1.4),
+        "slot_1_delta_choices": [-1, 0, 1],
+        "borrow_fractions": {"lifestyle": 0.30,
+                              "activity": 0.60,   # attitude share absorbed here
+                              "compliance": 0.30},
+        "oversample_sparse_cells": False,
+    },
+    "edge": {
+        "mean_steps_scale_choices": [0.5, 2.0],
+        "slot_1_to_extreme": True,
+        "borrow_fractions": {"lifestyle": 0.0,
+                              "activity": 0.0, "compliance": 0.0},
+        "oversample_sparse_cells": True,
+    },
+}
+
+
+# ============================================================================
+# B5: compliance phases by attitude type — multipliers per JITAI-Twins lit
+# ============================================================================
+# Single default — used as FALLBACK when per-user STL trend detection fails.
+# When detection succeeds (extractor.py), this is NOT used; the personal
+# day_range and activity_mult come from STL trend on daily steps10.
+# Empirical data (data_gen.csv) shows honeymoon ~1.18× plateau (significant);
+# fatigue not significant aggregate → safest default = single plateau phase.
+COMPLIANCE_PHASES = {
+    "default": [
+        {"name": "plateau", "day_range": (1, 999), "activity_mult": 1.00},
+    ],
+}
+
+
+# ============================================================================
+# Slot → hour offset (median across HeartSteps users) — used by trajectory sampler
+# ============================================================================
+SLOT_HOUR_OFFSET = {1: 0, 2: 4, 3: 6, 4: 9, 5: 11}
+
+
+# ============================================================================
+# Transition smoothing
+# ============================================================================
+TRANSITION_LAPLACE_ALPHA = 0.01     # avoids zero-prob unseen transitions
+
+
+# ============================================================================
+# Hurdle-lognormal steps30pre sampler (trajectory_sampler)
+# ----------------------------------------------------------------------------
+# Empirical MLE fit across 37 real users (data_gen.csv, non-zero steps30pre):
+#   median σ_log = 1.17  (p25=1.09, p75=1.37)
+# Lognormal beat gamma in 76% of users + all 5 slots (ΔAIC > 30 per slot).
+# ============================================================================
+SIGMA_LOG_DEFAULT = 1.17      # fallback when per-user MLE fit fails (n<20)
+MAX_STEPS30PRE    = 5000      # clip extreme lognormal tail draws
