@@ -52,6 +52,9 @@ def get_args():
     p.add_argument("--backend", choices=["qwen8b", 'qwen32b', "stub"], default="qwen32b")
     p.add_argument("--stage", choices=STAGES, default="all")
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--max_uids", type=int, default=None,
+                   help="Smoke-test mode: keep only the first N unique uids "
+                        "(sorted) from the loaded data. Default = all.")
     return p.parse_args()
 
 
@@ -68,6 +71,11 @@ def main():
     # ---- 1. Load -----
     print("\n[stage 1/7] LOAD DATA")
     df = data_loader.load()
+    if args.max_uids is not None:
+        keep = sorted(df["uid"].unique())[:args.max_uids]
+        df = df[df["uid"].isin(keep)].reset_index(drop=True)
+        print(f"[loader] --max_uids={args.max_uids}: kept uids {keep} "
+              f"→ {len(df)} rows, {df['uid'].nunique()} patients")
 
     audit_out = os.path.join(args.out_root, "audit")
     persona_out = os.path.join(args.out_root, "personas")
