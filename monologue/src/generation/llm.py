@@ -98,7 +98,7 @@ class Qwen8BLLM:
         self.steps_cot_guided = StructuredOutputsParams(json=_cfg.STEPS_COT_JSON_SCHEMA)
         # Output is JSON with ~5 short strings + one int → ~200-400 tokens
         self.steps_cot_params = SamplingParams(temperature=0.7,
-                                                max_tokens=500,
+                                                max_tokens=800,
                                                 structured_outputs=self.steps_cot_guided)
 
         # 调试用: 跑头几次时把原始 text 存一下方便诊断
@@ -373,7 +373,7 @@ class Qwen32BLLM:
         self.steps_cot_guided = StructuredOutputsParams(json=_cfg.STEPS_COT_JSON_SCHEMA)
         self.steps_cot_params = SamplingParams(
             temperature=0.7, top_p=0.8, top_k=20,
-            max_tokens=500,                          # JSON output much longer
+            max_tokens=800,                          # JSON output much longer
             structured_outputs=self.steps_cot_guided
         )
 

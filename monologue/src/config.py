@@ -227,7 +227,7 @@ STEPS_COT_JSON_SCHEMA = {
         "phase_application":  {"type": "string", "maxLength": 200},
         "context_adjustment": {"type": "string", "maxLength": 300},
         "momentum_check":     {"type": "string", "maxLength": 250},
-        "episodic_check":     {"type": "string", "maxLength": 200},
+        "episodic_check":     {"type": "string", "maxLength": 500},
         "value":              {"type": "integer", "minimum": 0, "maximum": 10000},
     },
     "required": [
