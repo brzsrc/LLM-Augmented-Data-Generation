@@ -13,23 +13,6 @@ from typing import Dict, List
 from src import config as cfg
 
 
-SYSTEM_TEMPLATE = """You are a behavior simulator for HeartSteps users. Generate one
-transition (next steps10 count) given the user's profile, current state, and
-the message action taken.
-
-Output ONLY an integer steps count between 0 and 10000. No explanation.
-
-Important rules — DO NOT violate:
-  * Messages do NOT universally help. Some users respond negatively, especially
-    at the wrong time of day.
-  * Match the user's profile EXACTLY — do not invent traits not in the profile.
-  * Be stochastic — even the same state can produce different outcomes.
-  * When "Available for intervention: False", the user is in a state where no
-    message could be sent (driving / sleeping / unreachable); send is always 0
-    and steps10 should reflect the user's natural baseline at this slot.
-"""
-
-
 def _format_persona(p: Dict) -> str:
     """Survey-format persona traits (Pay-What-LLM-Wants 2025: Survey 4.0% vs
     Storytelling 0.2% accuracy → keep key:value, do NOT prose-ify)."""
@@ -142,6 +125,28 @@ def _format_episodic(history: List[Dict]) -> str:
     return "\n".join(lines)
 
 
+
+# ============================================================================
+# No Chain-of-Thought (CoT) --- Outputs a interger steps10 prediction 
+# ============================================================================
+
+SYSTEM_TEMPLATE = """You are a behavior simulator for HeartSteps users. Generate one
+transition (next steps10 count) given the user's profile, current state, and
+the message action taken.
+
+Output ONLY an integer steps count between 0 and 10000. No explanation.
+
+Important rules — DO NOT violate:
+  * Messages do NOT universally help. Some users respond negatively, especially
+    at the wrong time of day.
+  * Match the user's profile EXACTLY — do not invent traits not in the profile.
+  * Be stochastic — even the same state can produce different outcomes.
+  * When "Available for intervention: False", the user is in a state where no
+    message could be sent (driving / sleeping / unreachable); send is always 0
+    and steps10 should reflect the user's natural baseline at this slot.
+"""
+
+
 def build_step_prompt(persona: Dict,
                       current_state: Dict,
                       action: int,
@@ -207,3 +212,172 @@ Consider:
 Output ONLY one integer between 0 and 10000."""
 
     return SYSTEM_TEMPLATE, user
+
+
+# ============================================================================
+# Chain-of-Thought (CoT) variant — branches on `send`:
+#   send > 0:  _cot_message  — full 6-field CoT WITH phase-multiplier step
+#   send = 0:  _cot_no_message — 6-field schema, phase_application = "N/A",
+#                                anchor source depends on avail (per_slot_action
+#                                vs unavail_baseline)
+#
+# Why split on send (not avail): phase multiplier is a "message-response
+# amplifier". When no message is sent (regardless of avail), there's nothing
+# to amplify → phase_application should be N/A. Cases avail=True∧send=0
+# (MRT chose no-msg) and avail=False (no-msg forced) share the same prompt
+# structure but pick different anchor cells (Y1 vs Y2).
+#
+# Output schema is the SAME 6-field cfg.STEPS_COT_JSON_SCHEMA for both
+# branches — phase_application accepts string, so "N/A — no message" is
+# valid. Refs: Tam 2024 reasoning-before-value, Wang 2024 Chain-of-Table,
+# Xu 2024 PAFT, Sidorenko 2025.
+# ============================================================================
+
+SYSTEM_TEMPLATE_COT_MESSAGE = """You are a behavior simulator for HeartSteps users.
+A MESSAGE has just been sent (send > 0). Reason through 5 calibration steps
+and then output a final integer steps10 prediction.
+
+OUTPUT FORMAT — a JSON object with EXACTLY these 6 keys, in this order:
+
+  1. "anchor_lookup"     — look up per_slot_action_mean[slot][send] from the
+                            "Per-slot mean steps10 by action" table.
+                            Quote the actual number, e.g. "slot=3 a=2 → 218".
+  2. "phase_application" — apply the engagement-phase multiplier numerically
+                            to the anchor, e.g. "honeymoon ×2.20 → 218×2.20=480".
+  3. "context_adjustment" — adjust for loc / weather / temp using the
+                             context-conditional means, e.g.
+                             "loc=work (139<146 baseline) → ~-8%".
+  4. "momentum_check"    — adjust for steps30pre × momentum coefficient,
+                            e.g. "steps30pre=85 in low bin, momentum 0.62
+                            → drag down ~25%".
+  5. "episodic_check"    — 1-2 sentence sanity check vs. recent history.
+  6. "value"             — FINAL integer steps10 in [0, 10000].
+
+CRITICAL rules:
+  * The 5 reasoning fields MUST be filled FIRST. Do not commit `value`
+    until you've written all 5.
+  * Reference SPECIFIC numbers from the profile blocks; do not invent.
+"""
+
+SYSTEM_TEMPLATE_COT_NO_MESSAGE = """You are a behavior simulator for HeartSteps users.
+NO MESSAGE has been sent (send = 0). Predict the user's natural baseline
+steps10 at this state — phase multiplier does NOT apply (nothing to amplify).
+
+OUTPUT FORMAT — a JSON object with EXACTLY these 6 keys, in this order:
+
+  1. "anchor_lookup"     — look up the appropriate BASELINE cell:
+       - If Available=True (user is reachable; MRT chose no-msg arm):
+           cite per_slot_action_mean[slot][a=0], e.g. "slot=3 a=0 → 79".
+       - If Available=False (user unreachable; send forced to 0):
+           cite per-slot unavail baseline, e.g. "unavail slot=3 → 548".
+  2. "phase_application" — write "N/A — no message to amplify".
+  3. "context_adjustment" — adjust the baseline for loc / weather / temp
+                             using the context-conditional means, e.g.
+                             "loc=home neutral; temp=warm +5%".
+  4. "momentum_check"    — adjust for steps30pre × momentum coefficient,
+                            e.g. "steps30pre=85 in low bin, momentum 0.62
+                            → drag down ~25%".
+  5. "episodic_check"    — 1-2 sentence sanity check vs. recent history.
+  6. "value"             — FINAL integer steps10 in [0, 10000].
+
+CRITICAL rules:
+  * The 5 reasoning fields MUST be filled FIRST.
+  * Pick the right baseline table based on Available=True/False.
+  * Reference SPECIFIC numbers from the profile blocks; do not invent.
+"""
+
+
+def _cot_user_block(persona: Dict, current_state: Dict, action: int,
+                     episodic_history: List[Dict], task_block: str) -> str:
+    """Shared USER-side construction for both CoT branches.
+    Differs only in the `task_block` text appended at the end."""
+    day = current_state.get("day", 1)
+    profile_sections = [
+        "## Synthetic User Profile",
+        _format_persona(persona),
+        _format_signal(persona.get("steps10_avail_true_per_slot_action_mean", {})),
+        _format_unavail_baseline(persona),
+        _format_context_conditional(persona),
+        _format_high_activity_anchors(persona),
+    ]
+    profile_block = "\n\n".join(s for s in profile_sections if s)
+
+    phase_line = _format_compliance_phase(persona, day)
+    phase_header = (phase_line + "\n") if phase_line else ""
+
+    return f"""\
+{profile_block}
+
+## Current Decision Context
+{phase_header}Day: {day}
+Slot: {current_state.get('slot', '?')} (hour ≈ {current_state.get('hour', '?')})
+Weekday: {current_state.get('weekday', '?')}
+Weather: {current_state.get('weather', '?')}, Temp: {current_state.get('temp', '?')}
+Location: {current_state.get('loc', '?')}
+steps30pre (prior 30-min step count): {current_state.get('steps30pre', '?')}
+Available for intervention: {current_state.get('avail', '?')}
+Action just taken: send={action}  ({cfg.ACTION_NAMES.get(action, '?')})
+
+## Episodic Memory (this trajectory so far)
+{_format_episodic(episodic_history)}
+
+{task_block}"""
+
+
+_TASK_BLOCK_MESSAGE = """## Task
+Reason through the 5 reasoning fields in the JSON schema above. Each field
+MUST reference SPECIFIC numbers from the profile blocks above
+(e.g. "slot=3 a=2 → 218", "honeymoon ×2.20", "steps30pre=85 in low bin").
+
+Output ONLY the JSON object — no markdown fences, no extra text."""
+
+_TASK_BLOCK_NO_MESSAGE = """## Task
+No message was sent. Reason through the 5 reasoning fields with the BASELINE
+as the anchor. In `anchor_lookup`, explicitly state which table you used:
+  - "per_slot_action[slot][a=0] = X" if Available=True
+  - "unavail_baseline[slot]   = X" if Available=False
+In `phase_application`, write "N/A — no message".
+
+Output ONLY the JSON object — no markdown fences, no extra text."""
+
+
+def _cot_message(persona: Dict, current_state: Dict, action: int,
+                  episodic_history: List[Dict]) -> tuple[str, str]:
+    """Branch X: avail=True AND send > 0 — full CoT with phase multiplier."""
+    user = _cot_user_block(persona, current_state, action,
+                            episodic_history, _TASK_BLOCK_MESSAGE)
+    return SYSTEM_TEMPLATE_COT_MESSAGE, user
+
+
+def _cot_no_message(persona: Dict, current_state: Dict, action: int,
+                     episodic_history: List[Dict]) -> tuple[str, str]:
+    """Branch Y: send = 0 (Y1 avail=T or Y2 avail=F) — baseline CoT, no
+    phase mult. Anchor source picked at runtime by LLM based on avail field
+    in current_state (instructions live in SYSTEM_TEMPLATE_COT_NO_MESSAGE)."""
+    user = _cot_user_block(persona, current_state, action,
+                            episodic_history, _TASK_BLOCK_NO_MESSAGE)
+    return SYSTEM_TEMPLATE_COT_NO_MESSAGE, user
+
+
+def build_step_prompt_cot(persona: Dict,
+                           current_state: Dict,
+                           action: int,
+                           episodic_history: List[Dict]) -> tuple[str, str]:
+    """CoT/JSON variant of build_step_prompt — dispatches by `action`:
+      action > 0 → message-effect CoT (with phase multiplier)
+      action = 0 → baseline CoT (no phase multiplier; anchor source decided
+                                 by avail flag, instructed in SYSTEM prompt)
+
+    LLM output: JSON matching cfg.STEPS_COT_JSON_SCHEMA (same schema both
+    branches; phase_application accepts "N/A — no message" string when no
+    message was sent). Use Qwen{8,32}BLLM.judge_steps_cot to consume.
+    """
+    if action > 0:
+        return _cot_message(persona, current_state, action, episodic_history)
+    return _cot_no_message(persona, current_state, action, episodic_history)
+
+
+# Back-compat: the original single SYSTEM_TEMPLATE_COT alias still resolves
+# (in case something imported it elsewhere). Points to the MESSAGE branch
+# since that was the historical default behavior.
+SYSTEM_TEMPLATE_COT = SYSTEM_TEMPLATE_COT_MESSAGE

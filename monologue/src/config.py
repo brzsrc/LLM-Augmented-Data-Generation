@@ -205,3 +205,34 @@ TRANSITION_LAPLACE_ALPHA = 0.01     # avoids zero-prob unseen transitions
 # ============================================================================
 SIGMA_LOG_DEFAULT = 1.17      # fallback when per-user MLE fit fails (n<20)
 MAX_STEPS30PRE    = 5000      # clip extreme lognormal tail draws
+
+
+# ============================================================================
+# Chain-of-Thought (CoT) JSON schema for the steps10 LLM call
+# ----------------------------------------------------------------------------
+# 6 reasoning fields BEFORE the integer `value`, motivated by:
+#   - anchor_lookup     (Wang 2024 Chain-of-Table: force verbalize the lookup)
+#   - phase_application (Tam 2024: reasoning-before-value, NOT after)
+#   - context_adjustment (Sidorenko 2025: probability-driven prompting)
+#   - momentum_check    (Xu 2024 PAFT: parent-first column dependency)
+#   - episodic_check    (StructSynth 2025: temporal coherence)
+#   - value             (final integer, schema-constrained 0-10000)
+# Property order matters: vLLM/outlines emits keys in this order, which gates
+# the LLM into reasoning before committing the answer.
+# ============================================================================
+STEPS_COT_JSON_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "anchor_lookup":      {"type": "string", "maxLength": 250},
+        "phase_application":  {"type": "string", "maxLength": 200},
+        "context_adjustment": {"type": "string", "maxLength": 300},
+        "momentum_check":     {"type": "string", "maxLength": 250},
+        "episodic_check":     {"type": "string", "maxLength": 200},
+        "value":              {"type": "integer", "minimum": 0, "maximum": 10000},
+    },
+    "required": [
+        "anchor_lookup", "phase_application", "context_adjustment",
+        "momentum_check", "episodic_check", "value",
+    ],
+    "additionalProperties": False,
+}

@@ -14,13 +14,14 @@ weather, temp, loc, avail, steps30pre, send, resp, steps10), plus source_uid /
 variant_type / archetype columns.
 """
 from __future__ import annotations
+import json
 import os
 from typing import Dict, List
 import numpy as np
 import pandas as pd
 
 from src import config as cfg
-from src.generation.prompt_builder import build_step_prompt
+from src.generation.prompt_builder import build_step_prompt, build_step_prompt_cot
 
 
 def _predict_avail(persona: Dict, slot: int, loc_str: str,
@@ -236,17 +237,34 @@ def generate_all(personas: List[Dict], llm,
 # ============================================================================
 # Batched / parallel variant for vLLM backends
 # ============================================================================
-def _batch_judge_steps(llm, batch: List[Dict]) -> List[int]:
-    """Dispatch a batch of prompts to llm.batch_steps if available, else fall
-    back to per-prompt llm.judge_steps (so StubLLM / any single-call backend
-    still works without modification)."""
+def _batch_judge_steps(llm, batch: List[Dict], cot: bool = False) -> List[int]:
+    """Dispatch a batch of prompts to llm.batch_steps[_cot] if available,
+    else fall back to per-prompt llm.judge_steps[_cot] (so StubLLM /
+    any single-call backend still works without modification).
+
+    cot=False: legacy choice-constrained integer output (steps_params)
+    cot=True:  6-field JSON CoT output (steps_cot_params); returns int from .value
+    """
+    if cot:
+        if hasattr(llm, "batch_steps_cot"):
+            return llm.batch_steps_cot(batch)
+        return [llm.judge_steps_cot(p["system"], p["user"]) for p in batch]
     if hasattr(llm, "batch_steps"):
         return llm.batch_steps(batch)
     return [llm.judge_steps(p["system"], p["user"]) for p in batch]
 
 
+def _batch_judge_steps_full(llm, batch: List[Dict]) -> List[Dict]:
+    """CoT-full dispatch: returns List[{value: int, reasoning: dict|None}]
+    so the caller can persist reasoning to a JSONL sidecar."""
+    if hasattr(llm, "batch_steps_cot_full"):
+        return llm.batch_steps_cot_full(batch)
+    return [llm.judge_steps_cot_full(p["system"], p["user"]) for p in batch]
+
+
 def generate_all_vllm(personas: List[Dict], llm,
-                       out_dir: str, seed: int = 42) -> pd.DataFrame:
+                       out_dir: str, seed: int = 42,
+                       cot: bool = True) -> pd.DataFrame:
     os.makedirs(out_dir, exist_ok=True)
 
     # ----- Per-persona state -----
@@ -263,8 +281,19 @@ def generate_all_vllm(personas: List[Dict], llm,
         for i, p in enumerate(personas)
     ]
     max_n_days = max(s["n_days"] for s in states) if states else 0
+    _prompt_fn = build_step_prompt_cot if cot else build_step_prompt
+
+    # When cot=True, persist the 5 reasoning fields to a JSONL sidecar
+    # (parallel to synthetic_data.csv, one line per decision). Lets you
+    # diagnose signal_gate / correlation_gate failures from the reasoning,
+    # and provides qualitative examples for paper.
+    cot_jsonl_path = os.path.join(out_dir, "cot_reasoning.jsonl") if cot else None
+    cot_jsonl = open(cot_jsonl_path, "w") if cot else None
+
     print(f"[gen_vllm] {len(states)} personas, max_n_days={max_n_days}, "
-          f"max prompts/batch={len(states)}")
+          f"max prompts/batch={len(states)}, "
+          f"path={'CoT-JSON' if cot else 'integer-choice'}"
+          + (f", reasoning → {cot_jsonl_path}" if cot else ""))
 
     total_prompts = 0
     for day in range(1, max_n_days + 1):
@@ -299,7 +328,7 @@ def generate_all_vllm(personas: List[Dict], llm,
                     "avail": avail,
                     **ctx,
                 }
-                sys_p, usr_p = build_step_prompt(
+                sys_p, usr_p = _prompt_fn(
                     p, current_state, action, s["episodic_history"])
 
                 batch.append({
@@ -316,11 +345,18 @@ def generate_all_vllm(personas: List[Dict], llm,
                 continue
 
             # ---- One vLLM call for the whole batch ----
-            steps10_list = _batch_judge_steps(llm, batch)
+            # cot=True: call _full so we get {value, reasoning} per row;
+            # cot=False: legacy integer-only path.
+            if cot:
+                full_results = _batch_judge_steps_full(llm, batch)
+                steps10_list = [r["value"] for r in full_results]
+            else:
+                full_results = None
+                steps10_list = _batch_judge_steps(llm, batch, cot=False)
             total_prompts += len(batch)
 
             # ---- Distribute results back into each persona's state ----
-            for item, steps10 in zip(batch, steps10_list):
+            for k, (item, steps10) in enumerate(zip(batch, steps10_list)):
                 s = states[item["_idx"]]
                 p = s["persona"]
                 ctx = item["_ctx"]
@@ -358,6 +394,23 @@ def generate_all_vllm(personas: List[Dict], llm,
                     "avail":   avail,
                 })
 
+                # JSONL sidecar: full state + reasoning + value, one line per decision
+                if cot and cot_jsonl is not None:
+                    cot_jsonl.write(json.dumps({
+                        "synth_uid":  int(p["synth_uid"]),
+                        "study_day":  int(day),
+                        "slot":       int(slot),
+                        "weekday":    int(weekday),
+                        "weather":    ctx["weather"],
+                        "temp":       ctx["temp"],
+                        "loc":        ctx["loc"],
+                        "avail":      bool(avail),
+                        "steps30pre": int(ctx["steps30pre"]),
+                        "send":       int(action),
+                        "value":      int(steps10),
+                        "reasoning":  full_results[k].get("reasoning"),
+                    }, ensure_ascii=False) + "\n")
+
         if day % 5 == 0 or day == max_n_days:
             n_active = sum(1 for s in states if day <= s["n_days"])
             rows_so_far = sum(len(s["records"]) for s in states)
@@ -365,6 +418,11 @@ def generate_all_vllm(personas: List[Dict], llm,
                   f"{n_active} active personas, "
                   f"{total_prompts:,} prompts done, "
                   f"{rows_so_far:,} rows")
+
+    # ----- Close JSONL sidecar before final aggregation -----
+    if cot_jsonl is not None:
+        cot_jsonl.close()
+        print(f"[gen_vllm] CoT reasoning saved to {cot_jsonl_path}")
 
     # ----- Combine + save -----
     all_rows = []

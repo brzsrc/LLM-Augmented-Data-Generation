@@ -35,6 +35,31 @@ BLLM."""
     def generate_text(self, system: str, user: str, **kw) -> str:
         return str(self.judge_steps(system, user))
 
+    # CoT path: same hash logic, just exposes same int via different method
+    # (so trajectory_sampler can use the cot path on stub for syntax/flow tests).
+    def judge_steps_cot(self, system: str, user: str) -> int:
+        return self.judge_steps(system, user)
+
+    def batch_steps_cot(self, prompts):
+        return [self.judge_steps_cot(p["system"], p["user"]) for p in prompts]
+
+    # CoT-full variants: return {value, reasoning} so trajectory_sampler can
+    # exercise the JSONL persistence path. Reasoning is stub placeholders.
+    def judge_steps_cot_full(self, system: str, user: str) -> dict:
+        return {
+            "value": self.judge_steps(system, user),
+            "reasoning": {
+                "anchor_lookup":      "[stub]",
+                "phase_application":  "[stub]",
+                "context_adjustment": "[stub]",
+                "momentum_check":     "[stub]",
+                "episodic_check":     "[stub]",
+            },
+        }
+
+    def batch_steps_cot_full(self, prompts):
+        return [self.judge_steps_cot_full(p["system"], p["user"]) for p in prompts]
+
 
 # ================================================================
 # Qwen3-8B-AWQ
@@ -64,6 +89,18 @@ class Qwen8BLLM:
         # ##N## 最长是 ##9900## = 8 字符 ≈ 5-6 token, max_tokens=12 给足安全余量
         self.steps_params = SamplingParams(temperature=0.7, max_tokens=12,
                                            structured_outputs=self.steps_guided)
+
+        # ────────────────────────────────────────────────────────────────
+        # CoT path (additive — does NOT replace steps_params/steps_guided).
+        # 6 reasoning fields → 1 integer `value`. Schema in cfg.
+        # ────────────────────────────────────────────────────────────────
+        from src import config as _cfg
+        self.steps_cot_guided = StructuredOutputsParams(json=_cfg.STEPS_COT_JSON_SCHEMA)
+        # Output is JSON with ~5 short strings + one int → ~200-400 tokens
+        self.steps_cot_params = SamplingParams(temperature=0.7,
+                                                max_tokens=500,
+                                                structured_outputs=self.steps_cot_guided)
+
         # 调试用: 跑头几次时把原始 text 存一下方便诊断
         self.debug_steps_outputs = []
         self.debug_capture_n = 20
@@ -116,6 +153,97 @@ class Qwen8BLLM:
                 self.debug_steps_outputs.append(raw)
             results.append(self._parse_steps(raw))
         return results
+
+    # ──────────────────────────────────────────────────────────────
+    # CoT-JSON path (additive — uses steps_cot_params, not steps_params)
+    # ──────────────────────────────────────────────────────────────
+    def judge_steps_cot(self, system, user):
+        out = self.llm.generate([self._prompt(system, user)], self.steps_cot_params)
+        self.call_count += 1
+        raw = out[0].outputs[0].text
+        if len(self.debug_steps_outputs) < self.debug_capture_n:
+            self.debug_steps_outputs.append(raw)
+        return self._parse_json_steps(raw)
+
+    def batch_steps_cot(self, prompts):
+        fmt = [self._prompt(p["system"], p["user"]) for p in prompts]
+        out = self.llm.generate(fmt, self.steps_cot_params)
+        self.call_count += len(prompts)
+        results = []
+        for o in out:
+            raw = o.outputs[0].text
+            if len(self.debug_steps_outputs) < self.debug_capture_n:
+                self.debug_steps_outputs.append(raw)
+            results.append(self._parse_json_steps(raw))
+        return results
+
+    # ──────────────────────────────────────────────────────────────
+    # CoT "full" path — returns {value, reasoning} dicts so caller can
+    # persist the 5 reasoning fields (e.g. JSONL sidecar).
+    # ──────────────────────────────────────────────────────────────
+    def judge_steps_cot_full(self, system, user):
+        out = self.llm.generate([self._prompt(system, user)], self.steps_cot_params)
+        self.call_count += 1
+        raw = out[0].outputs[0].text
+        if len(self.debug_steps_outputs) < self.debug_capture_n:
+            self.debug_steps_outputs.append(raw)
+        return self._parse_json_full(raw)
+
+    def batch_steps_cot_full(self, prompts):
+        fmt = [self._prompt(p["system"], p["user"]) for p in prompts]
+        out = self.llm.generate(fmt, self.steps_cot_params)
+        self.call_count += len(prompts)
+        results = []
+        for o in out:
+            raw = o.outputs[0].text
+            if len(self.debug_steps_outputs) < self.debug_capture_n:
+                self.debug_steps_outputs.append(raw)
+            results.append(self._parse_json_full(raw))
+        return results
+
+    @staticmethod
+    def _parse_json_full(text: str) -> dict:
+        """Parse CoT JSON → {"value": int, "reasoning": dict|None}.
+        On JSON-parse failure: value = fallback regex; reasoning = None.
+        """
+        import json as _json
+        s = text.strip()
+        if s.startswith("```"):
+            s = s.strip("`")
+            if s.startswith("json"):
+                s = s[4:]
+            s = s.strip()
+        try:
+            obj = _json.loads(s)
+            if isinstance(obj, dict) and "value" in obj:
+                value = max(0, min(9999, int(obj["value"])))
+                reasoning = {k: v for k, v in obj.items() if k != "value"}
+                return {"value": value, "reasoning": reasoning}
+        except Exception:
+            pass
+        return {"value": Qwen8BLLM._parse_steps(text), "reasoning": None}
+
+    @staticmethod
+    def _parse_json_steps(text: str) -> int:
+        """Parse the JSON-schema-constrained CoT output. Robust fallback to
+        `_parse_steps` regex if JSON is malformed (shouldn't happen under
+        structured_outputs but defensive)."""
+        import json as _json
+        s = text.strip()
+        # Strip ```json ... ``` fences if the model emits them
+        if s.startswith("```"):
+            s = s.strip("`")
+            if s.startswith("json"):
+                s = s[4:]
+            s = s.strip()
+        try:
+            obj = _json.loads(s)
+            if isinstance(obj, dict) and "value" in obj:
+                return max(0, min(9999, int(obj["value"])))
+        except Exception:
+            pass
+        # Fallback: pull first integer run out of raw text
+        return Qwen8BLLM._parse_steps(text)
 
     @staticmethod
     def _parse_steps(text: str) -> int:
@@ -237,6 +365,18 @@ class Qwen32BLLM:
             structured_outputs=self.steps_guided
         )
 
+        # ────────────────────────────────────────────────────────────────
+        # CoT path (additive — does NOT replace steps_params/steps_guided).
+        # 6 reasoning fields → 1 integer `value`. Schema in cfg.
+        # ────────────────────────────────────────────────────────────────
+        from src import config as _cfg
+        self.steps_cot_guided = StructuredOutputsParams(json=_cfg.STEPS_COT_JSON_SCHEMA)
+        self.steps_cot_params = SamplingParams(
+            temperature=0.7, top_p=0.8, top_k=20,
+            max_tokens=500,                          # JSON output much longer
+            structured_outputs=self.steps_cot_guided
+        )
+
         self.debug_steps_outputs = []
         self.debug_capture_n = 20
         self.call_count = 0
@@ -309,6 +449,96 @@ class Qwen32BLLM:
                 self.debug_steps_outputs.append(raw)
             results.append(self._parse_steps(raw))
         return results
+
+    # ──────────────────────────────────────────────────────────────
+    # CoT-JSON path (additive — uses steps_cot_params, not steps_params)
+    # Uses _prompt_no_think (skip <think>...</think>) since the JSON
+    # schema already structures the reasoning into 5 named fields.
+    # ──────────────────────────────────────────────────────────────
+    def judge_steps_cot(self, system, user):
+        out = self.llm.generate([self._prompt_no_think(system, user)],
+                                self.steps_cot_params)
+        self.call_count += 1
+        raw = out[0].outputs[0].text
+        if len(self.debug_steps_outputs) < self.debug_capture_n:
+            self.debug_steps_outputs.append(raw)
+        return self._parse_json_steps(raw)
+
+    def batch_steps_cot(self, prompts):
+        fmt = [self._prompt_no_think(p["system"], p["user"]) for p in prompts]
+        out = self.llm.generate(fmt, self.steps_cot_params)
+        self.call_count += len(prompts)
+        results = []
+        for o in out:
+            raw = o.outputs[0].text
+            if len(self.debug_steps_outputs) < self.debug_capture_n:
+                self.debug_steps_outputs.append(raw)
+            results.append(self._parse_json_steps(raw))
+        return results
+
+    # ──────────────────────────────────────────────────────────────
+    # CoT "full" path — returns {value, reasoning} dicts so caller can
+    # persist the 5 reasoning fields (e.g. JSONL sidecar).
+    # ──────────────────────────────────────────────────────────────
+    def judge_steps_cot_full(self, system, user):
+        out = self.llm.generate([self._prompt_no_think(system, user)],
+                                self.steps_cot_params)
+        self.call_count += 1
+        raw = out[0].outputs[0].text
+        if len(self.debug_steps_outputs) < self.debug_capture_n:
+            self.debug_steps_outputs.append(raw)
+        return self._parse_json_full(raw)
+
+    def batch_steps_cot_full(self, prompts):
+        fmt = [self._prompt_no_think(p["system"], p["user"]) for p in prompts]
+        out = self.llm.generate(fmt, self.steps_cot_params)
+        self.call_count += len(prompts)
+        results = []
+        for o in out:
+            raw = o.outputs[0].text
+            if len(self.debug_steps_outputs) < self.debug_capture_n:
+                self.debug_steps_outputs.append(raw)
+            results.append(self._parse_json_full(raw))
+        return results
+
+    @staticmethod
+    def _parse_json_full(text: str) -> dict:
+        """Parse CoT JSON → {"value": int, "reasoning": dict|None}."""
+        import json as _json
+        s = text.strip()
+        if s.startswith("```"):
+            s = s.strip("`")
+            if s.startswith("json"):
+                s = s[4:]
+            s = s.strip()
+        try:
+            obj = _json.loads(s)
+            if isinstance(obj, dict) and "value" in obj:
+                value = max(0, min(9999, int(obj["value"])))
+                reasoning = {k: v for k, v in obj.items() if k != "value"}
+                return {"value": value, "reasoning": reasoning}
+        except Exception:
+            pass
+        return {"value": Qwen32BLLM._parse_steps(text), "reasoning": None}
+
+    @staticmethod
+    def _parse_json_steps(text: str) -> int:
+        """Parse JSON-schema-constrained CoT output → integer steps10.
+        Falls back to _parse_steps regex if JSON malformed."""
+        import json as _json
+        s = text.strip()
+        if s.startswith("```"):
+            s = s.strip("`")
+            if s.startswith("json"):
+                s = s[4:]
+            s = s.strip()
+        try:
+            obj = _json.loads(s)
+            if isinstance(obj, dict) and "value" in obj:
+                return max(0, min(9999, int(obj["value"])))
+        except Exception:
+            pass
+        return Qwen32BLLM._parse_steps(text)
 
         # text 任务: 有两个版本 - thinking 和 no_think
     def batch_text(self, prompts, thinking: bool=False):
