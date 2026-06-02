@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 
 from src import config as cfg
-from src.core.schemas import (
+from src.personas.schemas import (
     Anchor, ContextProfile, LifestyleProfile,
     ActivityProfile, Steps10BucketStats, Steps10AllBucket,
     Steps10Profile, Steps30PreProfile,
@@ -427,7 +427,8 @@ def extract_one(uid: int, g: pd.DataFrame) -> PersonaProfile:
 
     anchor = Anchor(
         source_uid=int(uid), archetype="", variant_type="source",
-        synth_uid=f"R{int(uid)}", slot_1_hour=slot_1_hour, n_days=n_days,
+        synth_uid=int(uid),    # real persona's "uid in CSV" == its source_uid
+        slot_1_hour=slot_1_hour, n_days=n_days,
     )
     return PersonaProfile(
         anchor=anchor,

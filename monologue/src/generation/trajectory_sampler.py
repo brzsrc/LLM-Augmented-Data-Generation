@@ -137,7 +137,10 @@ def generate_one_trajectory(persona: Dict, llm, seed: int = 0) -> pd.DataFrame:
     slot_1_hour = persona.get("slot_1_hour", 12) or 12
 
     records = []
-    dosage = 0.0
+    # dosage is NOT tracked here — empirically corr(dosage, steps10) ≈ -0.014
+    # (0/37 users with |corr|>0.2), so it's noise in the prompt. The DDQN-side
+    # dosage feature is recomputed by data_loader.add_derived_features after
+    # generation, identically to how it's added to real data.
     episodic_history: List[Dict] = []
 
     for day in range(1, n_days + 1):
@@ -164,7 +167,7 @@ def generate_one_trajectory(persona: Dict, llm, seed: int = 0) -> pd.DataFrame:
             #ctx: Dict with weather/temp/loc/steps30pre for this decision point — sampled
             current_state = {
                 "day": day, "slot": slot, "hour": round(actual_hour, 1),
-                "weekday": weekday, "dosage": dosage,
+                "weekday": weekday,
                 "avail": avail,        # surfaced to LLM (angle 6)
                 **ctx,
             }
@@ -204,9 +207,7 @@ def generate_one_trajectory(persona: Dict, llm, seed: int = 0) -> pd.DataFrame:
             records.append(rec)
 
             episodic_history.append({"day": day, "slot": slot, "action": action,
-                                      "steps10": steps10, "dosage": dosage,
-                                      "avail": avail})
-            dosage = 0.95 * dosage + (1 if action > 0 else 0)
+                                      "steps10": steps10, "avail": avail})
 
     return pd.DataFrame(records)
 
@@ -229,4 +230,149 @@ def generate_all(personas: List[Dict], llm,
     out_csv = os.path.join(out_dir, "synthetic_data.csv")
     combined.to_csv(out_csv, index=False)
     print(f"[generate] Saved {len(combined)} synth rows -> {out_csv}")
+    return combined
+
+
+# ============================================================================
+# Batched / parallel variant for vLLM backends
+# ============================================================================
+def _batch_judge_steps(llm, batch: List[Dict]) -> List[int]:
+    """Dispatch a batch of prompts to llm.batch_steps if available, else fall
+    back to per-prompt llm.judge_steps (so StubLLM / any single-call backend
+    still works without modification)."""
+    if hasattr(llm, "batch_steps"):
+        return llm.batch_steps(batch)
+    return [llm.judge_steps(p["system"], p["user"]) for p in batch]
+
+
+def generate_all_vllm(personas: List[Dict], llm,
+                       out_dir: str, seed: int = 42) -> pd.DataFrame:
+    os.makedirs(out_dir, exist_ok=True)
+
+    # ----- Per-persona state -----
+    states = [
+        {
+            "persona":          p,
+            "rng":              np.random.default_rng(seed + i),
+            "records":          [],
+            "episodic_history": [],
+            "prev_ctx":         None,
+            "n_days":           int(p.get("n_days", 30)),
+            "slot_1_hour":      p.get("slot_1_hour", 12) or 12,
+        }
+        for i, p in enumerate(personas)
+    ]
+    max_n_days = max(s["n_days"] for s in states) if states else 0
+    print(f"[gen_vllm] {len(states)} personas, max_n_days={max_n_days}, "
+          f"max prompts/batch={len(states)}")
+
+    total_prompts = 0
+    for day in range(1, max_n_days + 1):
+        weekday = (day - 1) % 7
+        # Reset within-day prev_ctx for every persona at day start.
+        for s in states:
+            s["prev_ctx"] = None
+
+        for slot in range(1, 6):
+            # ---- Build prompts for all personas still active at this day ----
+            batch: List[Dict] = []
+            for idx, s in enumerate(states):
+                if day > s["n_days"]:
+                    continue
+                p = s["persona"]
+                rng = s["rng"]
+
+                hour = (s["slot_1_hour"] + cfg.SLOT_HOUR_OFFSET[slot]) % 24
+                hour_jitter = float(rng.uniform(-0.5, 0.5))
+                actual_hour = (hour + hour_jitter) % 24
+
+                ctx = _bootstrap_context(p, slot, weekday, s["prev_ctx"], rng)
+                s["prev_ctx"] = ctx
+                loc_str = ctx["loc"]
+
+                avail = _predict_avail(p, slot, loc_str, rng)
+                action = int(rng.choice([0, 1, 2])) if avail else 0
+
+                current_state = {
+                    "day": day, "slot": slot, "hour": round(actual_hour, 1),
+                    "weekday": weekday,
+                    "avail": avail,
+                    **ctx,
+                }
+                sys_p, usr_p = build_step_prompt(
+                    p, current_state, action, s["episodic_history"])
+
+                batch.append({
+                    "system":       sys_p,
+                    "user":         usr_p,
+                    "_idx":         idx,
+                    "_ctx":         ctx,
+                    "_action":      action,
+                    "_avail":       avail,
+                    "_actual_hour": actual_hour,
+                })
+
+            if not batch:
+                continue
+
+            # ---- One vLLM call for the whole batch ----
+            steps10_list = _batch_judge_steps(llm, batch)
+            total_prompts += len(batch)
+
+            # ---- Distribute results back into each persona's state ----
+            for item, steps10 in zip(batch, steps10_list):
+                s = states[item["_idx"]]
+                p = s["persona"]
+                ctx = item["_ctx"]
+                action = item["_action"]
+                avail = item["_avail"]
+                actual_hour = item["_actual_hour"]
+
+                try:
+                    steps10 = max(0, min(10000, int(steps10)))
+                except Exception:
+                    steps10 = 0
+
+                s["records"].append({
+                    "uid":          p["synth_uid"],
+                    "source_uid":   p["source_uid"],
+                    "variant_type": p["variant_type"],
+                    "archetype":    p["archetype"],
+                    "study_day":    day,
+                    "weekday":      weekday,
+                    "hr":           int(round(actual_hour)),
+                    "slot":         slot,
+                    "weather":      ctx["weather"],
+                    "temp":         ctx["temp"],
+                    "loc":          ctx["loc"],
+                    "avail":        avail,
+                    "steps30pre":   int(ctx["steps30pre"]),
+                    "send":         action,
+                    "steps10":      int(steps10),
+                })
+                s["episodic_history"].append({
+                    "day":     day,
+                    "slot":    slot,
+                    "action":  action,
+                    "steps10": steps10,
+                    "avail":   avail,
+                })
+
+        if day % 5 == 0 or day == max_n_days:
+            n_active = sum(1 for s in states if day <= s["n_days"])
+            rows_so_far = sum(len(s["records"]) for s in states)
+            print(f"  [gen_vllm] day {day}/{max_n_days}: "
+                  f"{n_active} active personas, "
+                  f"{total_prompts:,} prompts done, "
+                  f"{rows_so_far:,} rows")
+
+    # ----- Combine + save -----
+    all_rows = []
+    for s in states:
+        all_rows.extend(s["records"])
+    combined = pd.DataFrame(all_rows)
+    out_csv = os.path.join(out_dir, "synthetic_data.csv")
+    combined.to_csv(out_csv, index=False)
+    print(f"[gen_vllm] Saved {len(combined)} synth rows ({total_prompts:,} LLM calls) "
+          f"-> {out_csv}")
     return combined

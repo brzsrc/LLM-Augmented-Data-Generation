@@ -14,8 +14,6 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.normpath(os.path.join(HERE, "..", "data"))
 
 CSV_PATH = os.path.join(DATA_DIR, "data_gen.csv")
-TRAIN_UIDS_PATH = os.path.join(DATA_DIR, "train_uids.json")
-TEST_UIDS_PATH = os.path.join(DATA_DIR, "test_uids.json")
 
 
 # ============================================================================
@@ -32,7 +30,6 @@ COL_SLOT = "slot"               # 1..5
 COL_WEEKDAY = "weekday"         # 0..6 (Mon=0)
 COL_REWARD_SOURCE = "steps10"
 COL_AVAIL = "avail"             # in data_gen this is always True (pre-filtered)
-COL_RESPONSE = "resp"
 
 # Categorical encoders (string → int)
 ENCODERS = {
@@ -64,10 +61,7 @@ STATE_FEATURES = [
 # ============================================================================
 # Action space
 # ============================================================================
-ACTION_VALUES = [0, 1, 2]
-ACTION_NAMES = {0: "no_message", 1: "walking_suggestion", 2: "anti_sedentary"}
-ACTION_REFERENCE = 0
-IS_RANDOMIZED_WHEN_AVAIL = True
+ACTION_NAMES = {0: "no_message", 1: "anti_sedentary_suggestion", 2: "walking_suggestion"}
 
 
 # ============================================================================
@@ -77,14 +71,27 @@ GAMMA = 0.95
 REWARD_LOG_OFFSET = 0.5
 
 EVAL = {
-    "n_folds": 3,
-    "bootstrap_B": 2000,
-    "fqe_seeds": 5,
-    "ddqn_seeds": 3,
-    "ddqn_swa_keep": 3,
-    "ddqn_iters": 80000,
-    "fqe_iters": 20000,
-    "cql_alpha": 1.0,
+    # K-fold + bootstrap
+    "n_folds":         3,
+    "seed":            42,
+    "bootstrap_B":     2000,
+    # DDQN
+    "ddqn_iters":      80000,
+    "ddqn_eval_every": 6000,
+    "ddqn_batch":      512,
+    "ddqn_seeds":      3,
+    "ddqn_swa_keep":   3,
+    # FQE
+    "fqe_iters":       20000,
+    "fqe_batch":       512,
+    "fqe_seeds":       5,
+    # Device / AMP
+    "device":          "cuda:0",
+    "use_amp":         False,
+    # Ablation sweep
+    "cql_alphas":      (0.0, 1.0),
+    # # Debug
+    # "debug_dump_csv":  False,
 }
 
 

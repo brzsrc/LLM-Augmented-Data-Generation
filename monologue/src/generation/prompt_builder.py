@@ -10,6 +10,8 @@ Output: a (system, user) prompt pair ready for llm.generate_text().
 from __future__ import annotations
 from typing import Dict, List
 
+from src import config as cfg
+
 
 SYSTEM_TEMPLATE = """You are a behavior simulator for HeartSteps users. Generate one
 transition (next steps10 count) given the user's profile, current state, and
@@ -22,8 +24,6 @@ Important rules — DO NOT violate:
     at the wrong time of day.
   * Match the user's profile EXACTLY — do not invent traits not in the profile.
   * Be stochastic — even the same state can produce different outcomes.
-  * Cumulative messages (high dosage) reduce responsiveness for fatigue-sensitive
-    users.
   * When "Available for intervention: False", the user is in a state where no
     message could be sent (driving / sleeping / unreachable); send is always 0
     and steps10 should reflect the user's natural baseline at this slot.
@@ -137,8 +137,7 @@ def _format_episodic(history: List[Dict]) -> str:
     for h in history[-5:]:
         lines.append(
             f"  day={h.get('day','?')} slot={h.get('slot','?')} "
-            f"send={h.get('action','?')} → steps10={h.get('steps10','?')} "
-            f"(dosage={h.get('dosage','?'):.1f})"
+            f"send={h.get('action','?')} → steps10={h.get('steps10','?')}"
         )
     return "\n".join(lines)
 
@@ -152,8 +151,8 @@ def build_step_prompt(persona: Dict,
     `current_state` :
     {
         "day": day, "slot": slot, "hour": round(actual_hour, 1),
-        "weekday": weekday, "dosage": dosage,
-        "avail": avail,      
+        "weekday": weekday,
+        "avail": avail,
         **ctx: weather/temp/loc/steps30pre for this decision point,
     }
     `action` is the send chosen (will be in the prompt).
@@ -187,9 +186,8 @@ Weekday: {current_state.get('weekday', '?')}
 Weather: {current_state.get('weather', '?')}, Temp: {current_state.get('temp', '?')}
 Location: {current_state.get('loc', '?')}
 steps30pre (prior 30-min step count): {current_state.get('steps30pre', '?')}
-dosage (cumulative recent messages): {current_state.get('dosage', '?'):.2f}
 Available for intervention: {current_state.get('avail', '?')}
-Action just taken: send={action}  ({_action_name(action)})
+Action just taken: send={action}  ({cfg.ACTION_NAMES.get(action, '?')})
 
 ## Episodic Memory (this trajectory so far)
 {_format_episodic(episodic_history)}
@@ -203,13 +201,9 @@ Consider:
   - If avail=False, use the unavailable-baseline section, not the per-slot signal
   - Engagement phase multiplier (honeymoon ↑, fatigue ↓)
   - High-activity anchors hint at when this user actually bursts
-  - Their fatigue level (dosage) and archetype's response style
+  - The user's archetype's response style
   - Be realistic: many slots have 0 steps; only some are active windows.
 
 Output ONLY one integer between 0 and 10000."""
 
     return SYSTEM_TEMPLATE, user
-
-
-def _action_name(a: int) -> str:
-    return {0: "no message", 1: "walking suggestion", 2: "anti-sedentary"}.get(a, "?")

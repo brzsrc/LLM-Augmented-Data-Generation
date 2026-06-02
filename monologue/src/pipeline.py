@@ -13,7 +13,9 @@ Usage:
     cd monologue
     python -m src.pipeline --stage audit
     python -m src.pipeline --backend stub --stage all
-    python -m src.pipeline --backend vllm --stage all --cql_alphas 0.0,1.0,3.0
+    python -m src.pipeline --backend vllm --stage all
+(Evaluation hyperparameters — cql_alphas, n_folds, ddqn_iters, ... — live in
+cfg.EVAL; edit `src/config.py` to change them.)
 """
 from __future__ import annotations
 import argparse
@@ -30,14 +32,15 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 
 from src import config as cfg
-from src.core import data_loader
+from src import data_loader
 from src.audit import leakage_detector, coverage, oracle_ceiling, signal_extractor
 from src.personas import extractor as persona_extractor
 from src.personas import archetype as persona_archetype
 from src.generation import trajectory_sampler
 from src.generation.llm import StubLLM
 from src.validation import gates as validation_gates
-from src.evaluation import ablation
+# NOTE: `src.evaluation.runner` is imported lazily inside stage 7 because it
+# pulls in torch (needed only for the evaluate stage).
 
 
 STAGES = ["audit", "personas", "generate", "validate", "evaluate", "all"]
@@ -45,11 +48,9 @@ STAGES = ["audit", "personas", "generate", "validate", "evaluate", "all"]
 
 def get_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--out_root", default="src/outputs/run1")
-    p.add_argument("--backend", choices=["qwen8b", 'qwen32b', "stub"], default="stub")
-    p.add_argument("--model_path", default=None)
+    p.add_argument("--out_root", default="src/outputs/run2")
+    p.add_argument("--backend", choices=["qwen8b", 'qwen32b', "stub"], default="qwen32b")
     p.add_argument("--stage", choices=STAGES, default="all")
-    p.add_argument("--cql_alphas", default="0.0,1.0")
     p.add_argument("--seed", type=int, default=42)
     return p.parse_args()
 
@@ -57,7 +58,6 @@ def get_args():
 def main():
     args = get_args()
     os.makedirs(args.out_root, exist_ok=True)
-    monologue_dir = os.path.dirname(HERE)
 
     print("=" * 72)
     print(f"PIPELINE  stage={args.stage}  backend={args.backend}")
@@ -120,12 +120,12 @@ def main():
             llm = Qwen8BLLM()
         elif args.backend == "qwen32b":
             from src.generation.llm import Qwen32BLLM  # lazy: vllm not installed on CPU/CI
-            llm = Qwen32BLLM(model_path=args.model_path) 
+            llm = Qwen32BLLM() 
         else:
             raise ValueError(f"Unknown LLM backend: {args.backend}")
         # convert dataclasses to dicts for downstream consumer
         synth_personas_dicts = [_persona_to_flat_dict(p) for p in synth_personas]
-        synth_df = trajectory_sampler.generate_all(synth_personas_dicts, llm,
+        synth_df = trajectory_sampler.generate_all_vllm(synth_personas_dicts, llm,
                                                     out_dir=gen_out, seed=args.seed)
         # synth CSV on disk keeps string categoricals (matches data_gen.csv).
         # In memory we encode them so validation / ablation see the same dtypes
@@ -142,9 +142,8 @@ def main():
     # ---- 7. Evaluate -----
     if args.stage in ("evaluate", "all"):
         print("\n[stage 7/7] EVALUATE (ablation)")
-        cql_alphas = [float(a) for a in args.cql_alphas.split(",")]
-        ablation.run_ablation(df, synth_df, out_root=eval_out,
-                              monologue_dir=monologue_dir, cql_alphas=cql_alphas)
+        from src.evaluation import runner as eval_runner   # lazy: needs torch
+        eval_runner.run_ablation(df, synth_df, out_root=eval_out)
 
     print(f"\n✅ DONE. Outputs under: {args.out_root}")
 

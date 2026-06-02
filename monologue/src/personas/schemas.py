@@ -21,7 +21,7 @@ class Anchor:
     source_uid: int
     archetype: str
     variant_type: str
-    synth_uid: str
+    synth_uid: int
     slot_1_hour: int
     n_days: int
     borrowed_uids: List[int] = field(default_factory=list)
@@ -159,7 +159,7 @@ class PersonaProfile:
         return asdict(self)
 
     def summary_str(self) -> str:
-        return (f"{self.anchor.synth_uid:25s} arch={self.anchor.archetype:18s} "
+        return (f"uid={self.anchor.synth_uid:<6d} arch={self.anchor.archetype:18s} "
                 f"src=R{self.anchor.source_uid} slot_1_h={self.anchor.slot_1_hour} "
                 f"steps10={self.activity.steps10.all.mean:.0f} "
                 f"steps30pre={self.activity.steps30pre.mean:.0f} "

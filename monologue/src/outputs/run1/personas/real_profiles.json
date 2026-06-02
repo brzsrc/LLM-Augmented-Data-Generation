@@ -4,7 +4,7 @@
       "source_uid": 1,
       "archetype": "high_activity",
       "variant_type": "source",
-      "synth_uid": "R1",
+      "synth_uid": 1,
       "slot_1_hour": 10,
       "n_days": 35,
       "borrowed_uids": []
@@ -486,7 +486,7 @@
       "source_uid": 2,
       "archetype": "standard",
       "variant_type": "source",
-      "synth_uid": "R2",
+      "synth_uid": 2,
       "slot_1_hour": 13,
       "n_days": 35,
       "borrowed_uids": []
@@ -939,7 +939,7 @@
       "source_uid": 3,
       "archetype": "low_activity",
       "variant_type": "source",
-      "synth_uid": "R3",
+      "synth_uid": 3,
       "slot_1_hour": 13,
       "n_days": 38,
       "borrowed_uids": []
@@ -1422,7 +1422,7 @@
       "source_uid": 4,
       "archetype": "high_activity",
       "variant_type": "source",
-      "synth_uid": "R4",
+      "synth_uid": 4,
       "slot_1_hour": 11,
       "n_days": 40,
       "borrowed_uids": []
@@ -1918,7 +1918,7 @@
       "source_uid": 5,
       "archetype": "standard",
       "variant_type": "source",
-      "synth_uid": "R5",
+      "synth_uid": 5,
       "slot_1_hour": 13,
       "n_days": 43,
       "borrowed_uids": []
@@ -2410,7 +2410,7 @@
       "source_uid": 6,
       "archetype": "high_activity",
       "variant_type": "source",
-      "synth_uid": "R6",
+      "synth_uid": 6,
       "slot_1_hour": 10,
       "n_days": 34,
       "borrowed_uids": []
@@ -2893,7 +2893,7 @@
       "source_uid": 7,
       "archetype": "morning_active",
       "variant_type": "source",
-      "synth_uid": "R7",
+      "synth_uid": 7,
       "slot_1_hour": 10,
       "n_days": 42,
       "borrowed_uids": []
@@ -3387,7 +3387,7 @@
       "source_uid": 8,
       "archetype": "high_activity",
       "variant_type": "source",
-      "synth_uid": "R8",
+      "synth_uid": 8,
       "slot_1_hour": 12,
       "n_days": 44,
       "borrowed_uids": []
@@ -3841,7 +3841,7 @@
       "source_uid": 9,
       "archetype": "morning_active",
       "variant_type": "source",
-      "synth_uid": "R9",
+      "synth_uid": 9,
       "slot_1_hour": 11,
       "n_days": 40,
       "borrowed_uids": []
@@ -4324,7 +4324,7 @@
       "source_uid": 10,
       "archetype": "standard",
       "variant_type": "source",
-      "synth_uid": "R10",
+      "synth_uid": 10,
       "slot_1_hour": 13,
       "n_days": 43,
       "borrowed_uids": []
@@ -4813,7 +4813,7 @@
       "source_uid": 11,
       "archetype": "morning_active",
       "variant_type": "source",
-      "synth_uid": "R11",
+      "synth_uid": 11,
       "slot_1_hour": 11,
       "n_days": 42,
       "borrowed_uids": []
@@ -5306,7 +5306,7 @@
       "source_uid": 12,
       "archetype": "standard",
       "variant_type": "source",
-      "synth_uid": "R12",
+      "synth_uid": 12,
       "slot_1_hour": 12,
       "n_days": 48,
       "borrowed_uids": []
@@ -5794,7 +5794,7 @@
       "source_uid": 13,
       "archetype": "standard",
       "variant_type": "source",
-      "synth_uid": "R13",
+      "synth_uid": 13,
       "slot_1_hour": 13,
       "n_days": 21,
       "borrowed_uids": []
@@ -6271,7 +6271,7 @@
       "source_uid": 14,
       "archetype": "standard",
       "variant_type": "source",
-      "synth_uid": "R14",
+      "synth_uid": 14,
       "slot_1_hour": 13,
       "n_days": 39,
       "borrowed_uids": []
@@ -6766,7 +6766,7 @@
       "source_uid": 15,
       "archetype": "standard",
       "variant_type": "source",
-      "synth_uid": "R15",
+      "synth_uid": 15,
       "slot_1_hour": 12,
       "n_days": 27,
       "borrowed_uids": []
@@ -7251,7 +7251,7 @@
       "source_uid": 16,
       "archetype": "high_activity",
       "variant_type": "source",
-      "synth_uid": "R16",
+      "synth_uid": 16,
       "slot_1_hour": 11,
       "n_days": 37,
       "borrowed_uids": []
@@ -7724,7 +7724,7 @@
       "source_uid": 17,
       "archetype": "high_activity",
       "variant_type": "source",
-      "synth_uid": "R17",
+      "synth_uid": 17,
       "slot_1_hour": 12,
       "n_days": 42,
       "borrowed_uids": []
@@ -8213,7 +8213,7 @@
       "source_uid": 18,
       "archetype": "low_activity",
       "variant_type": "source",
-      "synth_uid": "R18",
+      "synth_uid": 18,
       "slot_1_hour": 10,
       "n_days": 41,
       "borrowed_uids": []
@@ -8694,7 +8694,7 @@
       "source_uid": 19,
       "archetype": "morning_active",
       "variant_type": "source",
-      "synth_uid": "R19",
+      "synth_uid": 19,
       "slot_1_hour": 11,
       "n_days": 41,
       "borrowed_uids": []
@@ -9170,7 +9170,7 @@
       "source_uid": 20,
       "archetype": "low_activity",
       "variant_type": "source",
-      "synth_uid": "R20",
+      "synth_uid": 20,
       "slot_1_hour": 13,
       "n_days": 47,
       "borrowed_uids": []
@@ -9669,7 +9669,7 @@
       "source_uid": 21,
       "archetype": "high_activity",
       "variant_type": "source",
-      "synth_uid": "R21",
+      "synth_uid": 21,
       "slot_1_hour": 14,
       "n_days": 47,
       "borrowed_uids": []
@@ -10160,7 +10160,7 @@
       "source_uid": 22,
       "archetype": "low_activity",
       "variant_type": "source",
-      "synth_uid": "R22",
+      "synth_uid": 22,
       "slot_1_hour": 13,
       "n_days": 42,
       "borrowed_uids": []
@@ -10649,7 +10649,7 @@
       "source_uid": 23,
       "archetype": "morning_active",
       "variant_type": "source",
-      "synth_uid": "R23",
+      "synth_uid": 23,
       "slot_1_hour": 11,
       "n_days": 36,
       "borrowed_uids": []
@@ -11114,7 +11114,7 @@
       "source_uid": 24,
       "archetype": "high_activity",
       "variant_type": "source",
-      "synth_uid": "R24",
+      "synth_uid": 24,
       "slot_1_hour": 13,
       "n_days": 32,
       "borrowed_uids": []
@@ -11596,7 +11596,7 @@
       "source_uid": 25,
       "archetype": "high_activity",
       "variant_type": "source",
-      "synth_uid": "R25",
+      "synth_uid": 25,
       "slot_1_hour": 14,
       "n_days": 40,
       "borrowed_uids": []
@@ -12092,7 +12092,7 @@
       "source_uid": 26,
       "archetype": "low_activity",
       "variant_type": "source",
-      "synth_uid": "R26",
+      "synth_uid": 26,
       "slot_1_hour": 13,
       "n_days": 40,
       "borrowed_uids": []
@@ -12566,7 +12566,7 @@
       "source_uid": 27,
       "archetype": "low_activity",
       "variant_type": "source",
-      "synth_uid": "R27",
+      "synth_uid": 27,
       "slot_1_hour": 13,
       "n_days": 36,
       "borrowed_uids": []
@@ -13049,7 +13049,7 @@
       "source_uid": 28,
       "archetype": "high_activity",
       "variant_type": "source",
-      "synth_uid": "R28",
+      "synth_uid": 28,
       "slot_1_hour": 12,
       "n_days": 39,
       "borrowed_uids": []
@@ -13536,7 +13536,7 @@
       "source_uid": 29,
       "archetype": "standard",
       "variant_type": "source",
-      "synth_uid": "R29",
+      "synth_uid": 29,
       "slot_1_hour": 13,
       "n_days": 42,
       "borrowed_uids": []
@@ -14041,7 +14041,7 @@
       "source_uid": 30,
       "archetype": "high_activity",
       "variant_type": "source",
-      "synth_uid": "R30",
+      "synth_uid": 30,
       "slot_1_hour": 12,
       "n_days": 37,
       "borrowed_uids": []
@@ -14536,7 +14536,7 @@
       "source_uid": 31,
       "archetype": "evening_active",
       "variant_type": "source",
-      "synth_uid": "R31",
+      "synth_uid": 31,
       "slot_1_hour": 14,
       "n_days": 21,
       "borrowed_uids": []
@@ -15021,7 +15021,7 @@
       "source_uid": 32,
       "archetype": "low_activity",
       "variant_type": "source",
-      "synth_uid": "R32",
+      "synth_uid": 32,
       "slot_1_hour": 14,
       "n_days": 23,
       "borrowed_uids": []
@@ -15489,7 +15489,7 @@
       "source_uid": 33,
       "archetype": "evening_active",
       "variant_type": "source",
-      "synth_uid": "R33",
+      "synth_uid": 33,
       "slot_1_hour": 14,
       "n_days": 40,
       "borrowed_uids": []
@@ -15994,7 +15994,7 @@
       "source_uid": 34,
       "archetype": "low_activity",
       "variant_type": "source",
-      "synth_uid": "R34",
+      "synth_uid": 34,
       "slot_1_hour": 14,
       "n_days": 41,
       "borrowed_uids": []
@@ -16487,7 +16487,7 @@
       "source_uid": 35,
       "archetype": "standard",
       "variant_type": "source",
-      "synth_uid": "R35",
+      "synth_uid": 35,
       "slot_1_hour": 12,
       "n_days": 39,
       "borrowed_uids": []
@@ -16977,7 +16977,7 @@
       "source_uid": 36,
       "archetype": "high_activity",
       "variant_type": "source",
-      "synth_uid": "R36",
+      "synth_uid": 36,
       "slot_1_hour": 14,
       "n_days": 31,
       "borrowed_uids": []
@@ -17453,7 +17453,7 @@
       "source_uid": 37,
       "archetype": "standard",
       "variant_type": "source",
-      "synth_uid": "R37",
+      "synth_uid": 37,
       "slot_1_hour": 13,
       "n_days": 41,
       "borrowed_uids": []

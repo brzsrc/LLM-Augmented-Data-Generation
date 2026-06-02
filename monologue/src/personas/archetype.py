@@ -13,7 +13,7 @@ from typing import Dict, List
 import numpy as np
 
 from src import config as cfg
-from src.core.schemas import (
+from src.personas.schemas import (
     Anchor, ActivityProfile, CompliancePhases, CompliancePhase,
     LifestyleProfile, PersonaProfile,
 )
@@ -143,6 +143,13 @@ def _archetype_bounds_table() -> Dict[str, Dict]:
     }
 
 
+# synth uids start at SYNTH_UID_OFFSET so they're visually distinguishable from
+# real uids in logs/CSV. Real uids are < 100 in our dataset (37 users), so 1000
+# leaves plenty of gap. The (source_uid, variant_type, index) info is preserved
+# in dedicated columns — uid itself is now opaque.
+SYNTH_UID_OFFSET = 1000
+
+
 def build_synth_personas(real_profiles: Dict[int, PersonaProfile],
                          seed: int = 42) -> List[PersonaProfile]:
     rng = np.random.default_rng(seed)
@@ -154,6 +161,7 @@ def build_synth_personas(real_profiles: Dict[int, PersonaProfile],
 
     out: List[PersonaProfile] = []
     archetype_counts: Dict[str, int] = {}
+    next_synth_uid = SYNTH_UID_OFFSET
     for uid, source in real_profiles.items():
         archetype = source.anchor.archetype
         archetype_counts[archetype] = archetype_counts.get(archetype, 0) + 1
@@ -161,23 +169,27 @@ def build_synth_personas(real_profiles: Dict[int, PersonaProfile],
 
         for i in range(cfg.VARIANTS_PER_SOURCE["twin"]):
             v = _build_twin(source, rng)
-            v.anchor.synth_uid = f"synth_R{uid}_twin_{i}"
+            v.anchor.synth_uid = next_synth_uid
+            next_synth_uid += 1
             out.append(v)
 
         if peers:
             for i in range(cfg.VARIANTS_PER_SOURCE["sibling"]):
                 peer = peers[int(rng.integers(0, len(peers)))]
                 v = _build_sibling(source, peer, rng)
-                v.anchor.synth_uid = f"synth_R{uid}_sibling_{i}"
+                v.anchor.synth_uid = next_synth_uid
+                next_synth_uid += 1
                 out.append(v)
 
         for i in range(cfg.VARIANTS_PER_SOURCE["edge"]):
             v = _build_edge(source, bounds_table.get(archetype, {}), rng)
-            v.anchor.synth_uid = f"synth_R{uid}_edge_{i}"
+            v.anchor.synth_uid = next_synth_uid
+            next_synth_uid += 1
             out.append(v)
 
     print(f"\n[archetype] Classified {len(real_profiles)} source patients:")
     for a, n in sorted(archetype_counts.items(), key=lambda x: -x[1]):
         print(f"  {a:22s}  {n} patients")
-    print(f"  → {len(out)} synth persona variants total")
+    print(f"  → {len(out)} synth persona variants total "
+          f"(uid range: {SYNTH_UID_OFFSET}..{next_synth_uid - 1})")
     return out
