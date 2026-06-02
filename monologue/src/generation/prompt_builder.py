@@ -36,7 +36,7 @@ def _format_persona(p: Dict) -> str:
     lines = [
         f"User type: {p.get('archetype', 'unknown')} (variant: {p.get('variant_type', '-')})",
         f"Schedule: first decision around hour {p.get('slot_1_hour', '?')}",
-        f"Baseline mean steps10: {p.get('steps10_mean', '?')}",
+        f"Baseline mean steps10: {int(p['steps10_mean']) if p.get('steps10_mean') is not None else '?'}",
     ]
     zp = p.get("steps10_zero_pct")
     if zp is not None:

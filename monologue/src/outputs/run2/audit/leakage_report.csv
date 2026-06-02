@@ -1,0 +1,12 @@
+column,n_cells,zero_cells,cond_entropy,max_entropy,declared_forbidden,auto_flagged,leakage_suspect
+study_day,12,0,1.51,1.585,False,False,False
+weekday,21,0,1.509,1.585,False,False,False
+slot,15,0,1.505,1.585,False,False,False
+hour_sin,12,0,1.509,1.585,False,False,False
+hour_cos,12,0,1.51,1.585,False,False,False
+weather,9,0,1.51,1.585,False,False,False
+temp,18,0,1.51,1.585,False,False,False
+loc,18,0,1.5,1.585,False,False,False
+steps30pre,9,0,1.506,1.585,False,False,False
+dosage,12,0,1.509,1.585,False,False,False
+steps10,6,0,1.507,1.585,True,False,True

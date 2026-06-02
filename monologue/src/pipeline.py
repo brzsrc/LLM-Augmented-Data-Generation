@@ -147,9 +147,6 @@ def main():
         with open(os.path.join(gen_out, "gate_results.json"), "w") as f:
             json.dump(gate_results, f, indent=2)
             
-    df = df[df['avail'] == True].reset_index(drop=True)  # ensure eval only sees avail=True rows
-    synth_df = synth_df[synth_df['avail'] == True].reset_index(drop=True)  # ensure eval only sees avail=True rows
-
     # ---- 7. Evaluate -----
     if args.stage in ("evaluate", "all"):
         print("\n[stage 7/7] EVALUATE (ablation)")

@@ -199,6 +199,128 @@ def consistency_gate(synth_df: pd.DataFrame, personas: List[Dict], tol_steps_fac
     return ok, {"off_target": bad}
 
 
+def correlation_gate(real_df: pd.DataFrame, synth_df: pd.DataFrame,
+                      tol_mae: float = 0.15) -> Tuple[bool, Dict]:
+    """Inter-column correlation structure should match real.
+
+    Per "Are LLMs Naturally Good at Synthetic Tabular Data Generation?" (2024),
+    LLMs systematically distort column-pair correlations even when marginals
+    look OK. Compute Pearson correlation matrices on the columns DDQN sees
+    (cfg.STATE_FEATURES + send + steps10), then report Frobenius norm of the
+    delta AND the off-diagonal mean absolute deviation.
+
+    Passes if off-diagonal |Δρ| mean ≤ tol_mae (default 0.15).
+    """
+    cols = list(cfg.STATE_FEATURES) + [cfg.COL_ACTION, cfg.COL_REWARD_SOURCE]
+    cols = [c for c in cols if c in real_df.columns and c in synth_df.columns]
+    if len(cols) < 3:
+        print("  [correlation_gate] ⚠ SKIP (need ≥3 numeric columns)")
+        return True, {"skipped": True, "reason": "too few columns"}
+
+    real_corr  = real_df[cols].astype(float).corr().fillna(0.0).values
+    synth_corr = synth_df[cols].astype(float).corr().fillna(0.0).values
+    diff = real_corr - synth_corr
+
+    n = diff.shape[0]
+    frobenius = float(np.linalg.norm(diff, ord="fro"))
+    off_diag_mask = ~np.eye(n, dtype=bool)
+    mae = float(np.abs(diff[off_diag_mask]).mean())
+
+    # Find the 5 worst-distorted column pairs (upper triangle only)
+    triu = np.triu_indices(n, k=1)
+    pair_diffs = [(cols[i], cols[j],
+                    float(real_corr[i, j]), float(synth_corr[i, j]),
+                    float(diff[i, j]))
+                   for i, j in zip(*triu)]
+    pair_diffs.sort(key=lambda r: abs(r[4]), reverse=True)
+
+    ok = mae <= tol_mae
+    diag = {
+        "n_columns":            n,
+        "frobenius_norm":       round(frobenius, 3),
+        "off_diag_mae":         round(mae, 3),
+        "tolerance_mae":        tol_mae,
+        "worst_5_pairs": [
+            {"col1": p[0], "col2": p[1],
+             "real_rho":  round(p[2], 3),
+             "synth_rho": round(p[3], 3),
+             "delta":     round(p[4], 3)}
+            for p in pair_diffs[:5]
+        ],
+    }
+    print(f"  [correlation_gate] {'✓ PASS' if ok else '✗ FAIL'}  "
+          f"off-diag |Δρ| mean = {mae:.3f} (tol={tol_mae}), "
+          f"Frobenius = {frobenius:.2f}")
+    return ok, diag
+
+
+def diversity_gate(real_df: pd.DataFrame, synth_df: pd.DataFrame,
+                    n_pairs: int = 200, tol_ratio: float = 0.5,
+                    seed: int = 42) -> Tuple[bool, Dict]:
+    """Population-level diversity: synth users should be as DIFFERENT from each
+    other as real users are.
+
+    Per "LLM as user daily behavior data generator" (2025): we need a DUAL to
+    `consistency_gate`. `consistency_gate` measures individual personality
+    (each synth_uid matches its persona target); this measures population
+    diversity (synth_uids are sufficiently different from each other).
+
+    For both real_df and synth_df: sample n_pairs random uid-pairs, compute
+    1-D Wasserstein distance between their steps10 distributions, average.
+    Passes if synth's mean pairwise distance is in [tol_ratio, 1/tol_ratio]
+    of real's. Synth/real ratio < tol_ratio → mode collapse (all synth too
+    similar). Ratio > 1/tol_ratio → over-dispersed (variants too extreme).
+    """
+    try:
+        from scipy.stats import wasserstein_distance
+    except ImportError:
+        print("  [diversity_gate]   ⚠ SKIP (scipy not installed)")
+        return True, {"skipped": True}
+
+    rng = np.random.default_rng(seed)
+
+    def _mean_pairwise_wd(df: pd.DataFrame) -> float:
+        users = sorted(df["uid"].unique())
+        if len(users) < 2:
+            return 0.0
+        all_pairs = [(i, j) for i in range(len(users))
+                              for j in range(i + 1, len(users))]
+        n_take = min(n_pairs, len(all_pairs))
+        chosen = rng.choice(len(all_pairs), n_take, replace=False)
+        distances = []
+        for k in chosen:
+            i, j = all_pairs[k]
+            xs = df.loc[df["uid"] == users[i], "steps10"].values
+            ys = df.loc[df["uid"] == users[j], "steps10"].values
+            if len(xs) >= 5 and len(ys) >= 5:
+                distances.append(wasserstein_distance(xs, ys))
+        return float(np.mean(distances)) if distances else 0.0
+
+    real_div  = _mean_pairwise_wd(real_df)
+    synth_div = _mean_pairwise_wd(synth_df)
+    ratio = synth_div / max(real_div, 1e-6)
+
+    ok = tol_ratio <= ratio <= (1.0 / tol_ratio)
+    if ratio < tol_ratio:
+        verdict = "synth too uniform (mode collapse)"
+    elif ratio > 1.0 / tol_ratio:
+        verdict = "synth too dispersed (over-perturbed variants?)"
+    else:
+        verdict = "diversity in range"
+
+    diag = {
+        "real_mean_pairwise_wasserstein":  round(real_div, 2),
+        "synth_mean_pairwise_wasserstein": round(synth_div, 2),
+        "synth_to_real_ratio":             round(ratio, 3),
+        "acceptable_range":                [tol_ratio, round(1.0 / tol_ratio, 2)],
+        "verdict":                          verdict,
+        "n_pairs_sampled":                  n_pairs,
+    }
+    print(f"  [diversity_gate]   {'✓ PASS' if ok else '⚠ WARN'}  "
+          f"synth/real Wasserstein ratio = {ratio:.2f} ({verdict})")
+    return ok, diag
+
+
 def run_all_gates(real_df: pd.DataFrame, synth_df: pd.DataFrame,
                   personas: List[Dict]) -> Dict[str, bool]:
     print("\n[validation] Running quality gates ...")
@@ -210,6 +332,11 @@ def run_all_gates(real_df: pd.DataFrame, synth_df: pd.DataFrame,
     results["temporal_corr"],      _ = temporal_correlation_gate(real_df, synth_df)
     results["avail_consistency"],  _ = avail_consistency_gate(synth_df)
     results["consistency"],        _ = consistency_gate(synth_df, personas)
+    # New gates added based on lit review:
+    #   correlation: "Are LLMs Naturally Good at Synthetic Tabular Data Generation?" (2024)
+    #   diversity:   "LLM as user daily behavior data generator" (2025)
+    results["correlation"],        _ = correlation_gate(real_df, synth_df)
+    results["diversity"],          _ = diversity_gate(real_df, synth_df)
     n_pass = sum(results.values())
     print(f"\n  Gates passed: {n_pass}/{len(results)}")
     return results

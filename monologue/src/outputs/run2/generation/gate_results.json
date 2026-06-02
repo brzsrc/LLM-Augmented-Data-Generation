@@ -1,0 +1,9 @@
+{
+  "distribution": false,
+  "coverage": false,
+  "signal": false,
+  "leakage": true,
+  "temporal_corr": true,
+  "avail_consistency": true,
+  "consistency": false
+}

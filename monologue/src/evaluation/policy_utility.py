@@ -71,14 +71,22 @@ def setup_determinism(seed):
 # Data / MDP
 # ============================================================================
 def build_transitions(df):
-    """Build (s, a, r, s', done) records. State columns from cfg.STATE_FEATURES."""
+    """Build (s, a, r, s', done, avail) records. State columns from cfg.STATE_FEATURES.
+
+    `avail` is preserved per-transition so one_fold can filter the training set
+    to decision points where the policy could actually choose an action
+    (HeartSteps convention: policy only learns at avail=True). The next_state
+    pointer still crosses avail=False rows, preserving temporal continuity.
+    """
     df = df.sort_values(['uid', 'study_day', 'slot']).reset_index(drop=True)
     transitions = []
+    has_avail = "avail" in df.columns
     for uid, g in df.groupby('uid', sort=False):
         g = g.reset_index(drop=True)
         S = g[cfg.STATE_FEATURES].values
         A = g["send"].values
         R = g["reward"].values
+        AV = g["avail"].values if has_avail else None
         n = len(g)
         for t in range(n):
             ns = S[t + 1] if t < n - 1 else S[t]
@@ -87,6 +95,7 @@ def build_transitions(df):
                 "patient_id": uid,
                 "s": S[t], "a": int(A[t]), "r": float(R[t]),
                 "ns": ns, "done": done,
+                "avail": bool(AV[t]) if has_avail else True,
             })
     return transitions
 
@@ -312,8 +321,13 @@ def one_fold(fold_idx, train_pats, test_pats, orig_trans, device,
     setup_determinism(e["seed"] + fold_idx)
     use_amp = e["use_amp"] and device.type == "cuda"
 
-    train_trans = filter_trans(orig_trans, train_pats)
-    test_trans = filter_trans(orig_trans, test_pats)
+    # Filter by patient_id THEN by avail=True. next_state pointers were
+    # already computed against the full row sequence in build_transitions, so
+    # temporal continuity is preserved even though we drop the avail=False
+    # decision points from training/eval (HeartSteps: policy only learns at
+    # decision points where it could actually choose an action).
+    train_trans = [t for t in filter_trans(orig_trans, train_pats) if t.get("avail", True)]
+    test_trans  = [t for t in filter_trans(orig_trans, test_pats)  if t.get("avail", True)]
 
     s_tr, _, _, _, _, _ = to_arrays(train_trans)
     scaler = MinMaxScaler().fit(s_tr)
@@ -420,7 +434,7 @@ def run_kfold(
     # extra real-only cols (resp) and synth-only cols (source_uid /
     # variant_type / archetype / borrowed_uids) don't leak in as NaN-filled
     # "ghost" columns that promote int dtypes to float64.
-    keep_cols = list(cfg.STATE_FEATURES) + ["uid", "send", "reward"]
+    keep_cols = list(cfg.STATE_FEATURES) + ["uid", "send", "reward", "avail"]
     real_uids = set(real_df["uid"].unique().tolist())
     
     if synth_df is not None and len(synth_df) > 0:

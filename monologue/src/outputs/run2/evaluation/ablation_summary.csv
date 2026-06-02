@@ -1,0 +1,5 @@
+variant,cql_alpha,synthetic,orig_V,orig_ci_low,orig_ci_high,nomsg_V,diff_to_nomsg
+real_only_α=0,0.0,False,33.87,31.81,35.79,39.76,-5.89
+real+synth_α=0,0.0,True,33.61,30.37,37.02,37.74,-4.13
+real_only_α=1,1.0,False,34.2,32.5,36.14,39.56,-5.35
+real+synth_α=1,1.0,True,36.55,34.33,38.81,37.96,-1.41
