@@ -61,6 +61,80 @@ FIDELITY_JSD_COLS = ["weekday", "slot", "weather", "temp", "loc",
 
 
 # ============================================================================
+# steps30pre binning — PER-USER dynamic bins
+# ----------------------------------------------------------------------------
+# Each persona carries its own 6 bin edges/labels, computed from their own
+# steps30pre distribution. Bin 0 is ALWAYS the exact-zero bucket (strong hurdle
+# signal); the remaining 5 bins are quantile-cut from that user's POSITIVE
+# steps30pre observations. Labels are literal numeric ranges (e.g. "23-90")
+# so LLM prompts stay unambiguous.
+#
+# Fallback (when a user has <5 positive observations): the historical default
+# 6-bin schema below.
+# ============================================================================
+# JSON-safe stand-in for +infinity: 1e12 is ~1000× the all-time human step
+# record per 30min, so behaviorally identical to ∞ for our domain. We avoid
+# float("inf") because non-Python JSON parsers reject it as invalid JSON.
+S30_INF_SENTINEL = 1e12
+
+DEFAULT_S30_BIN_EDGES  = [0.0, 1.0, 50.0, 200.0, 500.0, 1500.0, S30_INF_SENTINEL]
+DEFAULT_S30_BIN_LABELS = ["0", "1-49", "50-199", "200-499", "500-1499", "1500+"]
+
+
+def _format_bin_labels(edges):
+    """Turn numeric edges into literal-range string labels.
+    edges[0] is always 0.0; edges[1] is 1.0 (exact-zero / positive divider);
+    edges[-1] is S30_INF_SENTINEL (JSON-safe ∞)."""
+    labels = ["0"]
+    for i in range(1, len(edges) - 1):
+        lo = int(edges[i])
+        nxt = edges[i + 1]
+        if nxt >= S30_INF_SENTINEL:
+            labels.append(f"{lo}+")
+        else:
+            hi = int(nxt) - 1
+            labels.append(f"{lo}-{hi}" if lo != hi else str(lo))
+    return labels
+
+
+def s30_bins_for_user(values, n_total: int = 6):
+    """Build PER-USER steps30pre bins.
+
+    Returns (edges, labels) with `n_total` total bins. Bin 0 ("0") is the
+    exact-zero bucket. The remaining n_total-1 bins are quantile-cut from
+    the user's positive steps30pre values. Falls back to global defaults
+    when the user has too few positive observations to support the cut.
+    """
+    import numpy as np
+    arr = np.asarray([v for v in values if v is not None], dtype=float)
+    pos = arr[arr > 0]
+    n_pos_bins = n_total - 1
+    if len(pos) < n_pos_bins:
+        return list(DEFAULT_S30_BIN_EDGES), list(DEFAULT_S30_BIN_LABELS)
+
+    # Internal quantile breakpoints (n_pos_bins-1 of them) for n_pos_bins ranges
+    qs = np.linspace(0.0, 1.0, n_pos_bins + 1)[1:-1]
+    breaks = np.unique(np.round(np.quantile(pos, qs)).astype(int))
+    # Drop breakpoints ≤ 1 (1.0 is already the positive-divider edge)
+    breaks = [int(b) for b in breaks if b > 1]
+    edges = [0.0, 1.0] + [float(b) for b in breaks] + [S30_INF_SENTINEL]
+    return edges, _format_bin_labels(edges)
+
+
+def s30_bin_label(v, edges, labels) -> str:
+    """Map a numeric steps30pre value to its bin label given a (edges, labels)
+    pair — typically from a persona's per-user bins."""
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return labels[-1] if labels else "?"
+    for i in range(len(labels)):
+        if edges[i] <= x < edges[i + 1]:
+            return labels[i]
+    return labels[-1] if labels else "?"
+
+
+# ============================================================================
 # State features fed to DDQN
 # ============================================================================
 STATE_FEATURES = [
@@ -241,7 +315,7 @@ STEPS_COT_JSON_SCHEMA = {
         "context_adjustment": {"type": "string", "maxLength": 300},
         "momentum_check":     {"type": "string", "maxLength": 250},
         "episodic_check":     {"type": "string", "maxLength": 500},
-        "value":              {"type": "integer", "minimum": 0, "maximum": 10000},
+        "value":              {"type": "integer", "minimum": 1, "maximum": 10000},
     },
     "required": [
         "anchor_lookup", "phase_application", "context_adjustment",

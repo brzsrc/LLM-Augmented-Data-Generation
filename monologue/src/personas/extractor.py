@@ -5,8 +5,8 @@ and DDQN doesn't use resp. Activity profile is now expanded with:
   - steps30pre statistics (mean / median / zero_pct, per-slot variants)
   - context-conditional steps10 distributions (by loc / weather / temp /
     steps30pre bin)
-  - momentum_score = corr(steps30pre, steps10)
-  - context_sensitivity dict (per-dim std of conditional steps10)
+  - momentum_score_positive = corr(steps30pre, steps10) on positive rows
+  - context_sensitivity_positive dict (per-dim std of conditional positive steps10)
 
 Compliance phases B4: detected per-user from STL trend on daily steps10.
 """
@@ -157,28 +157,65 @@ def _extract_lifestyle(g: pd.DataFrame) -> LifestyleProfile:
 # ============================================================================
 # B3: activity — expanded with steps30pre + context-conditional steps10
 # ============================================================================
-def _steps10_bucket(gg: pd.DataFrame, include_action: bool) -> "Steps10BucketStats":
+def _per_slot_mean_positive(gg: pd.DataFrame) -> Dict[int, float]:
+    pos = gg[gg[cfg.COL_REWARD_SOURCE] > 0]
+    if len(pos) == 0:
+        return {}
+    psm = pos.groupby(cfg.COL_SLOT)[cfg.COL_REWARD_SOURCE].mean()
+    return {int(k): float(round(v, 1))
+            for k, v in psm.items() if pd.notna(v)}
+
+
+def _per_slot_action_mean_positive(gg: pd.DataFrame) -> Dict[int, Dict[int, float]]:
+    pos = gg[gg[cfg.COL_REWARD_SOURCE] > 0]
+    if len(pos) == 0:
+        return {}
+    psa = (pos.groupby([cfg.COL_SLOT, cfg.COL_ACTION])[cfg.COL_REWARD_SOURCE]
+              .mean().unstack(cfg.COL_ACTION))
+    return {int(slot): {int(a): float(round(v, 1))
+                         for a, v in row.items() if pd.notna(v)}
+            for slot, row in psa.iterrows()}
+
+
+def _zero_pct_by_s30_bin(gg: pd.DataFrame, edges, labels,
+                          min_n: int = 5) -> Dict[str, float]:
+    """P(steps10=0 | steps30pre bin) for one avail bucket, using the persona's
+    per-user `edges` / `labels`. Cells with n < min_n are omitted so the LLM
+    never sees flaky signals."""
+    if "steps30pre" not in gg.columns or len(gg) == 0 or not labels:
+        return {}
+    bins = pd.cut(gg["steps30pre"].astype(float),
+                   bins=edges, labels=labels,
+                   right=False, include_lowest=True)
+    out: Dict[str, float] = {}
+    for label in labels:
+        mask = (bins == label)
+        n = int(mask.sum())
+        if n < min_n:
+            continue
+        z = float((gg.loc[mask, cfg.COL_REWARD_SOURCE] == 0).mean())
+        out[label] = round(z, 3)
+    return out
+
+
+def _steps10_bucket(gg: pd.DataFrame, include_action: bool,
+                     s30_edges, s30_labels) -> "Steps10BucketStats":
     """Compute the steps10 stats for one availability bucket.
-    `include_action`=True populates per_slot_action_mean (avail=True only);
-    avail=False leaves it None (action is structurally 0)."""
+    `include_action`=True populates per_slot_action_mean_positive (avail=True);
+    avail=False leaves it None (action is structurally 0).
+    `s30_edges`/`s30_labels` are the persona's per-user steps30pre bins."""
     if len(gg) == 0:
         return Steps10BucketStats(
             mean=0.0, median=0.0, zero_pct=0.0,
             per_slot_mean={}, per_slot_zero_pct={},
-            per_slot_action_mean={} if include_action else None,
+            per_slot_mean_positive={},
+            per_slot_action_mean_positive={} if include_action else None,
+            zero_pct_by_s30_bin={},
         )
     s = gg[cfg.COL_REWARD_SOURCE].astype(float)
     ps_mean = gg.groupby(cfg.COL_SLOT)[cfg.COL_REWARD_SOURCE].mean()
     ps_zero = (gg.assign(_z=lambda d: d[cfg.COL_REWARD_SOURCE] == 0)
                   .groupby(cfg.COL_SLOT)["_z"].mean())
-
-    psam: Optional[Dict[int, Dict[int, float]]] = None
-    if include_action:
-        psa = (gg.groupby([cfg.COL_SLOT, cfg.COL_ACTION])[cfg.COL_REWARD_SOURCE]
-                 .mean().unstack(cfg.COL_ACTION))
-        psam = {int(slot): {int(a): float(round(v, 1))
-                             for a, v in row.items() if pd.notna(v)}
-                for slot, row in psa.iterrows()}
 
     return Steps10BucketStats(
         mean=float(round(s.mean(), 1)),
@@ -188,13 +225,91 @@ def _steps10_bucket(gg: pd.DataFrame, include_action: bool) -> "Steps10BucketSta
                         for k, v in ps_mean.items() if pd.notna(v)},
         per_slot_zero_pct={int(k): float(round(v, 3))
                             for k, v in ps_zero.items() if pd.notna(v)},
-        per_slot_action_mean=psam,
+        per_slot_mean_positive=_per_slot_mean_positive(gg),
+        per_slot_action_mean_positive=(_per_slot_action_mean_positive(gg)
+                                         if include_action else None),
+        zero_pct_by_s30_bin=_zero_pct_by_s30_bin(gg, s30_edges, s30_labels),
     )
+
+
+def _momentum_pair_pct(g: pd.DataFrame) -> Dict[str, float]:
+    """Consecutive-slot zero/non-zero pair frequencies within a single day.
+
+    Returns 4 keys (each rate in [0,1]):
+      zero_after_zero, nonzero_after_zero,
+      zero_after_nonzero, nonzero_after_nonzero
+    Empty dict if fewer than 5 ordered adjacent pairs of either kind.
+    """
+    if cfg.COL_DAY not in g.columns or len(g) < 2:
+        return {}
+    z_after_z = n_after_z = 0
+    z_after_nz = n_after_nz = 0
+    for _, day_g in g.sort_values([cfg.COL_DAY, cfg.COL_SLOT]).groupby(cfg.COL_DAY):
+        vals = day_g.sort_values(cfg.COL_SLOT)[cfg.COL_REWARD_SOURCE].tolist()
+        for prev, curr in zip(vals[:-1], vals[1:]):
+            if prev == 0:
+                n_after_z += 1
+                if curr == 0:
+                    z_after_z += 1
+            else:
+                n_after_nz += 1
+                if curr == 0:
+                    z_after_nz += 1
+    out: Dict[str, float] = {}
+    if n_after_z >= 5:
+        r = z_after_z / n_after_z
+        out["zero_after_zero"]    = round(r, 3)
+        out["nonzero_after_zero"] = round(1.0 - r, 3)
+    if n_after_nz >= 5:
+        r = z_after_nz / n_after_nz
+        out["zero_after_nonzero"]    = round(r, 3)
+        out["nonzero_after_nonzero"] = round(1.0 - r, 3)
+    return out
+
+
+def _steps10_mean_after_zero_streak(g: pd.DataFrame,
+                                     min_n: int = 10) -> Dict[str, float]:
+    """Mean steps10 on the RECOVERY slot (first non-zero after a zero streak).
+
+    For each day-local time series:
+      - walk through slots in order; count consecutive zeros
+      - when a non-zero slot is hit, attribute its value to the streak-length
+        bucket of the preceding zeros
+    Streak resets at day boundary (a new day starts with streak=0; the first
+    slot of the day, if non-zero, does NOT count toward any bucket).
+
+    Bins: "1" / "2" / "3+" — matches HeartSteps 5-slot/day structure where a
+    within-day streak can be at most 4 (slots 1-4 all zero, slot 5 non-zero).
+    Buckets with fewer than `min_n` recovery samples are omitted to prevent
+    sparse-cell noise from polluting downstream prompts.
+    """
+    if cfg.COL_DAY not in g.columns or len(g) < 2:
+        return {}
+    buckets: Dict[str, list] = {"1": [], "2": [], "3+": []}
+    for _, day_g in g.sort_values([cfg.COL_DAY, cfg.COL_SLOT]).groupby(cfg.COL_DAY):
+        vals = day_g.sort_values(cfg.COL_SLOT)[cfg.COL_REWARD_SOURCE].tolist()
+        streak = 0
+        for v in vals:
+            if v == 0:
+                streak += 1
+            else:
+                if streak >= 1:
+                    bucket = "1" if streak == 1 else ("2" if streak == 2 else "3+")
+                    buckets[bucket].append(float(v))
+                streak = 0
+    out: Dict[str, float] = {}
+    for k, vs in buckets.items():
+        if len(vs) >= min_n:
+            out[k] = round(float(np.mean(vs)), 1)
+    return out
 
 
 def _extract_activity(g: pd.DataFrame) -> ActivityProfile:
     steps = g[cfg.COL_REWARD_SOURCE].astype(float)
     pre30 = g["steps30pre"].astype(float) if "steps30pre" in g.columns else pd.Series([])
+
+    # ── Per-user steps30pre bin scheme (used everywhere downstream) ──
+    s30_edges, s30_labels = cfg.s30_bins_for_user(pre30.tolist())
 
     # ── 3 avail buckets for steps10 ──
     if cfg.COL_AVAIL in g.columns:
@@ -204,16 +319,24 @@ def _extract_activity(g: pd.DataFrame) -> ActivityProfile:
         g_T = g
         g_F = g.iloc[0:0]
 
-    avail_true_b  = _steps10_bucket(g_T, include_action=True)
-    avail_false_b = _steps10_bucket(g_F, include_action=False)
-    all_base      = _steps10_bucket(g,   include_action=False)
+    avail_true_b  = _steps10_bucket(g_T, include_action=True,
+                                      s30_edges=s30_edges, s30_labels=s30_labels)
+    avail_false_b = _steps10_bucket(g_F, include_action=False,
+                                      s30_edges=s30_edges, s30_labels=s30_labels)
+    all_base      = _steps10_bucket(g,   include_action=False,
+                                      s30_edges=s30_edges, s30_labels=s30_labels)
 
-    # ── Context-conditional steps10 (computed on full data, marginal-only) ──
+    # ── Context-conditional steps10 — POSITIVE ROWS ONLY ──
+    # Rationale: with the new hurdle gate, anchors + multipliers must live on
+    # the non-zero subspace, otherwise the chain undershoots after the gate
+    # forces zeros at the correct rate.
+    g_pos = g[g[cfg.COL_REWARD_SOURCE] > 0]
+
     def _mean_by(col, decoder=None):
-        if col not in g.columns:
+        if col not in g_pos.columns or len(g_pos) == 0:
             return {}
         out = {}
-        for val, sub in g.groupby(col):
+        for val, sub in g_pos.groupby(col):
             key = decoder.get(int(val), str(val)) if decoder else str(val)
             out[key] = float(round(sub[cfg.COL_REWARD_SOURCE].mean(), 1))
         return out
@@ -223,20 +346,35 @@ def _extract_activity(g: pd.DataFrame) -> ActivityProfile:
     steps10_by_temp    = _mean_by("temp",    cfg.DECODERS["temp"])
 
     steps10_by_steps30pre_bin: Dict[str, float] = {}
-    if len(pre30) >= 8 and pre30.nunique() > 1:
-        try:
-            bins = pd.qcut(pre30, q=4, duplicates="drop")
-            tmp = g.assign(_bin=bins.values)
-            for b, sub in tmp.groupby("_bin"):
-                steps10_by_steps30pre_bin[str(b)] = float(round(
-                    sub[cfg.COL_REWARD_SOURCE].mean(), 1))
-        except Exception:
-            pass
+    if "steps30pre" in g_pos.columns and len(g_pos) >= 5 and s30_labels:
+        bin_series = pd.cut(g_pos["steps30pre"].astype(float),
+                             bins=s30_edges, labels=s30_labels,
+                             right=False, include_lowest=True)
+        for label in s30_labels:
+            mask = (bin_series == label)
+            if int(mask.sum()) < 5:
+                continue
+            mu = float(g_pos.loc[mask, cfg.COL_REWARD_SOURCE].mean())
+            steps10_by_steps30pre_bin[label] = float(round(mu, 1))
 
-    # ── Aggregate scores ──
+    # ── Aggregate scores (POSITIVE rows only) ──
     momentum_score = 0.0
-    if len(pre30) >= 5 and pre30.std() > 0 and steps.std() > 0:
-        momentum_score = float(round(pre30.corr(steps), 3))
+    if len(g_pos) >= 5:
+        pre30_pos  = g_pos["steps30pre"].astype(float) if "steps30pre" in g_pos.columns else pd.Series([])
+        steps_pos  = g_pos[cfg.COL_REWARD_SOURCE].astype(float)
+        if (len(pre30_pos) >= 5 and pre30_pos.std() > 0
+                and steps_pos.std() > 0):
+            momentum_score = float(round(pre30_pos.corr(steps_pos), 3))
+
+    # ── Marginal positive mean (for prompt "Baseline mean steps10 (non-zero)") ──
+    mean_positive = float(round(g_pos[cfg.COL_REWARD_SOURCE].mean(), 1)) \
+                     if len(g_pos) else 0.0
+
+    # ── Consecutive-slot zero-state pair frequencies (avail-agnostic) ──
+    momentum_pair_pct = _momentum_pair_pct(g)
+
+    # ── Recovery-magnitude by zero-streak length (POSITIVE on the recovery slot) ──
+    mean_after_zero_streak = _steps10_mean_after_zero_streak(g)
 
     def _std_of(d):
         return float(round(np.std(list(d.values())), 1)) if len(d) else 0.0
@@ -248,14 +386,16 @@ def _extract_activity(g: pd.DataFrame) -> ActivityProfile:
         "steps30pre": _std_of(steps10_by_steps30pre_bin),
     }
 
-    # ── High-activity (slot, loc) anchors ──
+    # ── High-activity (slot, loc) anchors — POSITIVE rows only ──
+    # Mean threshold is computed on the positive subspace so the "burst" cells
+    # are real motion bursts, not artifacts of zero-rate variation.
     high_ctx: List[str] = []
-    if "loc" in g.columns:
-        ct = g.groupby([cfg.COL_SLOT, "loc"])[cfg.COL_REWARD_SOURCE].agg(["count", "mean"])
+    if "loc" in g_pos.columns and len(g_pos):
+        ct = g_pos.groupby([cfg.COL_SLOT, "loc"])[cfg.COL_REWARD_SOURCE].agg(["count", "mean"])
         if len(ct):
-            overall_mean = float(steps.mean())
+            overall_mean_pos = float(g_pos[cfg.COL_REWARD_SOURCE].mean())
             for (slot, loc_int), row in ct.iterrows():
-                if row["count"] >= 5 and row["mean"] > 2 * overall_mean:
+                if row["count"] >= 5 and row["mean"] > 1.5 * overall_mean_pos:
                     loc_str = cfg.DECODERS["loc"].get(int(loc_int), str(loc_int))
                     high_ctx.append(f"slot={int(slot)} + loc={loc_str} "
                                     f"(mean={row['mean']:.0f}, n={int(row['count'])})")
@@ -286,6 +426,8 @@ def _extract_activity(g: pd.DataFrame) -> ActivityProfile:
         per_slot_zero_pct={int(k): float(round(v, 3))
                             for k, v in per_slot_pre_zero.items() if pd.notna(v)},
         sigma_log=sigma_log,
+        bin_edges=s30_edges,
+        bin_labels=s30_labels,
     )
 
     # `all` bucket is richer (Steps10AllBucket) — carries the union-marginals.
@@ -295,14 +437,19 @@ def _extract_activity(g: pd.DataFrame) -> ActivityProfile:
         zero_pct=all_base.zero_pct,
         per_slot_mean=all_base.per_slot_mean,
         per_slot_zero_pct=all_base.per_slot_zero_pct,
-        per_slot_action_mean=all_base.per_slot_action_mean,
-        by_loc=steps10_by_loc,
-        by_weather=steps10_by_weather,
-        by_temp=steps10_by_temp,
-        by_steps30pre_bin=steps10_by_steps30pre_bin,
-        momentum_score=momentum_score,
-        context_sensitivity=context_sensitivity,
-        high_activity_contexts=high_ctx[:5],
+        per_slot_mean_positive=all_base.per_slot_mean_positive,
+        per_slot_action_mean_positive=all_base.per_slot_action_mean_positive,
+        zero_pct_by_s30_bin=all_base.zero_pct_by_s30_bin,
+        mean_positive=mean_positive,
+        by_loc_positive=steps10_by_loc,
+        by_weather_positive=steps10_by_weather,
+        by_temp_positive=steps10_by_temp,
+        by_steps30pre_bin_positive=steps10_by_steps30pre_bin,
+        momentum_score_positive=momentum_score,
+        momentum_pair_pct=momentum_pair_pct,
+        steps10_mean_after_zero_streak=mean_after_zero_streak,
+        context_sensitivity_positive=context_sensitivity,
+        high_activity_contexts_positive=high_ctx[:5],
     )
 
     steps10_profile = Steps10Profile(

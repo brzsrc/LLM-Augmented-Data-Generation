@@ -274,6 +274,53 @@ def consistency_gate(synth_df: pd.DataFrame, personas: List[Dict], tol_steps_fac
     return ok, {"off_target": bad}
 
 
+def hurdle_calibration_gate(synth_df: pd.DataFrame, personas: List[Dict],
+                              tol_abs: float = 0.10,
+                              max_off_frac: float = 0.10) -> Tuple[bool, Dict]:
+    """Each synth user's empirical steps10 zero rate should match the persona's
+    modeled overall zero rate (`steps10_zero_pct`).
+
+    Once Python-side `compute_hurdle_p` is the sole source of zeros (LLM is
+    schema-forced to positive), these two rates should closely agree. A large
+    gap indicates one of:
+      - LLM is still emitting 0 despite schema (prompt regression)
+      - Python hurdle is mis-weighted, or signals diverge from the marginal
+        target zero rate due to state distribution shift
+      - Persona's `steps10_zero_pct` itself is mis-fit (rare; extractor bug)
+
+    Pass if ≤ `max_off_frac` of personas have |empirical - target| > tol_abs.
+    """
+    bad = []
+    n_eval = 0
+    for p in personas:
+        sub = synth_df[synth_df["uid"] == p["synth_uid"]]
+        if len(sub) == 0:
+            continue
+        target = p.get("steps10_zero_pct")
+        if target is None:
+            continue
+        n_eval += 1
+        empirical = float((sub["steps10"] == 0).mean())
+        diff = abs(empirical - float(target))
+        if diff > tol_abs:
+            bad.append({"synth_uid": p["synth_uid"],
+                        "target":    round(float(target), 3),
+                        "empirical": round(empirical, 3),
+                        "abs_diff":  round(diff, 3)})
+    denom = max(n_eval, 1)
+    off_frac = len(bad) / denom
+    ok = off_frac <= max_off_frac
+    diag = {"n_evaluated":     n_eval,
+            "n_off_calibration": len(bad),
+            "off_calibration_frac": round(off_frac, 3),
+            "tol_abs":          tol_abs,
+            "max_off_frac":     max_off_frac,
+            "off_users":        bad[:20]}   # cap diag size
+    print(f"  [hurdle_calibration] {'✓ PASS' if ok else '⚠ WARN'}  "
+          f"{len(bad)}/{n_eval} users have |emp-target zero rate| > {tol_abs}")
+    return ok, diag
+
+
 def correlation_gate(real_df: pd.DataFrame, synth_df: pd.DataFrame,
                       tol_mae: float = 0.15) -> Tuple[bool, Dict]:
     """Inter-column correlation structure should match real.
@@ -726,6 +773,8 @@ def run_all_gates(real_df: pd.DataFrame, synth_df: pd.DataFrame,
         ("temporal_corr",      temporal_correlation_gate,     (real_df, synth_df)),
         ("avail_consistency",  avail_consistency_gate,        (synth_df,)),
         ("consistency",        consistency_gate,              (synth_df, personas)),
+        # Python-side hurdle calibration: empirical zero rate per user ≈ target
+        ("hurdle_calibration", hurdle_calibration_gate,       (synth_df, personas)),
         # Lit-review additions:
         #   correlation — "Are LLMs Naturally Good at Synthetic Tabular Data Generation?" (2024)
         #   diversity   — "LLM as user daily behavior data generator" (2025)

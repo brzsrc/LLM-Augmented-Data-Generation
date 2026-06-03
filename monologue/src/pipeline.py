@@ -103,7 +103,7 @@ def main():
             p.anchor.archetype = persona_archetype.classify(p)
         with open(os.path.join(persona_out, "real_profiles.json"), "w") as f:
             json.dump({uid: p.to_dict() for uid, p in real_profiles.items()},
-                      f, indent=2, default=str)
+                      f, indent=2, default=str, allow_nan=False)
         # Report archetype distribution
         from collections import Counter
         arch_counts = Counter(p.anchor.archetype for p in real_profiles.values())
@@ -113,7 +113,8 @@ def main():
         synth_personas = persona_archetype.build_synth_personas(real_profiles,
                                                                   seed=args.seed)
         with open(os.path.join(persona_out, "synth_personas.json"), "w") as f:
-            json.dump([p.to_dict() for p in synth_personas], f, indent=2, default=str)
+            json.dump([p.to_dict() for p in synth_personas], f, indent=2,
+                       default=str, allow_nan=False)
     else:
         real_profiles = synth_personas = None
 
@@ -188,23 +189,32 @@ def _persona_to_flat_dict(persona):
         "steps10_avail_true_mean":               persona.activity.steps10.avail_true.mean,
         "steps10_avail_true_zero_pct":           persona.activity.steps10.avail_true.zero_pct,
         "steps10_avail_true_per_slot_mean":      persona.activity.steps10.avail_true.per_slot_mean,
-        "steps10_avail_true_per_slot_action_mean": persona.activity.steps10.avail_true.per_slot_action_mean,
+        "steps10_avail_true_per_slot_zero_pct":  persona.activity.steps10.avail_true.per_slot_zero_pct,
+        "steps10_avail_true_per_slot_mean_positive":         persona.activity.steps10.avail_true.per_slot_mean_positive,
+        "steps10_avail_true_per_slot_action_mean_positive":  persona.activity.steps10.avail_true.per_slot_action_mean_positive,
+        "steps10_avail_true_zero_pct_by_s30_bin":            persona.activity.steps10.avail_true.zero_pct_by_s30_bin,
         # steps10.avail_false (unreachable baseline; no per-action — send forced=0)
         "steps10_avail_false_mean":          persona.activity.steps10.avail_false.mean,
         "steps10_avail_false_zero_pct":      persona.activity.steps10.avail_false.zero_pct,
         "steps10_avail_false_per_slot_mean": persona.activity.steps10.avail_false.per_slot_mean,
+        "steps10_avail_false_per_slot_zero_pct":     persona.activity.steps10.avail_false.per_slot_zero_pct,
+        "steps10_avail_false_per_slot_mean_positive":persona.activity.steps10.avail_false.per_slot_mean_positive,
+        "steps10_avail_false_zero_pct_by_s30_bin":   persona.activity.steps10.avail_false.zero_pct_by_s30_bin,
         # steps10.all (marginal: avail=True+False union) — default view, no _all_ prefix
         "steps10_mean":          persona.activity.steps10.all.mean,
+        "steps10_mean_positive": persona.activity.steps10.all.mean_positive,
         "steps10_median":        persona.activity.steps10.all.median,
         "steps10_zero_pct":      persona.activity.steps10.all.zero_pct,
         "steps10_per_slot_mean": persona.activity.steps10.all.per_slot_mean,
-        "steps10_by_loc":                  persona.activity.steps10.all.by_loc,
-        "steps10_by_weather":              persona.activity.steps10.all.by_weather,
-        "steps10_by_temp":                 persona.activity.steps10.all.by_temp,
-        "steps10_by_steps30pre_bin":       persona.activity.steps10.all.by_steps30pre_bin,
-        "steps10_momentum_score":          persona.activity.steps10.all.momentum_score,
-        "steps10_context_sensitivity":     persona.activity.steps10.all.context_sensitivity,
-        "steps10_high_activity_contexts":  persona.activity.steps10.all.high_activity_contexts,
+        "steps10_by_loc_positive":                  persona.activity.steps10.all.by_loc_positive,
+        "steps10_by_weather_positive":              persona.activity.steps10.all.by_weather_positive,
+        "steps10_by_temp_positive":                 persona.activity.steps10.all.by_temp_positive,
+        "steps10_by_steps30pre_bin_positive":       persona.activity.steps10.all.by_steps30pre_bin_positive,
+        "steps10_momentum_score_positive":          persona.activity.steps10.all.momentum_score_positive,
+        "steps10_momentum_pair_pct":                persona.activity.steps10.all.momentum_pair_pct,
+        "steps10_mean_after_zero_streak":           persona.activity.steps10.all.steps10_mean_after_zero_streak,
+        "steps10_context_sensitivity_positive":     persona.activity.steps10.all.context_sensitivity_positive,
+        "steps10_high_activity_contexts_positive":  persona.activity.steps10.all.high_activity_contexts_positive,
         # steps30pre profile (sampler inputs)
         "steps30pre_mean":              persona.activity.steps30pre.mean,
         "steps30pre_median":            persona.activity.steps30pre.median,
@@ -212,6 +222,8 @@ def _persona_to_flat_dict(persona):
         "steps30pre_per_slot_mean":     persona.activity.steps30pre.per_slot_mean,
         "steps30pre_per_slot_zero_pct": persona.activity.steps30pre.per_slot_zero_pct,
         "steps30pre_sigma_log":         persona.activity.steps30pre.sigma_log,
+        "steps30pre_bin_edges":         persona.activity.steps30pre.bin_edges,
+        "steps30pre_bin_labels":        persona.activity.steps30pre.bin_labels,
         # Derived helpers
         "peak_slot": (max(persona.activity.steps10.all.per_slot_mean,
                            key=persona.activity.steps10.all.per_slot_mean.get)

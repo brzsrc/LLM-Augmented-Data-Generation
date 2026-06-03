@@ -16,12 +16,64 @@ variant_type / archetype columns.
 from __future__ import annotations
 import json
 import os
-from typing import Dict, List
+from typing import Dict, List, Optional
 import numpy as np
 import pandas as pd
 
 from src import config as cfg
+from src.generation import hurdle
 from src.generation.prompt_builder import build_step_prompt, build_step_prompt_cot
+
+
+# ============================================================================
+# LLM output clipping — LLM is schema-forced to value ≥ 1, but we defend
+# against rare schema misses + non-int output. Track violations in a
+# per-run counter and print summary at end.
+# ============================================================================
+def _clip_steps10(raw,
+                   *,
+                   counter: Optional[Dict[str, int]] = None,
+                   uid=None, day=None, slot=None,
+                   low: int = 1, high: int = 10000) -> int:
+    """Coerce LLM output to an integer in [low, high].
+
+    Used in tandem with the Python-side hurdle: hurdle decides 0 vs >0;
+    LLM is asked for ≥1. Anything the LLM emits that violates that gets
+    clipped here with a warning (first 5 per category print; rest count
+    silently for the summary).
+    """
+    if counter is None:
+        counter = {}
+    try:
+        iv = int(raw)
+    except (TypeError, ValueError):
+        counter["n_noninto"] = counter.get("n_noninto", 0) + 1
+        if counter["n_noninto"] <= 5:
+            print(f"  [clip WARN] LLM emitted non-int {raw!r} "
+                  f"(uid={uid} day={day} slot={slot}); using {low}")
+        return low
+    if iv < low:
+        counter["n_under"] = counter.get("n_under", 0) + 1
+        if counter["n_under"] <= 5:
+            print(f"  [clip WARN] LLM emitted {iv} < {low} "
+                  f"(uid={uid} day={day} slot={slot}); clipped to {low}")
+        return low
+    if iv > high:
+        counter["n_over"] = counter.get("n_over", 0) + 1
+        if counter["n_over"] <= 5:
+            print(f"  [clip WARN] LLM emitted {iv} > {high} "
+                  f"(uid={uid} day={day} slot={slot}); clipped to {high}")
+        return high
+    return iv
+
+
+def _print_clip_summary(counter: Dict[str, int]) -> None:
+    nu = counter.get("n_under",   0)
+    no = counter.get("n_over",    0)
+    nn = counter.get("n_noninto", 0)
+    if nu or no or nn:
+        print(f"[clip] LLM output violations — "
+              f"<{1}: {nu}, >10000: {no}, non-int: {nn}")
 
 
 def _predict_avail(persona: Dict, slot: int, loc_str: str,
@@ -143,6 +195,8 @@ def generate_one_trajectory(persona: Dict, llm, seed: int = 0) -> pd.DataFrame:
     # dosage feature is recomputed by data_loader.add_derived_features after
     # generation, identically to how it's added to real data.
     episodic_history: List[Dict] = []
+    clip_counter: Dict[str, int] = {}
+    n_hurdle_skipped = 0
 
     for day in range(1, n_days + 1):
         weekday = (day - 1) % 7
@@ -174,14 +228,20 @@ def generate_one_trajectory(persona: Dict, llm, seed: int = 0) -> pd.DataFrame:
                 **ctx,
             }
 
-            # ---- 3) LLM predicts steps10 (simpler prompt when avail=False) ----
-            sys_p, usr_p = build_step_prompt(persona, current_state, action,
-                                              episodic_history)
-            steps10 = llm.judge_steps(sys_p, usr_p)
-            try:
-                steps10 = max(0, min(10000, int(steps10)))
-            except Exception:
+            # ---- 3) Python-side hurdle: decide 0 vs >0 BEFORE the LLM ----
+            p_zero = hurdle.compute_hurdle_p(
+                persona, current_state, episodic_history)
+            if rng.random() < p_zero:
                 steps10 = 0
+                n_hurdle_skipped += 1
+            else:
+                # ---- 4) LLM predicts the POSITIVE steps10 only ----
+                sys_p, usr_p = build_step_prompt(persona, current_state, action,
+                                                  episodic_history)
+                raw = llm.judge_steps(sys_p, usr_p)
+                steps10 = _clip_steps10(
+                    raw, counter=clip_counter,
+                    uid=persona.get("synth_uid"), day=day, slot=slot)
 
             # NOTE: no `resp` column in synth output. In real data resp is the
             # user's behavioural response to the sent message. In synth it
@@ -211,6 +271,11 @@ def generate_one_trajectory(persona: Dict, llm, seed: int = 0) -> pd.DataFrame:
             episodic_history.append({"day": day, "slot": slot, "action": action,
                                       "steps10": steps10, "avail": avail})
 
+    total_decisions = n_days * 5
+    print(f"  [hurdle uid={persona.get('synth_uid')}] "
+          f"{n_hurdle_skipped}/{total_decisions} decisions skipped by hurdle "
+          f"({n_hurdle_skipped/max(total_decisions,1):.0%})")
+    _print_clip_summary(clip_counter)
     return pd.DataFrame(records)
 
 
@@ -297,6 +362,10 @@ def generate_all_vllm(personas: List[Dict], llm,
           + (f", reasoning → {cot_jsonl_path}" if cot else ""))
 
     total_prompts = 0
+    total_decisions = 0
+    total_hurdle_skipped = 0
+    clip_counter: Dict[str, int] = {}
+
     for day in range(1, max_n_days + 1):
         weekday = (day - 1) % 7
         # Reset within-day prev_ctx for every persona at day start.
@@ -304,7 +373,10 @@ def generate_all_vllm(personas: List[Dict], llm,
             s["prev_ctx"] = None
 
         for slot in range(1, 6):
-            # ---- Build prompts for all personas still active at this day ----
+            # ---- Pass 1: build per-persona decisions + apply hurdle gate ----
+            # `decisions` holds ALL active personas this slot (both hurdle-
+            # skipped and LLM-bound). `batch` is the subset needing the LLM.
+            decisions: List[Dict] = []
             batch: List[Dict] = []
             for idx, s in enumerate(states):
                 if day > s["n_days"]:
@@ -329,46 +401,71 @@ def generate_all_vllm(personas: List[Dict], llm,
                     "avail": avail,
                     **ctx,
                 }
-                sys_p, usr_p = _prompt_fn(
-                    p, current_state, action, s["episodic_history"])
 
-                batch.append({
-                    "system":       sys_p,
-                    "user":         usr_p,
-                    "_idx":         idx,
-                    "_ctx":         ctx,
-                    "_action":      action,
-                    "_avail":       avail,
-                    "_actual_hour": actual_hour,
-                })
+                # Python-side hurdle Bernoulli: zero/non-zero decided here,
+                # NOT by the LLM. Same rng as everything else in the persona
+                # to keep reproducibility.
+                p_zero = hurdle.compute_hurdle_p(
+                    p, current_state, s["episodic_history"])
+                hurdle_skipped = bool(rng.random() < p_zero)
 
-            if not batch:
-                continue
+                decision = {
+                    "_idx":          idx,
+                    "_ctx":          ctx,
+                    "_action":       action,
+                    "_avail":        avail,
+                    "_actual_hour":  actual_hour,
+                    "_current_state": current_state,
+                    "_p_zero":       p_zero,
+                    "_hurdle_skipped": hurdle_skipped,
+                    "_steps10":      0 if hurdle_skipped else None,
+                    "_reasoning":    None,
+                }
+                decisions.append(decision)
+                total_decisions += 1
+                if hurdle_skipped:
+                    total_hurdle_skipped += 1
+                else:
+                    sys_p, usr_p = _prompt_fn(
+                        p, current_state, action, s["episodic_history"])
+                    batch.append({
+                        "system":         sys_p,
+                        "user":           usr_p,
+                        "_decision_idx":  len(decisions) - 1,
+                    })
 
-            # ---- One vLLM call for the whole batch ----
-            # cot=True: call _full so we get {value, reasoning} per row;
-            # cot=False: legacy integer-only path.
-            if cot:
-                full_results = _batch_judge_steps_full(llm, batch)
-                steps10_list = [r["value"] for r in full_results]
-            else:
-                full_results = None
-                steps10_list = _batch_judge_steps(llm, batch, cot=False)
-            total_prompts += len(batch)
+            # ---- Pass 2: one vLLM call for the (hurdle-passing) batch ----
+            if batch:
+                if cot:
+                    full_results = _batch_judge_steps_full(llm, batch)
+                    for item, res in zip(batch, full_results):
+                        d = decisions[item["_decision_idx"]]
+                        s = states[d["_idx"]]
+                        d["_steps10"] = _clip_steps10(
+                            res["value"], counter=clip_counter,
+                            uid=s["persona"].get("synth_uid"),
+                            day=day, slot=slot)
+                        d["_reasoning"] = res.get("reasoning")
+                else:
+                    steps10_list = _batch_judge_steps(llm, batch, cot=False)
+                    for item, raw in zip(batch, steps10_list):
+                        d = decisions[item["_decision_idx"]]
+                        s = states[d["_idx"]]
+                        d["_steps10"] = _clip_steps10(
+                            raw, counter=clip_counter,
+                            uid=s["persona"].get("synth_uid"),
+                            day=day, slot=slot)
+                total_prompts += len(batch)
 
-            # ---- Distribute results back into each persona's state ----
-            for k, (item, steps10) in enumerate(zip(batch, steps10_list)):
-                s = states[item["_idx"]]
+            # ---- Pass 3: distribute ALL decisions (skipped + LLM) back ----
+            for d in decisions:
+                s = states[d["_idx"]]
                 p = s["persona"]
-                ctx = item["_ctx"]
-                action = item["_action"]
-                avail = item["_avail"]
-                actual_hour = item["_actual_hour"]
-
-                try:
-                    steps10 = max(0, min(10000, int(steps10)))
-                except Exception:
-                    steps10 = 0
+                ctx = d["_ctx"]
+                action = d["_action"]
+                avail = d["_avail"]
+                actual_hour = d["_actual_hour"]
+                steps10 = int(d["_steps10"])
 
                 s["records"].append({
                     "uid":          p["synth_uid"],
@@ -385,7 +482,7 @@ def generate_all_vllm(personas: List[Dict], llm,
                     "avail":        avail,
                     "steps30pre":   int(ctx["steps30pre"]),
                     "send":         action,
-                    "steps10":      int(steps10),
+                    "steps10":      steps10,
                 })
                 s["episodic_history"].append({
                     "day":     day,
@@ -395,21 +492,23 @@ def generate_all_vllm(personas: List[Dict], llm,
                     "avail":   avail,
                 })
 
-                # JSONL sidecar: full state + reasoning + value, one line per decision
+                # JSONL sidecar: full state + value + hurdle metadata + reasoning
                 if cot and cot_jsonl is not None:
                     cot_jsonl.write(json.dumps({
-                        "synth_uid":  int(p["synth_uid"]),
-                        "study_day":  int(day),
-                        "slot":       int(slot),
-                        "weekday":    int(weekday),
-                        "weather":    ctx["weather"],
-                        "temp":       ctx["temp"],
-                        "loc":        ctx["loc"],
-                        "avail":      bool(avail),
-                        "steps30pre": int(ctx["steps30pre"]),
-                        "send":       int(action),
-                        "value":      int(steps10),
-                        "reasoning":  full_results[k].get("reasoning"),
+                        "synth_uid":      int(p["synth_uid"]),
+                        "study_day":      int(day),
+                        "slot":           int(slot),
+                        "weekday":        int(weekday),
+                        "weather":        ctx["weather"],
+                        "temp":           ctx["temp"],
+                        "loc":            ctx["loc"],
+                        "avail":          bool(avail),
+                        "steps30pre":    int(ctx["steps30pre"]),
+                        "send":           int(action),
+                        "value":          steps10,
+                        "hurdle_skipped": d["_hurdle_skipped"],
+                        "p_zero":         round(float(d["_p_zero"]), 4),
+                        "reasoning":      d["_reasoning"],
                     }, ensure_ascii=False) + "\n")
 
         if day % 5 == 0 or day == max_n_days:
@@ -424,6 +523,14 @@ def generate_all_vllm(personas: List[Dict], llm,
     if cot_jsonl is not None:
         cot_jsonl.close()
         print(f"[gen_vllm] CoT reasoning saved to {cot_jsonl_path}")
+
+    # ----- Hurdle + clip summaries -----
+    if total_decisions:
+        print(f"[gen_vllm] Hurdle skipped {total_hurdle_skipped:,}/"
+              f"{total_decisions:,} decisions "
+              f"({total_hurdle_skipped/total_decisions:.1%}); "
+              f"LLM called {total_prompts:,} times")
+    _print_clip_summary(clip_counter)
 
     # ----- Combine + save -----
     all_rows = []

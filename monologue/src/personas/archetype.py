@@ -46,15 +46,44 @@ def _scale_per_slot(d: Dict[int, float], factor: float) -> Dict[int, float]:
     return {s: v * factor for s, v in (d or {}).items()}
 
 
+def _scale_per_slot_action(d, factor: float):
+    """Multiply every value in a {slot: {action: float}} nested dict by `factor`.
+    Pass-through for None (avail_false / all buckets keep action=None)."""
+    if not d:
+        return d
+    return {s: {a: v * factor for a, v in by_act.items()}
+            for s, by_act in d.items()}
+
+
+def _scale_str_keyed(d: Dict[str, float], factor: float) -> Dict[str, float]:
+    """Multiply every value in a {label: float} dict by `factor`."""
+    return {k: v * factor for k, v in (d or {}).items()}
+
+
 def _scale_activity_means(activity, factor: float) -> None:
     """Apply a single mean-scaling factor consistently across every bucket.
 
-    Lognormal shape (σ_log) is orthogonal to mean → not touched. zero rates
-    are also untouched (they're sparsity properties, not magnitude)."""
+    Magnitude-bearing fields are scaled; rates (zero_pct, zero_pct_by_s30_bin,
+    momentum_pair_pct), correlations (momentum_score), and lognormal shape
+    (sigma_log) are orthogonal to mean and not touched.
+    """
     s10 = activity.steps10
     for bucket in (s10.avail_true, s10.avail_false, s10.all):
         bucket.mean = (bucket.mean or 0) * factor
         bucket.per_slot_mean = _scale_per_slot(bucket.per_slot_mean, factor)
+        bucket.per_slot_mean_positive = _scale_per_slot(
+            bucket.per_slot_mean_positive, factor)
+        bucket.per_slot_action_mean_positive = _scale_per_slot_action(
+            bucket.per_slot_action_mean_positive, factor)
+    # All-bucket marginals (positive-only context conditionals)
+    s10.all.mean_positive = (s10.all.mean_positive or 0) * factor
+    s10.all.by_loc_positive            = _scale_str_keyed(s10.all.by_loc_positive, factor)
+    s10.all.by_weather_positive        = _scale_str_keyed(s10.all.by_weather_positive, factor)
+    s10.all.by_temp_positive           = _scale_str_keyed(s10.all.by_temp_positive, factor)
+    s10.all.by_steps30pre_bin_positive = _scale_str_keyed(s10.all.by_steps30pre_bin_positive, factor)
+    s10.all.steps10_mean_after_zero_streak = _scale_str_keyed(
+        s10.all.steps10_mean_after_zero_streak, factor)
+
     activity.steps30pre.mean = (activity.steps30pre.mean or 0) * factor
     activity.steps30pre.per_slot_mean = _scale_per_slot(
         activity.steps30pre.per_slot_mean, factor)
