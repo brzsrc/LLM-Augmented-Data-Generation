@@ -30,7 +30,7 @@ from src import config as cfg
 
 
 # bin / slot / trans. See module docstring for rationale.
-DEFAULT_WEIGHTS: Tuple[float, float, float] = (0.5, 0.5, 1.0)
+DEFAULT_WEIGHTS: Tuple[float, float, float] = (0.8, 0.8, 0.5)
 
 
 def compute_hurdle_p(
