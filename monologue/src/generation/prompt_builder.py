@@ -32,8 +32,16 @@ def _format_persona(p: Dict, current_state: Optional[Dict] = None) -> str:
     lines.append(f"Peak slot: {p.get('peak_slot', '?')}")
     if p.get("steps10_momentum_score_positive") is not None:
         lines.append(
-            f"Momentum (corr steps30pre→steps10, steps10 non-zero rows): "
+            f"Momentum coefficient (corr steps30pre→steps10, steps10 non-zero rows): "
             f"{p.get('steps10_momentum_score_positive'):.2f}")
+        # bin-conditional E[steps10] — paired with ρ above; both feed momentum_check
+        bin_pos = p.get("steps10_by_steps30pre_bin_positive") or {}
+        if bin_pos:
+            items = list(bin_pos.items())  # bins are ordered; preserve insertion
+            lines.append(
+                "E[steps10 | steps30pre bin] (steps10 non-zero rows): "
+                + " | ".join(f"{k}={v:.0f}" for k, v in items))
+    
     if p.get("steps10_context_sensitivity_positive"):
         cs = p.get("steps10_context_sensitivity_positive", {})
         parts = [f"{k}={v:.0f}" for k, v in cs.items()]
@@ -69,10 +77,7 @@ def _format_context_conditional(p: Dict) -> str:
     if p.get("steps10_by_temp_positive"):
         items = sorted(p["steps10_by_temp_positive"].items(), key=lambda x: -x[1])
         blocks.append("  by temp:       " + " | ".join(f"{k}={v:.0f}" for k, v in items))
-    if p.get("steps10_by_steps30pre_bin_positive"):
-        # Bins are ordered — preserve insertion order, don't sort by value
-        items = list(p["steps10_by_steps30pre_bin_positive"].items())
-        blocks.append("  by steps30pre: " + " | ".join(f"{k}={v:.0f}" for k, v in items))
+
     if not blocks:
         return ""
     return ("Context-conditional mean steps10 — STEPS10 NON-ZERO ROWS ONLY "
@@ -312,9 +317,17 @@ OUTPUT FORMAT — a JSON object with EXACTLY these 6 keys, in this order:
   3. "context_adjustment" — adjust for loc / weather / temp using the
                              NON-ZERO context-conditional means, e.g.
                              "loc=work (210<252 baseline) → ~-8%".
-  4. "momentum_check"    — apply steps30pre × momentum coefficient drag on the
-                            anchor, e.g. "steps30pre=85 in low bin, momentum 0.40
-                            → drag down ~25%".
+  4. "momentum_check"    — Pull the anchor toward bin_mean = E[steps10 |
+                            current bin] (lookup from the "E[steps10 |
+                            steps30pre bin]" row using the bin annotated next
+                            to steps30pre).
+                            The Momentum coefficient ρ controls how strongly
+                            to pull: higher ρ → bin_mean dominates, lower ρ
+                            → anchor dominates.
+                            Rough guide: adjusted ≈ (1 − ρ) × anchor + ρ × bin_mean
+                            Round to a clean integer.
+                            Cite: bin label, bin_mean, ρ, adjusted.
+                            e.g. "bin 'X-Y': bin_mean=M, ρ=R → adjusted ≈ <rounded>"
   5. "episodic_check"    — 1-2 sentence sanity check vs. recent history. If
                             a "→ recovery context" line appears under the
                             history, reference and also consider it (cite the streak length and
@@ -351,9 +364,17 @@ OUTPUT FORMAT — a JSON object with EXACTLY these 6 keys, in this order:
   3. "context_adjustment" — adjust the baseline for loc / weather / temp using
                              the NON-ZERO context-conditional means, e.g.
                              "loc=home neutral; temp=warm +5%".
-  4. "momentum_check"    — apply steps30pre × momentum coefficient drag on the
-                            anchor, e.g. "steps30pre=85 in low bin, momentum 0.40
-                            → drag down ~25%".
+  4. "momentum_check"    — Pull the anchor toward bin_mean = E[steps10 |
+                            current bin] (lookup from the "E[steps10 |
+                            steps30pre bin]" row using the bin annotated next
+                            to steps30pre).
+                            The Momentum coefficient ρ controls how strongly
+                            to pull: higher ρ → bin_mean dominates, lower ρ
+                            → anchor dominates.
+                            Rough guide: adjusted ≈ (1 − ρ) × anchor + ρ × bin_mean
+                            Round to a clean integer.
+                            Cite: bin label, bin_mean, ρ, adjusted.
+                            e.g. "bin 'X-Y': bin_mean=M, ρ=R → adjusted ≈ <rounded>"
   5. "episodic_check"    — 1-2 sentence sanity check vs. recent history. If
                             a "→ recovery context" line appears under the
                             history, reference and also consider it (cite the streak length and

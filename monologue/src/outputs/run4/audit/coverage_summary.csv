@@ -1,0 +1,11 @@
+feature,n_cells,n_sparse,pct_sparse
+study_day__bin,12,0,0.0
+weekday,21,8,38.1
+slot,15,2,13.3
+hour_sin__bin,12,1,8.3
+hour_cos__bin,12,0,0.0
+weather,9,3,33.3
+temp,18,10,55.6
+loc,18,9,50.0
+steps30pre__bin,9,0,0.0
+dosage__bin,12,0,0.0
