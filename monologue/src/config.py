@@ -48,6 +48,19 @@ FORBIDDEN_IN_STATE = ["resp", "steps10"]
 
 
 # ============================================================================
+# Fidelity column groups — used by Sim-LLM-style validation gates
+# ----------------------------------------------------------------------------
+# WD cols are treated as continuous (Wasserstein on min-max-normalized values).
+# JSD cols are treated as categorical (Jensen-Shannon Distance on freq vectors).
+# Reference: Haas 2024 Sim-LLM Master Thesis §4 (Data Fidelity protocol).
+# ============================================================================
+FIDELITY_WD_COLS  = ["steps10", "steps30pre", "dosage",
+                     "hour_sin", "hour_cos", "study_day", "hr"]
+FIDELITY_JSD_COLS = ["weekday", "slot", "weather", "temp", "loc",
+                     "send", "avail"]
+
+
+# ============================================================================
 # State features fed to DDQN
 # ============================================================================
 STATE_FEATURES = [

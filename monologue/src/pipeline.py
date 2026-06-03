@@ -145,7 +145,7 @@ def main():
         print("\n[stage 6/7] VALIDATE")
         gate_results = validation_gates.run_all_gates(df, synth_df, synth_personas_dicts)
         with open(os.path.join(gen_out, "gate_results.json"), "w") as f:
-            json.dump(gate_results, f, indent=2)
+            json.dump(gate_results, f, indent=2, default=str)
             
     # ---- 7. Evaluate -----
     if args.stage in ("evaluate", "all"):

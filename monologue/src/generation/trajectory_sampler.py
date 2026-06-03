@@ -160,8 +160,9 @@ def generate_one_trajectory(persona: Dict, llm, seed: int = 0) -> pd.DataFrame:
             avail = _predict_avail(persona, slot, loc_str, rng)
 
             # ---- 2) Action: MRT randomize if avail; forced 0 if not ----
+            # HeartSteps MRT probs: 0.4 no_message, 0.3 anti_sedentary, 0.3 walking
             if avail:
-                action = int(rng.choice([0, 1, 2]))
+                action = int(rng.choice([0, 1, 2], p=[0.4, 0.3, 0.3]))
             else:
                 action = 0   # structural HeartSteps rule
 
@@ -320,7 +321,7 @@ def generate_all_vllm(personas: List[Dict], llm,
                 loc_str = ctx["loc"]
 
                 avail = _predict_avail(p, slot, loc_str, rng)
-                action = int(rng.choice([0, 1, 2])) if avail else 0
+                action = int(rng.choice([0, 1, 2], p=[0.4, 0.3, 0.3])) if avail else 0
 
                 current_state = {
                     "day": day, "slot": slot, "hour": round(actual_hour, 1),
