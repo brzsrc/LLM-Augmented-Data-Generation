@@ -309,9 +309,10 @@ OUTPUT FORMAT — a JSON object with EXACTLY these 6 keys, in this order:
                             baseline, e.g. "slot=3 a=2 → 320".
   2. "phase_application" — apply the engagement-phase multiplier numerically
                             to the anchor, e.g. "honeymoon ×2.20 → 320×2.20=704".
-  3. "context_adjustment" — adjust for loc / weather / temp using the
+  3. "context_adjustment" — adjust for loc / weather / temp / steps30pre using the
                              NON-ZERO context-conditional means, e.g.
-                             "loc=work (210<252 baseline) → ~-8%".
+                             "loc=work (210<252 baseline) → ~-8%"， 
+                             or "loc=home neutral; temp=warm +5%".
   4. "momentum_check"    — apply steps30pre × momentum coefficient drag on the
                             anchor, e.g. "steps30pre=85 in low bin, momentum 0.40
                             → drag down ~25%"， or "steps30pre=857 in high bin, momentum 0.30 → boost ~20%".
@@ -348,9 +349,10 @@ OUTPUT FORMAT — a JSON object with EXACTLY these 6 keys, in this order:
            (avail=False), per-slot baseline — STEPS10 NON-ZERO ROWS ONLY" table, e.g.
            "unavail slot=3 → 811".
   2. "phase_application" — write "N/A — no message to amplify".
-  3. "context_adjustment" — adjust the baseline for loc / weather / temp using
-                             the NON-ZERO context-conditional means, e.g.
-                             "loc=home neutral; temp=warm +5%".
+  3. "context_adjustment" — adjust the baseline for loc / weather / temp / steps30pre 
+                             using the NON-ZERO context-conditional means, e.g. 
+                             "loc=work (210<252 baseline) → ~-8%"， 
+                             or "loc=home neutral; temp=warm +5%".
   4. "momentum_check"    — apply steps30pre × momentum coefficient drag on the
                             anchor, e.g. "steps30pre=85 in low bin, momentum 0.40
                             → drag down ~25%", or "steps30pre=857 in high bin, momentum 0.30 → boost ~20%".
