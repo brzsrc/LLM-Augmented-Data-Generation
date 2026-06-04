@@ -221,6 +221,24 @@ MAX_STEPS30PRE    = 5000      # clip extreme lognormal tail draws
 
 
 # ============================================================================
+# Post-hoc zero-distribution calibration (zero_calibration.py)
+# ----------------------------------------------------------------------------
+# Applied after trajectory_sampler returns, before add_derived_features.
+#
+# CLIP_LOW_THRESHOLD: real data has < 2% of positives in (0, 5] and < 5% in
+#   (0, 17]; LLM uniformly emits ~16% in (0, 17] as a low-confidence tail.
+#   17 sits at the natural shoulder before real's 18+ activity mass.
+#
+# ZERO_CAL_KEYS: cell key for per-cell P(steps10=0) calibration. Coarser
+#   keys give more stable target estimates; finer keys give tighter marginal
+#   alignment. (slot, send, avail) was empirically sufficient to pass the
+#   distribution gate (max_abs_diff 0.141 vs tol 0.5).
+# ============================================================================
+CLIP_LOW_THRESHOLD = 17
+ZERO_CAL_KEYS      = ("slot", "send", "avail")
+
+
+# ============================================================================
 # Chain-of-Thought (CoT) JSON schema for the steps10 LLM call
 # ----------------------------------------------------------------------------
 # 6 reasoning fields BEFORE the integer `value`, motivated by:

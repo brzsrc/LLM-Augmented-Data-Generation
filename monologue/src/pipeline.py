@@ -37,20 +37,21 @@ from src.audit import leakage_detector, coverage, oracle_ceiling, signal_extract
 from src.personas import extractor as persona_extractor
 from src.personas import archetype as persona_archetype
 from src.generation import trajectory_sampler
+from src.generation import zero_calibration
 from src.generation.llm import StubLLM
 from src.validation import gates as validation_gates
 # NOTE: `src.evaluation.runner` is imported lazily inside stage 7 because it
 # pulls in torch (needed only for the evaluate stage).
 
 
-STAGES = ["audit", "personas", "generate", "validate", "evaluate", "all"]
+STAGES = ["audit", "personas", "generate", "pos-hoc", "validate", "evaluate", "all"]
 
 
 def get_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--out_root", default="src/outputs/run3")
+    p.add_argument("--out_root", default="src/outputs/run5-clip-cal")
     p.add_argument("--backend", choices=["qwen8b", 'qwen32b', "stub"], default="qwen32b")
-    p.add_argument("--stage", choices=STAGES, default="all")
+    p.add_argument("--stage", choices=STAGES, default="pos-hoc")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--max_uids", type=int, default=None,
                    help="Smoke-test mode: keep only the first N unique uids "
@@ -135,20 +136,38 @@ def main():
         synth_personas_dicts = [_persona_to_flat_dict(p) for p in synth_personas]
         synth_df = trajectory_sampler.generate_all_vllm(synth_personas_dicts, llm,
                                                     out_dir=gen_out, seed=args.seed)
+
+    if args.stage in ("pos-hoc", "validate", "evaluate", "all"):
+        # ---- 5b. Post-hoc zero-distribution calibration ----
+        # LLM CoT chain anchors on positive history → produces ~0% zeros
+        # while real data has ~50%. clip+calibrate aligns marginal P(0) per
+        # (slot, send, avail) cell without touching the positive ranking.
+        # Overwrite the synth CSV so downstream consumers (re-validate /
+        # re-evaluate runs, manual analysis) read the calibrated version;
+        # the raw per-row LLM `value` is still preserved in cot_reasoning.jsonl.
+        print("\n[stage 5b] ZERO-DISTRIBUTION CALIBRATION")
+        synth_df = zero_calibration.apply(synth_df, df,
+                                           threshold=cfg.CLIP_LOW_THRESHOLD,
+                                           keys=cfg.ZERO_CAL_KEYS,
+                                           seed=args.seed)
+        synth_csv_path = os.path.join(gen_out, "synthetic_data.csv")
+        synth_df.to_csv(synth_csv_path, index=False)
+        print(f"[stage 5b] overwrote {synth_csv_path} with calibrated synth")
+
         # synth CSV on disk keeps string categoricals (matches data_gen.csv).
         # In memory we encode them so validation / ablation see the same dtypes
         # as real `df` (which already went through add_derived_features at load).
         synth_df = data_loader.add_derived_features(synth_df)
 
     # ---- 6. Validate -----
-    if args.stage in ("validate", "evaluate", "all"):
+    if args.stage in ("pos-hoc", "validate", "evaluate", "all"):
         print("\n[stage 6/7] VALIDATE")
         gate_results = validation_gates.run_all_gates(df, synth_df, synth_personas_dicts)
         with open(os.path.join(gen_out, "gate_results.json"), "w") as f:
             json.dump(gate_results, f, indent=2, default=str)
             
     # ---- 7. Evaluate -----
-    if args.stage in ("evaluate", "all"):
+    if args.stage in ("pos-hoc", "evaluate", "all"):
         print("\n[stage 7/7] EVALUATE (ablation)")
         from src.evaluation import runner as eval_runner   # lazy: needs torch
         eval_runner.run_ablation(df, synth_df, out_root=eval_out)

@@ -321,7 +321,7 @@ def generate_all_vllm(personas: List[Dict], llm,
                 loc_str = ctx["loc"]
 
                 avail = _predict_avail(p, slot, loc_str, rng)
-                action = int(rng.choice([0, 1, 2], p=[0.4, 0.3, 0.3])) if avail else 0
+                action = int(rng.choice([0, 1, 2])) if avail else 0
 
                 current_state = {
                     "day": day, "slot": slot, "hour": round(actual_hour, 1),

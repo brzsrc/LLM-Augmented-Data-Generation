@@ -1,0 +1,598 @@
+{
+  "summary": {
+    "n_pass": 13,
+    "n_total": 13,
+    "failed": []
+  },
+  "gates": {
+    "distribution": {
+      "pass": true,
+      "diag": {
+        "real_means": {
+          "0": 1.926,
+          "1": 1.475,
+          "2": 1.661
+        },
+        "synth_means": {
+          "0": 1.904,
+          "1": 1.334,
+          "2": 1.579
+        },
+        "max_abs_diff": 0.141,
+        "tolerance": 0.5
+      }
+    },
+    "coverage": {
+      "pass": true,
+      "diag": {
+        "min_added_threshold": 5,
+        "sparse_threshold": 20,
+        "per_grouping": {
+          "slot\u00d7send\u00d7loc\u00d7weather": {
+            "n_real_sparse": 157,
+            "n_filled_by_synth": 155,
+            "ratio_filled": 0.99,
+            "ok": true
+          },
+          "slot\u00d7send\u00d7loc\u00d7temp": {
+            "n_real_sparse": 397,
+            "n_filled_by_synth": 392,
+            "ratio_filled": 0.99,
+            "ok": true
+          }
+        }
+      }
+    },
+    "signal": {
+      "pass": true,
+      "diag": {
+        "matching_slots": 5,
+        "total_slots": 5,
+        "match_ratio": 1.0
+      }
+    },
+    "leakage": {
+      "pass": true,
+      "diag": {
+        "in_state_suspects": []
+      }
+    },
+    "temporal_corr": {
+      "pass": true,
+      "diag": {
+        "skipped": true
+      }
+    },
+    "avail_consistency": {
+      "pass": true,
+      "diag": {
+        "n_violations": 0,
+        "n_total": 28120,
+        "violation_rate": 0.0
+      }
+    },
+    "consistency": {
+      "pass": true,
+      "diag": {
+        "off_target": [
+          {
+            "synth_uid": 1039,
+            "target": 152.0,
+            "actual": 50.5,
+            "ratio": 0.33
+          },
+          {
+            "synth_uid": 1047,
+            "target": 225.0,
+            "actual": 55.1,
+            "ratio": 0.24
+          },
+          {
+            "synth_uid": 1058,
+            "target": 108.99271303282673,
+            "actual": 31.1,
+            "ratio": 0.29
+          },
+          {
+            "synth_uid": 1063,
+            "target": 180.2,
+            "actual": 40.0,
+            "ratio": 0.22
+          },
+          {
+            "synth_uid": 1079,
+            "target": 93.8,
+            "actual": 22.4,
+            "ratio": 0.24
+          },
+          {
+            "synth_uid": 1085,
+            "target": 55.94674779341559,
+            "actual": 17.4,
+            "ratio": 0.31
+          },
+          {
+            "synth_uid": 1087,
+            "target": 102.6,
+            "actual": 19.2,
+            "ratio": 0.19
+          },
+          {
+            "synth_uid": 1115,
+            "target": 150.8,
+            "actual": 46.5,
+            "ratio": 0.31
+          },
+          {
+            "synth_uid": 1119,
+            "target": 470.8,
+            "actual": 106.8,
+            "ratio": 0.23
+          },
+          {
+            "synth_uid": 1135,
+            "target": 82.8,
+            "actual": 21.9,
+            "ratio": 0.26
+          },
+          {
+            "synth_uid": 1138,
+            "target": 128.76430741195557,
+            "actual": 36.7,
+            "ratio": 0.29
+          },
+          {
+            "synth_uid": 1147,
+            "target": 112.0,
+            "actual": 33.8,
+            "ratio": 0.3
+          }
+        ]
+      }
+    },
+    "correlation": {
+      "pass": true,
+      "diag": {
+        "n_columns": 12,
+        "frobenius_norm": 0.794,
+        "off_diag_mae": 0.039,
+        "tolerance_mae": 0.15,
+        "worst_5_pairs": [
+          {
+            "col1": "steps30pre",
+            "col2": "steps10",
+            "real_rho": 0.481,
+            "synth_rho": 0.182,
+            "delta": 0.299
+          },
+          {
+            "col1": "weekday",
+            "col2": "dosage",
+            "real_rho": -0.049,
+            "synth_rho": 0.188,
+            "delta": -0.237
+          },
+          {
+            "col1": "study_day",
+            "col2": "temp",
+            "real_rho": -0.161,
+            "synth_rho": 0.017,
+            "delta": -0.178
+          },
+          {
+            "col1": "slot",
+            "col2": "hour_sin",
+            "real_rho": 0.146,
+            "synth_rho": -0.01,
+            "delta": 0.155
+          },
+          {
+            "col1": "hour_sin",
+            "col2": "temp",
+            "real_rho": -0.182,
+            "synth_rho": -0.041,
+            "delta": -0.141
+          }
+        ]
+      }
+    },
+    "diversity": {
+      "pass": true,
+      "diag": {
+        "real_mean_pairwise_wasserstein": 51.05,
+        "synth_mean_pairwise_wasserstein": 30.2,
+        "synth_to_real_ratio": 0.592,
+        "acceptable_range": [
+          0.5,
+          2.0
+        ],
+        "verdict": "diversity in range",
+        "n_pairs_sampled": 200
+      }
+    },
+    "dist_align": {
+      "pass": true,
+      "diag": {
+        "per_column_wd": {
+          "steps10": {
+            "wd": 38.069,
+            "wd_norm": 0.198,
+            "real_std": 191.999
+          },
+          "steps30pre": {
+            "wd": 37.407,
+            "wd_norm": 0.077,
+            "real_std": 484.571
+          },
+          "dosage": {
+            "wd": 1.219,
+            "wd_norm": 0.445,
+            "real_std": 2.741
+          },
+          "hour_sin": {
+            "wd": 0.031,
+            "wd_norm": 0.073,
+            "real_std": 0.431
+          },
+          "hour_cos": {
+            "wd": 0.052,
+            "wd_norm": 0.071,
+            "real_std": 0.734
+          },
+          "study_day": {
+            "wd": 0.065,
+            "wd_norm": 0.006,
+            "real_std": 11.695
+          },
+          "hr": {
+            "wd": 1.3,
+            "wd_norm": 0.188,
+            "real_std": 6.913
+          }
+        },
+        "per_column_jsd": {
+          "weekday": {
+            "jsd": 0.015,
+            "n_categories": 7
+          },
+          "slot": {
+            "jsd": 0.006,
+            "n_categories": 5
+          },
+          "weather": {
+            "jsd": 0.021,
+            "n_categories": 3
+          },
+          "temp": {
+            "jsd": 0.05,
+            "n_categories": 6
+          },
+          "loc": {
+            "jsd": 0.038,
+            "n_categories": 7
+          },
+          "send": {
+            "jsd": 0.064,
+            "n_categories": 3
+          },
+          "avail": {
+            "jsd": 0.017,
+            "n_categories": 2
+          }
+        },
+        "mean_wd_norm": 0.151,
+        "mean_jsd": 0.03,
+        "tol_mean_wd_norm": 0.5,
+        "tol_mean_jsd": 0.3
+      }
+    },
+    "boundary_cov": {
+      "pass": true,
+      "diag": {
+        "per_column": {
+          "steps10": {
+            "kind": "continuous",
+            "real_min": 0.0,
+            "real_max": 1860.0,
+            "frac_in_range": 0.9999
+          },
+          "steps30pre": {
+            "kind": "continuous",
+            "real_min": 0.0,
+            "real_max": 5380.0,
+            "frac_in_range": 1.0
+          },
+          "dosage": {
+            "kind": "continuous",
+            "real_min": 0.0,
+            "real_max": 15.206,
+            "frac_in_range": 0.9931
+          },
+          "hour_sin": {
+            "kind": "continuous",
+            "real_min": -1.0,
+            "real_max": 0.707,
+            "frac_in_range": 1.0
+          },
+          "hour_cos": {
+            "kind": "continuous",
+            "real_min": -1.0,
+            "real_max": 1.0,
+            "frac_in_range": 1.0
+          },
+          "study_day": {
+            "kind": "continuous",
+            "real_min": 1.0,
+            "real_max": 48.0,
+            "frac_in_range": 1.0
+          },
+          "hr": {
+            "kind": "continuous",
+            "real_min": 0.0,
+            "real_max": 23.0,
+            "frac_in_range": 0.9703
+          },
+          "weekday": {
+            "kind": "categorical",
+            "n_real_categories": 7,
+            "frac_in_set": 1.0
+          },
+          "slot": {
+            "kind": "categorical",
+            "n_real_categories": 5,
+            "frac_in_set": 1.0
+          },
+          "weather": {
+            "kind": "categorical",
+            "n_real_categories": 3,
+            "frac_in_set": 1.0
+          },
+          "temp": {
+            "kind": "categorical",
+            "n_real_categories": 6,
+            "frac_in_set": 1.0
+          },
+          "loc": {
+            "kind": "categorical",
+            "n_real_categories": 6,
+            "frac_in_set": 0.9982
+          },
+          "send": {
+            "kind": "categorical",
+            "n_real_categories": 3,
+            "frac_in_set": 1.0
+          },
+          "avail": {
+            "kind": "categorical",
+            "n_real_categories": 2,
+            "frac_in_set": 1.0
+          }
+        },
+        "worst_col": "hr",
+        "worst_fraction": 0.9703,
+        "tolerance": 0.95
+      }
+    },
+    "cat_score": {
+      "pass": true,
+      "diag": {
+        "per_column": {
+          "weekday": {
+            "n_real_categories": 7,
+            "n_synth_categories": 7,
+            "n_missing": 0,
+            "missing": [],
+            "cat_score": 1.0
+          },
+          "slot": {
+            "n_real_categories": 5,
+            "n_synth_categories": 5,
+            "n_missing": 0,
+            "missing": [],
+            "cat_score": 1.0
+          },
+          "weather": {
+            "n_real_categories": 3,
+            "n_synth_categories": 3,
+            "n_missing": 0,
+            "missing": [],
+            "cat_score": 1.0
+          },
+          "temp": {
+            "n_real_categories": 6,
+            "n_synth_categories": 6,
+            "n_missing": 0,
+            "missing": [],
+            "cat_score": 1.0
+          },
+          "loc": {
+            "n_real_categories": 6,
+            "n_synth_categories": 7,
+            "n_missing": 0,
+            "missing": [],
+            "cat_score": 1.0
+          },
+          "send": {
+            "n_real_categories": 3,
+            "n_synth_categories": 3,
+            "n_missing": 0,
+            "missing": [],
+            "cat_score": 1.0
+          },
+          "avail": {
+            "n_real_categories": 2,
+            "n_synth_categories": 2,
+            "n_missing": 0,
+            "missing": [],
+            "cat_score": 1.0
+          }
+        },
+        "mean_cat_score": 1.0,
+        "tolerance": 0.9
+      }
+    },
+    "stat_test": {
+      "pass": true,
+      "diag": {
+        "per_column": {
+          "steps10": {
+            "kind": "continuous",
+            "ks_stat": 0.087,
+            "ks_p": 0.0,
+            "effect_threshold": 0.1,
+            "significant": true,
+            "large_effect": false,
+            "passes": true,
+            "mw_p": 0.0001
+          },
+          "steps30pre": {
+            "kind": "continuous",
+            "ks_stat": 0.059,
+            "ks_p": 0.0,
+            "effect_threshold": 0.1,
+            "significant": true,
+            "large_effect": false,
+            "passes": true,
+            "mw_p": 0.0
+          },
+          "dosage": {
+            "kind": "continuous",
+            "ks_stat": 0.247,
+            "ks_p": 0.0,
+            "effect_threshold": 0.1,
+            "significant": true,
+            "large_effect": true,
+            "passes": false,
+            "mw_p": 0.0
+          },
+          "hour_sin": {
+            "kind": "continuous",
+            "ks_stat": 0.058,
+            "ks_p": 0.0,
+            "effect_threshold": 0.1,
+            "significant": true,
+            "large_effect": false,
+            "passes": true,
+            "mw_p": 0.0061
+          },
+          "hour_cos": {
+            "kind": "continuous",
+            "ks_stat": 0.05,
+            "ks_p": 0.0,
+            "effect_threshold": 0.1,
+            "significant": true,
+            "large_effect": false,
+            "passes": true,
+            "mw_p": 0.0
+          },
+          "study_day": {
+            "kind": "continuous",
+            "ks_stat": 0.003,
+            "ks_p": 1.0,
+            "effect_threshold": 0.1,
+            "significant": false,
+            "large_effect": false,
+            "passes": true
+          },
+          "hr": {
+            "kind": "continuous",
+            "ks_stat": 0.076,
+            "ks_p": 0.0,
+            "effect_threshold": 0.1,
+            "significant": true,
+            "large_effect": false,
+            "passes": true,
+            "mw_p": 0.0
+          },
+          "weekday": {
+            "kind": "categorical",
+            "chi2_stat": 6.95,
+            "chi2_p": 0.3252,
+            "cramers_v": 0.014,
+            "effect_threshold": 0.1,
+            "significant": false,
+            "large_effect": false,
+            "passes": true,
+            "n_categories": 7
+          },
+          "slot": {
+            "kind": "categorical",
+            "chi2_stat": 0.9,
+            "chi2_p": 0.924,
+            "cramers_v": 0.005,
+            "effect_threshold": 0.1,
+            "significant": false,
+            "large_effect": false,
+            "passes": true,
+            "n_categories": 5
+          },
+          "weather": {
+            "kind": "categorical",
+            "chi2_stat": 13.93,
+            "chi2_p": 0.0009,
+            "cramers_v": 0.02,
+            "effect_threshold": 0.1,
+            "significant": true,
+            "large_effect": false,
+            "passes": true,
+            "n_categories": 3
+          },
+          "temp": {
+            "kind": "categorical",
+            "chi2_stat": 70.82,
+            "chi2_p": 0.0,
+            "cramers_v": 0.045,
+            "effect_threshold": 0.1,
+            "significant": true,
+            "large_effect": false,
+            "passes": true,
+            "n_categories": 6
+          },
+          "loc": {
+            "kind": "categorical",
+            "chi2_stat": 27.54,
+            "chi2_p": 0.0001,
+            "cramers_v": 0.028,
+            "effect_threshold": 0.1,
+            "significant": true,
+            "large_effect": false,
+            "passes": true,
+            "n_categories": 7
+          },
+          "send": {
+            "kind": "categorical",
+            "chi2_stat": 114.5,
+            "chi2_p": 0.0,
+            "cramers_v": 0.058,
+            "effect_threshold": 0.1,
+            "significant": true,
+            "large_effect": false,
+            "passes": true,
+            "n_categories": 3
+          },
+          "avail": {
+            "kind": "categorical",
+            "chi2_stat": 8.51,
+            "chi2_p": 0.0035,
+            "cramers_v": 0.016,
+            "effect_threshold": 0.1,
+            "significant": true,
+            "large_effect": false,
+            "passes": true,
+            "n_categories": 2
+          }
+        },
+        "alpha": 0.05,
+        "ks_effect_threshold": 0.1,
+        "cramers_v_threshold": 0.1,
+        "n_columns_tested": 14,
+        "n_columns_passing": 13,
+        "pass_fraction": 0.929,
+        "pass_threshold": 0.5,
+        "real_different_cols": [
+          "dosage"
+        ]
+      }
+    }
+  }
+}
