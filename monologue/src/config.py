@@ -229,13 +229,24 @@ MAX_STEPS30PRE    = 5000      # clip extreme lognormal tail draws
 #   (0, 17]; LLM uniformly emits ~16% in (0, 17] as a low-confidence tail.
 #   17 sits at the natural shoulder before real's 18+ activity mass.
 #
-# ZERO_CAL_KEYS: cell key for per-cell P(steps10=0) calibration. Coarser
-#   keys give more stable target estimates; finer keys give tighter marginal
-#   alignment. (slot, send, avail) was empirically sufficient to pass the
-#   distribution gate (max_abs_diff 0.141 vs tol 0.5).
+# ZERO_CAL_KEYS: cell key for per-cell P(steps10=0) calibration. Trade-off:
+#   - 3-key ("slot", "send", "avail"): 20 cells, stable target estimates,
+#     loses (steps30pre) conditional structure → Q-network may overfit synth
+#     state distribution. Distribution-gate max_abs_diff ≈ 0.141.
+#   - 4-key (...+"steps30pre_bin"): 60 cells, conditional P(0|state) closer
+#     to real → DDQN/FQE see cleaner per-state advantage; smallest real cell
+#     has 24 rows (stable). Distribution-gate max_abs_diff ≈ 0.149.
+#   When "steps30pre_bin" is in this tuple, zero_calibration internally
+#   attaches the bin column using global quartile edges from real.steps30pre
+#   (controlled by ZERO_CAL_S30_N_QUANTILES below).
+#
+# ZERO_CAL_S30_N_QUANTILES: qcut quantile count for steps30pre binning.
+#   Empirical: with q=4, real.steps30pre collapses to 3 bins due to the
+#   ~30% zero mass; that's the working setting.
 # ============================================================================
-CLIP_LOW_THRESHOLD = 17
-ZERO_CAL_KEYS      = ("slot", "send", "avail")
+CLIP_LOW_THRESHOLD       = 17
+ZERO_CAL_KEYS            = ("slot", "send", "avail", "steps30pre_bin")
+ZERO_CAL_S30_N_QUANTILES = 4
 
 
 # ============================================================================

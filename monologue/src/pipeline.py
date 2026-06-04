@@ -138,25 +138,16 @@ def main():
                                                     out_dir=gen_out, seed=args.seed)
 
     if args.stage in ("pos-hoc", "validate", "evaluate", "all"):
-        # ---- 5b. Post-hoc zero-distribution calibration ----
-        # LLM CoT chain anchors on positive history → produces ~0% zeros
-        # while real data has ~50%. clip+calibrate aligns marginal P(0) per
-        # (slot, send, avail) cell without touching the positive ranking.
-        # Overwrite the synth CSV so downstream consumers (re-validate /
-        # re-evaluate runs, manual analysis) read the calibrated version;
-        # the raw per-row LLM `value` is still preserved in cot_reasoning.jsonl.
         print("\n[stage 5b] ZERO-DISTRIBUTION CALIBRATION")
         synth_df = zero_calibration.apply(synth_df, df,
                                            threshold=cfg.CLIP_LOW_THRESHOLD,
                                            keys=cfg.ZERO_CAL_KEYS,
+                                           n_q_s30=cfg.ZERO_CAL_S30_N_QUANTILES,
                                            seed=args.seed)
         synth_csv_path = os.path.join(gen_out, "synthetic_data.csv")
         synth_df.to_csv(synth_csv_path, index=False)
         print(f"[stage 5b] overwrote {synth_csv_path} with calibrated synth")
 
-        # synth CSV on disk keeps string categoricals (matches data_gen.csv).
-        # In memory we encode them so validation / ablation see the same dtypes
-        # as real `df` (which already went through add_derived_features at load).
         synth_df = data_loader.add_derived_features(synth_df)
 
     # ---- 6. Validate -----

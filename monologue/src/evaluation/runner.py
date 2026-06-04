@@ -72,12 +72,12 @@ def run_ablation(real_df: pd.DataFrame,
 
     for a in cql_alphas:
         # Real only
-        out_dir = os.path.join(out_root, f"abl_real_only_a{a:g}")
-        res = policy_utility.run_kfold(real_df, synth_df=None,
-                                        out_dir=out_dir, cql_alpha=a)
-        rows.append({"variant": f"real_only_α={a:g}", "cql_alpha": a,
-                      "synthetic": False, **_extract_v(res)})
-        _release_gpu()
+        # out_dir = os.path.join(out_root, f"abl_real_only_a{a:g}")
+        # res = policy_utility.run_kfold(real_df, synth_df=None,
+        #                                 out_dir=out_dir, cql_alpha=a)
+        # rows.append({"variant": f"real_only_α={a:g}", "cql_alpha": a,
+        #               "synthetic": False, **_extract_v(res)})
+        # _release_gpu()
 
         # Real + synth (leakage tracking is internal to run_kfold)
         if has_synth:

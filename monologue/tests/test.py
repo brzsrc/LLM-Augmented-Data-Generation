@@ -34,10 +34,14 @@ from src.pipeline import _persona_to_flat_dict             # noqa: E402
 # Knobs
 # --------------------------------------------------------------------------
 THRESHOLD = 17
-# Cell key for per-cell zero-rate calibration. (slot, send, avail) is mandatory;
-# add more dims only if real has enough rows per cell (else the target P(0)
-# estimate gets noisy and gate alignment degrades).
-CAL_KEYS = ["slot", "send", "avail"]
+# Cell key for per-cell zero-rate calibration. (slot, send, avail) was the
+# coarse default; adding s30_bin tightens conditional P(0) estimation and
+# helps DDQN learn cleaner per-state advantage.
+# Verified empirically: with global quartile bins from real.steps30pre,
+# all 60 cells in real have ≥24 rows (smallest 3 have 24-25), so the
+# target estimates are stable.
+CAL_KEYS = ["slot", "send", "avail", "s30_bin"]
+S30_N_QUANTILES = 4   # qcut may collapse to 3 if steps30pre has many zeros
 SYNTH_CSV = os.path.join(
     MONOLOGUE, "src/outputs/run3-CoT-no0/generation/synthetic_data.csv")
 OUT_JSON = os.path.join(
@@ -46,6 +50,31 @@ OUT_JSON = os.path.join(
 BASELINE_JSON = os.path.join(
     MONOLOGUE, "src/outputs/run3-CoT-no0/generation/gate_results.json")
 SEED = 42
+
+
+def add_s30_bin(real: pd.DataFrame, synth: pd.DataFrame, n_q: int = S30_N_QUANTILES):
+    """Compute global quartile edges from real.steps30pre, then label both
+    real and synth rows with `s30_bin`. Edges are padded with ±inf so synth
+    values outside real's range still get a bin (no NaN labels).
+
+    Returns:
+        (real_out, synth_out, edges_used)
+    """
+    _, edges = pd.qcut(real["steps30pre"], q=n_q, duplicates="drop",
+                        retbins=True)
+    edges = list(edges)
+    edges[0]  = -np.inf
+    edges[-1] = np.inf
+    print(f"[s30_bin] global edges (from real, n_q={n_q} → "
+          f"{len(edges)-1} bins): {edges}")
+
+    real_out  = real.copy()
+    synth_out = synth.copy()
+    real_out["s30_bin"]  = pd.cut(real_out["steps30pre"],
+                                   bins=edges, include_lowest=True).astype(str)
+    synth_out["s30_bin"] = pd.cut(synth_out["steps30pre"],
+                                   bins=edges, include_lowest=True).astype(str)
+    return real_out, synth_out, edges
 
 
 def clip_low_positives(df: pd.DataFrame, threshold: int) -> pd.DataFrame:
@@ -156,8 +185,13 @@ def main() -> None:
     marginal_report(df_synth_raw, "BEFORE clip")
     df_synth_clipped = clip_low_positives(df_synth_raw, THRESHOLD)
     marginal_report(df_synth_clipped, f"AFTER clip<={THRESHOLD}")
-    df_synth_cal = calibrate_zeros(df_synth_clipped, df_real,
-                                     keys=CAL_KEYS, seed=SEED)
+    # Attach global steps30pre bins to BOTH real and synth (consistent labels)
+    # before per-cell calibration. Dropped from synth at the end so the
+    # saved/validated frame has the same schema as before.
+    df_real_b, df_synth_b, _ = add_s30_bin(df_real, df_synth_clipped)
+    df_synth_cal_b = calibrate_zeros(df_synth_b, df_real_b,
+                                       keys=CAL_KEYS, seed=SEED)
+    df_synth_cal = df_synth_cal_b.drop(columns=["s30_bin"])
     marginal_report(df_synth_cal,
                      f"AFTER zero-cal on {'+'.join(CAL_KEYS)}")
     # Same encoding as pipeline does before validation

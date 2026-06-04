@@ -7,9 +7,10 @@ Two-stage fix applied AFTER trajectory_sampler returns:
      here (≤2% mass), so it's safer to read these as soft-zeros.
 
   2. calibrate_zeros     — per-cell, knock down LLM positives to 0 until each
-     cell's P(steps10=0) matches the real-data target. Cell key is
-     (slot, send, avail) by default; refine via ZERO_CAL_KEYS if a finer fit
-     is needed and real has the row counts to support it.
+     cell's P(steps10=0) matches the real-data target. Cell key is governed
+     by `cfg.ZERO_CAL_KEYS`; when "steps30pre_bin" is in the key tuple, a
+     global quartile-edge bin (fit on real.steps30pre) is automatically
+     attached to both frames before grouping and stripped from the output.
 
 Order matters: clip first, then calibrate. Clip already raises the zero rate
 toward the target; the calibration step fills the remaining gap and locks the
@@ -17,12 +18,15 @@ per-cell marginal. Reversed order would over-zero (calibration hits target,
 clip then pushes past it).
 """
 from __future__ import annotations
-from typing import Iterable, Sequence
+from typing import List, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
 
 from src import config as cfg
+
+
+S30_BIN_COL = "steps30pre_bin"
 
 
 def clip_low_positives(synth: pd.DataFrame,
@@ -37,8 +41,34 @@ def clip_low_positives(synth: pd.DataFrame,
     return out
 
 
+def _attach_s30_bin(real: pd.DataFrame, synth: pd.DataFrame,
+                     n_q: int) -> Tuple[pd.DataFrame, pd.DataFrame, List[float]]:
+    """Compute global quartile edges from real.steps30pre and attach
+    `steps30pre_bin` (string-categorical) to BOTH frames.
+
+    Edges are padded with ±inf so synth values outside real's range still get
+    a valid bin label (no NaN). qcut may collapse to fewer than `n_q` bins
+    when steps30pre has many tied zeros — this is fine.
+    """
+    _, edges = pd.qcut(real["steps30pre"], q=n_q, duplicates="drop",
+                        retbins=True)
+    edges = list(edges)
+    edges[0]  = -np.inf
+    edges[-1] = np.inf
+    real_out  = real.copy()
+    synth_out = synth.copy()
+    real_out[S30_BIN_COL]  = pd.cut(real_out["steps30pre"], bins=edges,
+                                     include_lowest=True).astype(str)
+    synth_out[S30_BIN_COL] = pd.cut(synth_out["steps30pre"], bins=edges,
+                                     include_lowest=True).astype(str)
+    print(f"[zero-cal] global steps30pre edges from real (n_q={n_q} → "
+          f"{len(edges)-1} bins): {edges}")
+    return real_out, synth_out, edges
+
+
 def calibrate_zeros(synth: pd.DataFrame, real: pd.DataFrame,
                      keys: Sequence[str] = cfg.ZERO_CAL_KEYS,
+                     n_q_s30: int = cfg.ZERO_CAL_S30_N_QUANTILES,
                      seed: int = 42) -> pd.DataFrame:
     """Knock down LLM-positive rows to 0 so per-cell P(steps10=0) matches real.
 
@@ -49,13 +79,25 @@ def calibrate_zeros(synth: pd.DataFrame, real: pd.DataFrame,
     — this is a one-way operation (we never un-zero).
 
     Args:
-        synth: synthetic trajectories (RAW string-categorical schema is fine;
-            this function only touches `steps10`).
-        real:  real trajectories used to estimate the per-cell target zero rate.
-        keys:  tuple of column names defining a cell. Default = ZERO_CAL_KEYS.
-        seed:  RNG seed for the within-cell row sampling.
+        synth: synthetic trajectories (RAW string-categorical schema is fine).
+        real:  real trajectories used to estimate per-cell target zero rate.
+        keys:  tuple of column names defining a cell. If "steps30pre_bin" is
+            present and not already a column, it is computed from real's
+            global quartile edges and attached temporarily.
+        n_q_s30: qcut quantile count for steps30pre binning (only used when
+            keys includes "steps30pre_bin").
+        seed:  RNG seed for within-cell row sampling.
+
+    Returns:
+        A NEW dataframe with the same schema as `synth` (any
+        temporarily-attached `steps30pre_bin` column is stripped on the way
+        out so downstream consumers see the original column set).
     """
     keys = list(keys)
+    need_bin = (S30_BIN_COL in keys) and (S30_BIN_COL not in synth.columns)
+    if need_bin:
+        real, synth, _ = _attach_s30_bin(real, synth, n_q=n_q_s30)
+
     rng = np.random.default_rng(seed)
     p_zero_tgt = (real.groupby(keys, observed=True)["steps10"]
                        .apply(lambda x: float((x == 0).mean()))
@@ -88,6 +130,8 @@ def calibrate_zeros(synth: pd.DataFrame, real: pd.DataFrame,
 
     out = synth.copy()
     out["steps10"] = steps_out.astype(int)
+    if need_bin:
+        out = out.drop(columns=[S30_BIN_COL])
     print(f"[zero-cal] per-cell calibration on {'+'.join(keys)}: "
           f"{n_cells} cells, knocked {n_knocked} pos→0, "
           f"skipped {n_skip_nan} no-target / {n_skip_no_pos} no-positives")
@@ -97,8 +141,9 @@ def calibrate_zeros(synth: pd.DataFrame, real: pd.DataFrame,
 def apply(synth: pd.DataFrame, real: pd.DataFrame,
            threshold: int = cfg.CLIP_LOW_THRESHOLD,
            keys: Sequence[str] = cfg.ZERO_CAL_KEYS,
+           n_q_s30: int = cfg.ZERO_CAL_S30_N_QUANTILES,
            seed: int = 42) -> pd.DataFrame:
     """Convenience: clip then calibrate, in the recommended order."""
     synth = clip_low_positives(synth, threshold=threshold)
-    synth = calibrate_zeros(synth, real, keys=keys, seed=seed)
+    synth = calibrate_zeros(synth, real, keys=keys, n_q_s30=n_q_s30, seed=seed)
     return synth

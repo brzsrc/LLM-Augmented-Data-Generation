@@ -321,7 +321,11 @@ def generate_all_vllm(personas: List[Dict], llm,
                 loc_str = ctx["loc"]
 
                 avail = _predict_avail(p, slot, loc_str, rng)
-                action = int(rng.choice([0, 1, 2])) if avail else 0
+                # HeartSteps MRT probs: 0.4 no_message, 0.3 anti_sedentary, 0.3 walking
+                # (matches the single-trajectory path; uniform here was a bug that
+                # inflated synth `dosage` ~13% relative to real and failed stat_test.)
+                action = (int(rng.choice([0, 1, 2], p=[0.4, 0.3, 0.3]))
+                          if avail else 0)
 
                 current_state = {
                     "day": day, "slot": slot, "hour": round(actual_hour, 1),
