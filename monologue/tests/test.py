@@ -34,21 +34,26 @@ from src.pipeline import _persona_to_flat_dict             # noqa: E402
 # Knobs
 # --------------------------------------------------------------------------
 THRESHOLD = 17
-# Cell key for per-cell zero-rate calibration. (slot, send, avail) was the
-# coarse default; adding s30_bin tightens conditional P(0) estimation and
-# helps DDQN learn cleaner per-state advantage.
-# Verified empirically: with global quartile bins from real.steps30pre,
-# all 60 cells in real have ≥24 rows (smallest 3 have 24-25), so the
-# target estimates are stable.
-CAL_KEYS = ["slot", "send", "avail", "s30_bin"]
-S30_N_QUANTILES = 4   # qcut may collapse to 3 if steps30pre has many zeros
+# 3-key cell — DDQN cross-fit V_hat was best with this granularity (4-key
+# over-fits per-cell P(0) noise). The momentum-preservation problem of
+# random sampling within cells is addressed below by sorting on steps30pre
+# instead of random picking.
+CAL_KEYS = ["slot", "send", "avail"]
+S30_N_QUANTILES = 4   # only used if s30_bin is in CAL_KEYS
+# Sampling strategy for which positive rows to knock down to zero:
+#   "random"      — pick uniformly from cell's positive set (original)
+#   "low_s30_first" — sort cell by steps30pre asc, pick lowest N first.
+#                     Preserves the steps30pre→steps10 momentum correlation
+#                     that real data exhibits (real ρ=0.48, random-cal synth
+#                     dropped to 0.17 and failed temporal_corr gate).
+SAMPLE_STRATEGY = "low_s30_first"
 SYNTH_CSV = os.path.join(
-    MONOLOGUE, "src/outputs/run3-CoT-no0/generation/synthetic_data.csv")
+    MONOLOGUE, "src/outputs/run7-clip-cal-0.4/generation/synthetic_data_raw.csv")
 OUT_JSON = os.path.join(
     MONOLOGUE,
-    f"src/outputs/run3-CoT-no0/generation/gate_results_clip{THRESHOLD}_cal.json")
+    f"src/outputs/run7-clip-cal-0.4/gate_results_clip{THRESHOLD}_cal.json")
 BASELINE_JSON = os.path.join(
-    MONOLOGUE, "src/outputs/run3-CoT-no0/generation/gate_results.json")
+    MONOLOGUE, "src/outputs/run7-clip-cal-0.4/generation/gate_results.json")
 SEED = 42
 
 
@@ -88,17 +93,23 @@ def clip_low_positives(df: pd.DataFrame, threshold: int) -> pd.DataFrame:
 
 
 def calibrate_zeros(synth: pd.DataFrame, real: pd.DataFrame,
-                     keys: list, seed: int = SEED) -> pd.DataFrame:
+                     keys: list, seed: int = SEED,
+                     strategy: str = SAMPLE_STRATEGY) -> pd.DataFrame:
     """Knock down LLM-positive rows to 0 so per-cell P(steps10=0) matches real.
 
     Per cell:
         need = round(p_tgt * n_syn - n_cur_zero)
-    Sample `need` rows uniformly from the cell's positive set and set them
-    to 0. Cells where current zero count already meets target are left alone
-    (we don't un-zero).
+    Pick `need` rows from the cell's positive set and set them to 0. Cells
+    where current zero count already meets target are left alone (we don't
+    un-zero).
 
-    `avail` is treated as a regular categorical key (pandas groupby handles
-    bool fine).
+    `strategy`:
+      - "random":        np.random.choice over positives (original behaviour;
+                          breaks steps30pre→steps10 momentum correlation).
+      - "low_s30_first": sort positives by steps30pre asc (with small jitter
+                          for tie-breaking), pick the lowest `need`. Keeps
+                          the high-steps30pre rows positive so the per-cell
+                          momentum signal survives.
     """
     rng = np.random.default_rng(seed)
     p_zero_tgt = (real.groupby(keys, observed=True)["steps10"]
@@ -107,6 +118,7 @@ def calibrate_zeros(synth: pd.DataFrame, real: pd.DataFrame,
                        .reset_index())
     s = synth.merge(p_zero_tgt, on=keys, how="left")
     steps_out = s["steps10"].to_numpy().copy()
+    s30_arr   = s["steps30pre"].to_numpy()
 
     n_cells, n_knocked, n_skipped_nan, n_skipped_no_pos = 0, 0, 0, 0
     for _, g in s.groupby(keys, observed=True, sort=False):
@@ -125,13 +137,21 @@ def calibrate_zeros(synth: pd.DataFrame, real: pd.DataFrame,
         if need <= 0:
             continue
         need = min(need, len(pos_idx))
-        pick = rng.choice(pos_idx, size=need, replace=False)
+        if strategy == "low_s30_first":
+            # Sort positives by steps30pre asc; jitter to break ties randomly
+            cell_s30 = s30_arr[pos_idx].astype(float)
+            jitter   = rng.random(len(pos_idx)) * 1e-6
+            order    = np.argsort(cell_s30 + jitter, kind="stable")
+            pick     = pos_idx[order[:need]]
+        else:                                 # "random"
+            pick = rng.choice(pos_idx, size=need, replace=False)
         steps_out[pick] = 0
         n_knocked += need
 
     out = synth.copy()
     out["steps10"] = steps_out.astype(int)
-    print(f"[zero-cal] cells={n_cells}  knocked {n_knocked} pos→0  "
+    print(f"[zero-cal] cells={n_cells}  strategy={strategy}  "
+          f"knocked {n_knocked} pos→0  "
           f"(skipped {n_skipped_nan} NaN-target, "
           f"{n_skipped_no_pos} no-positives)")
     return out
@@ -185,13 +205,16 @@ def main() -> None:
     marginal_report(df_synth_raw, "BEFORE clip")
     df_synth_clipped = clip_low_positives(df_synth_raw, THRESHOLD)
     marginal_report(df_synth_clipped, f"AFTER clip<={THRESHOLD}")
-    # Attach global steps30pre bins to BOTH real and synth (consistent labels)
-    # before per-cell calibration. Dropped from synth at the end so the
-    # saved/validated frame has the same schema as before.
-    df_real_b, df_synth_b, _ = add_s30_bin(df_real, df_synth_clipped)
+    # Only attach s30_bin when CAL_KEYS uses it (4-key mode).
+    if "s30_bin" in CAL_KEYS:
+        df_real_b, df_synth_b, _ = add_s30_bin(df_real, df_synth_clipped)
+    else:
+        df_real_b, df_synth_b = df_real, df_synth_clipped
     df_synth_cal_b = calibrate_zeros(df_synth_b, df_real_b,
                                        keys=CAL_KEYS, seed=SEED)
-    df_synth_cal = df_synth_cal_b.drop(columns=["s30_bin"])
+    df_synth_cal = (df_synth_cal_b.drop(columns=["s30_bin"])
+                     if "s30_bin" in df_synth_cal_b.columns
+                     else df_synth_cal_b)
     marginal_report(df_synth_cal,
                      f"AFTER zero-cal on {'+'.join(CAL_KEYS)}")
     # Same encoding as pipeline does before validation

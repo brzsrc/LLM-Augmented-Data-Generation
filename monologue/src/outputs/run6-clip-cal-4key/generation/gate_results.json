@@ -14,11 +14,11 @@
           "2": 1.661
         },
         "synth_means": {
-          "0": 1.842,
-          "1": 1.28,
-          "2": 1.514
+          "0": 1.79,
+          "1": 1.326,
+          "2": 1.566
         },
-        "max_abs_diff": 0.196,
+        "max_abs_diff": 0.149,
         "tolerance": 0.5
       }
     },
@@ -76,70 +76,70 @@
       "diag": {
         "off_target": [
           {
-            "synth_uid": 1039,
-            "target": 152.0,
-            "actual": 48.4,
-            "ratio": 0.32
-          },
-          {
             "synth_uid": 1047,
             "target": 225.0,
-            "actual": 44.4,
-            "ratio": 0.2
+            "actual": 68.6,
+            "ratio": 0.31
           },
           {
             "synth_uid": 1063,
             "target": 180.2,
-            "actual": 42.9,
-            "ratio": 0.24
+            "actual": 45.7,
+            "ratio": 0.25
           },
           {
             "synth_uid": 1079,
             "target": 93.8,
-            "actual": 21.3,
-            "ratio": 0.23
+            "actual": 24.7,
+            "ratio": 0.26
+          },
+          {
+            "synth_uid": 1084,
+            "target": 49.42384504036106,
+            "actual": 16.1,
+            "ratio": 0.33
           },
           {
             "synth_uid": 1085,
             "target": 55.94674779341559,
-            "actual": 17.5,
-            "ratio": 0.31
+            "actual": 15.2,
+            "ratio": 0.27
           },
           {
             "synth_uid": 1087,
             "target": 102.6,
-            "actual": 16.8,
-            "ratio": 0.16
+            "actual": 18.0,
+            "ratio": 0.18
           },
           {
-            "synth_uid": 1089,
-            "target": 83.04471852852427,
-            "actual": 26.3,
+            "synth_uid": 1115,
+            "target": 150.8,
+            "actual": 48.5,
             "ratio": 0.32
           },
           {
             "synth_uid": 1119,
             "target": 470.8,
-            "actual": 93.2,
-            "ratio": 0.2
-          },
-          {
-            "synth_uid": 1123,
-            "target": 202.6,
-            "actual": 55.5,
-            "ratio": 0.27
+            "actual": 91.4,
+            "ratio": 0.19
           },
           {
             "synth_uid": 1135,
             "target": 82.8,
-            "actual": 18.8,
-            "ratio": 0.23
+            "actual": 21.5,
+            "ratio": 0.26
+          },
+          {
+            "synth_uid": 1138,
+            "target": 128.76430741195557,
+            "actual": 40.9,
+            "ratio": 0.32
           },
           {
             "synth_uid": 1147,
             "target": 112.0,
-            "actual": 34.1,
-            "ratio": 0.3
+            "actual": 37.0,
+            "ratio": 0.33
           }
         ]
       }
@@ -148,16 +148,16 @@
       "pass": true,
       "diag": {
         "n_columns": 12,
-        "frobenius_norm": 0.791,
-        "off_diag_mae": 0.039,
+        "frobenius_norm": 0.751,
+        "off_diag_mae": 0.038,
         "tolerance_mae": 0.15,
         "worst_5_pairs": [
           {
             "col1": "steps30pre",
             "col2": "steps10",
             "real_rho": 0.481,
-            "synth_rho": 0.186,
-            "delta": 0.295
+            "synth_rho": 0.241,
+            "delta": 0.24
           },
           {
             "col1": "weekday",
@@ -194,8 +194,8 @@
       "pass": true,
       "diag": {
         "real_mean_pairwise_wasserstein": 51.05,
-        "synth_mean_pairwise_wasserstein": 28.85,
-        "synth_to_real_ratio": 0.565,
+        "synth_mean_pairwise_wasserstein": 32.41,
+        "synth_to_real_ratio": 0.635,
         "acceptable_range": [
           0.5,
           2.0
@@ -209,8 +209,8 @@
       "diag": {
         "per_column_wd": {
           "steps10": {
-            "wd": 39.981,
-            "wd_norm": 0.208,
+            "wd": 36.95,
+            "wd_norm": 0.192,
             "real_std": 191.999
           },
           "steps30pre": {
@@ -274,7 +274,7 @@
             "n_categories": 2
           }
         },
-        "mean_wd_norm": 0.153,
+        "mean_wd_norm": 0.15,
         "mean_jsd": 0.03,
         "tol_mean_wd_norm": 0.5,
         "tol_mean_jsd": 0.3
@@ -431,7 +431,7 @@
         "per_column": {
           "steps10": {
             "kind": "continuous",
-            "ks_stat": 0.093,
+            "ks_stat": 0.083,
             "ks_p": 0.0,
             "effect_threshold": 0.1,
             "significant": true,

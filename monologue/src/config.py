@@ -245,8 +245,16 @@ MAX_STEPS30PRE    = 5000      # clip extreme lognormal tail draws
 #   ~30% zero mass; that's the working setting.
 # ============================================================================
 CLIP_LOW_THRESHOLD       = 17
-ZERO_CAL_KEYS            = ("slot", "send", "avail", "steps30pre_bin")
+ZERO_CAL_KEYS            = ("slot", "send", "avail")
 ZERO_CAL_S30_N_QUANTILES = 4
+# Sampling strategy for which positive rows to knock down to 0 within each cell:
+#   "low_s30_first" — sort cell by steps30pre asc, pick the lowest `need` rows.
+#                      Preserves the steps30pre→steps10 momentum correlation
+#                      (real ρ=0.48); random picking dropped synth ρ to 0.17
+#                      and failed temporal_corr.  ← recommended default
+#   "random"        — np.random.choice over positives (original; breaks
+#                      momentum correlation). Use only for ablation/comparison.
+ZERO_CAL_STRATEGY        = "low_s30_first"
 
 
 # ============================================================================

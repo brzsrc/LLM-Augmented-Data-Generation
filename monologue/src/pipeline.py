@@ -49,7 +49,7 @@ STAGES = ["audit", "personas", "generate", "pos-hoc", "validate", "evaluate", "a
 
 def get_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--out_root", default="src/outputs/run5-clip-cal")
+    p.add_argument("--out_root", default="src/outputs/run7-clip-cal-0.4")
     p.add_argument("--backend", choices=["qwen8b", 'qwen32b', "stub"], default="qwen32b")
     p.add_argument("--stage", choices=STAGES, default="pos-hoc")
     p.add_argument("--seed", type=int, default=42)
@@ -86,7 +86,7 @@ def main():
         os.makedirs(d, exist_ok=True)
 
     # ---- 2. Audit -----
-    if args.stage in ("audit", "all"):
+    if args.stage in ("pos-hoc", "audit", "all"):
         print("\n[stage 2/7] AUDIT")
         leakage_detector.detect_leakage(df, out_dir=audit_out)
         coverage.audit_coverage(df, out_dir=audit_out, min_count=20)
@@ -96,7 +96,7 @@ def main():
             json.dump(signal, f, indent=2)
 
     # ---- 3 + 4. Personas + archetypes -----
-    if args.stage in ("personas", "generate", "validate", "evaluate", "all"):
+    if args.stage in ("pos-hoc", "personas", "generate", "validate", "evaluate", "all"):
         print("\n[stage 3/7] EXTRACT PERSONAS")
         real_profiles = persona_extractor.extract_all(df)
         # Classify archetype upfront so real_profiles.json includes it
@@ -139,12 +139,15 @@ def main():
 
     if args.stage in ("pos-hoc", "validate", "evaluate", "all"):
         print("\n[stage 5b] ZERO-DISTRIBUTION CALIBRATION")
+        synth_csv_path = os.path.join(gen_out, "synthetic_data_raw.csv")
+        synth_df = pd.read_csv(synth_csv_path)
         synth_df = zero_calibration.apply(synth_df, df,
                                            threshold=cfg.CLIP_LOW_THRESHOLD,
                                            keys=cfg.ZERO_CAL_KEYS,
                                            n_q_s30=cfg.ZERO_CAL_S30_N_QUANTILES,
+                                           strategy=cfg.ZERO_CAL_STRATEGY,
                                            seed=args.seed)
-        synth_csv_path = os.path.join(gen_out, "synthetic_data.csv")
+        synth_csv_path = os.path.join(gen_out, "synthetic_data_cal.csv")
         synth_df.to_csv(synth_csv_path, index=False)
         print(f"[stage 5b] overwrote {synth_csv_path} with calibrated synth")
 
@@ -153,6 +156,7 @@ def main():
     # ---- 6. Validate -----
     if args.stage in ("pos-hoc", "validate", "evaluate", "all"):
         print("\n[stage 6/7] VALIDATE")
+        synth_personas_dicts = [_persona_to_flat_dict(p) for p in synth_personas]
         gate_results = validation_gates.run_all_gates(df, synth_df, synth_personas_dicts)
         with open(os.path.join(gen_out, "gate_results.json"), "w") as f:
             json.dump(gate_results, f, indent=2, default=str)

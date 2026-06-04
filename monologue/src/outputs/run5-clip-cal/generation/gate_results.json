@@ -1,14 +1,12 @@
 {
   "summary": {
-    "n_pass": 12,
+    "n_pass": 13,
     "n_total": 13,
-    "failed": [
-      "distribution"
-    ]
+    "failed": []
   },
   "gates": {
     "distribution": {
-      "pass": false,
+      "pass": true,
       "diag": {
         "real_means": {
           "0": 1.926,
@@ -16,11 +14,11 @@
           "2": 1.661
         },
         "synth_means": {
-          "0": 3.947,
-          "1": 3.47,
-          "2": 3.636
+          "0": 1.904,
+          "1": 1.334,
+          "2": 1.579
         },
-        "max_abs_diff": 2.021,
+        "max_abs_diff": 0.141,
         "tolerance": 0.5
       }
     },
@@ -68,16 +66,16 @@
           "steps10\u2194send": 0.061
         },
         "synth_trend_taus": {
-          "steps10\u2194steps30pre": 0.124,
-          "steps10\u2194dosage": -0.243,
-          "steps10\u2194send": -0.019
+          "steps10\u2194steps30pre": 0.111,
+          "steps10\u2194dosage": -0.185,
+          "steps10\u2194send": 0.037
         },
         "abs_diff": {
-          "steps10\u2194steps30pre": 0.093,
-          "steps10\u2194dosage": 0.081,
-          "steps10\u2194send": 0.08
+          "steps10\u2194steps30pre": 0.106,
+          "steps10\u2194dosage": 0.023,
+          "steps10\u2194send": 0.024
         },
-        "max_abs_diff": 0.093,
+        "max_abs_diff": 0.106,
         "tolerance": 0.2
       }
     },
@@ -94,10 +92,76 @@
       "diag": {
         "off_target": [
           {
+            "synth_uid": 1039,
+            "target": 152.0,
+            "actual": 50.5,
+            "ratio": 0.33
+          },
+          {
+            "synth_uid": 1047,
+            "target": 225.0,
+            "actual": 55.1,
+            "ratio": 0.24
+          },
+          {
+            "synth_uid": 1058,
+            "target": 108.99271303282673,
+            "actual": 31.1,
+            "ratio": 0.29
+          },
+          {
+            "synth_uid": 1063,
+            "target": 180.2,
+            "actual": 40.0,
+            "ratio": 0.22
+          },
+          {
+            "synth_uid": 1079,
+            "target": 93.8,
+            "actual": 22.4,
+            "ratio": 0.24
+          },
+          {
+            "synth_uid": 1085,
+            "target": 55.94674779341559,
+            "actual": 17.4,
+            "ratio": 0.31
+          },
+          {
             "synth_uid": 1087,
             "target": 102.6,
-            "actual": 33.9,
-            "ratio": 0.33
+            "actual": 19.2,
+            "ratio": 0.19
+          },
+          {
+            "synth_uid": 1115,
+            "target": 150.8,
+            "actual": 46.5,
+            "ratio": 0.31
+          },
+          {
+            "synth_uid": 1119,
+            "target": 470.8,
+            "actual": 106.8,
+            "ratio": 0.23
+          },
+          {
+            "synth_uid": 1135,
+            "target": 82.8,
+            "actual": 21.9,
+            "ratio": 0.26
+          },
+          {
+            "synth_uid": 1138,
+            "target": 128.76430741195557,
+            "actual": 36.7,
+            "ratio": 0.29
+          },
+          {
+            "synth_uid": 1147,
+            "target": 112.0,
+            "actual": 33.8,
+            "ratio": 0.3
           }
         ]
       }
@@ -106,23 +170,23 @@
       "pass": true,
       "diag": {
         "n_columns": 12,
-        "frobenius_norm": 0.745,
+        "frobenius_norm": 0.794,
         "off_diag_mae": 0.039,
         "tolerance_mae": 0.15,
         "worst_5_pairs": [
+          {
+            "col1": "steps30pre",
+            "col2": "steps10",
+            "real_rho": 0.481,
+            "synth_rho": 0.182,
+            "delta": 0.299
+          },
           {
             "col1": "weekday",
             "col2": "dosage",
             "real_rho": -0.049,
             "synth_rho": 0.188,
             "delta": -0.237
-          },
-          {
-            "col1": "steps30pre",
-            "col2": "steps10",
-            "real_rho": 0.481,
-            "synth_rho": 0.26,
-            "delta": 0.22
           },
           {
             "col1": "study_day",
@@ -152,8 +216,8 @@
       "pass": true,
       "diag": {
         "real_mean_pairwise_wasserstein": 51.05,
-        "synth_mean_pairwise_wasserstein": 48.83,
-        "synth_to_real_ratio": 0.957,
+        "synth_mean_pairwise_wasserstein": 30.2,
+        "synth_to_real_ratio": 0.592,
         "acceptable_range": [
           0.5,
           2.0
@@ -167,8 +231,8 @@
       "diag": {
         "per_column_wd": {
           "steps10": {
-            "wd": 47.383,
-            "wd_norm": 0.247,
+            "wd": 38.069,
+            "wd_norm": 0.198,
             "real_std": 191.999
           },
           "steps30pre": {
@@ -232,7 +296,7 @@
             "n_categories": 2
           }
         },
-        "mean_wd_norm": 0.158,
+        "mean_wd_norm": 0.151,
         "mean_jsd": 0.03,
         "tol_mean_wd_norm": 0.5,
         "tol_mean_jsd": 0.3
@@ -246,7 +310,7 @@
             "kind": "continuous",
             "real_min": 0.0,
             "real_max": 1860.0,
-            "frac_in_range": 0.9997
+            "frac_in_range": 0.9999
           },
           "steps30pre": {
             "kind": "continuous",
@@ -389,13 +453,13 @@
         "per_column": {
           "steps10": {
             "kind": "continuous",
-            "ks_stat": 0.489,
+            "ks_stat": 0.087,
             "ks_p": 0.0,
             "effect_threshold": 0.1,
             "significant": true,
-            "large_effect": true,
-            "passes": false,
-            "mw_p": 0.0
+            "large_effect": false,
+            "passes": true,
+            "mw_p": 0.0001
           },
           "steps30pre": {
             "kind": "continuous",
@@ -538,11 +602,10 @@
         "ks_effect_threshold": 0.1,
         "cramers_v_threshold": 0.1,
         "n_columns_tested": 14,
-        "n_columns_passing": 12,
-        "pass_fraction": 0.857,
+        "n_columns_passing": 13,
+        "pass_fraction": 0.929,
         "pass_threshold": 0.5,
         "real_different_cols": [
-          "steps10",
           "dosage"
         ]
       }

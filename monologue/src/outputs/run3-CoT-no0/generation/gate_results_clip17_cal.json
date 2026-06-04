@@ -14,11 +14,11 @@
           "2": 1.661
         },
         "synth_means": {
-          "0": 1.79,
-          "1": 1.326,
-          "2": 1.566
+          "0": 1.995,
+          "1": 1.421,
+          "2": 1.685
         },
-        "max_abs_diff": 0.149,
+        "max_abs_diff": 0.068,
         "tolerance": 0.5
       }
     },
@@ -66,16 +66,16 @@
           "steps10\u2194send": 0.061
         },
         "synth_trend_taus": {
-          "steps10\u2194steps30pre": 0.15,
-          "steps10\u2194dosage": -0.187,
-          "steps10\u2194send": -0.037
+          "steps10\u2194steps30pre": 0.173,
+          "steps10\u2194dosage": -0.188,
+          "steps10\u2194send": 0.008
         },
         "abs_diff": {
-          "steps10\u2194steps30pre": 0.068,
-          "steps10\u2194dosage": 0.025,
-          "steps10\u2194send": 0.098
+          "steps10\u2194steps30pre": 0.044,
+          "steps10\u2194dosage": 0.026,
+          "steps10\u2194send": 0.054
         },
-        "max_abs_diff": 0.098,
+        "max_abs_diff": 0.054,
         "tolerance": 0.2
       }
     },
@@ -94,68 +94,50 @@
           {
             "synth_uid": 1047,
             "target": 225.0,
-            "actual": 68.6,
+            "actual": 69.7,
             "ratio": 0.31
           },
           {
             "synth_uid": 1063,
             "target": 180.2,
-            "actual": 45.7,
-            "ratio": 0.25
+            "actual": 47.6,
+            "ratio": 0.26
           },
           {
             "synth_uid": 1079,
             "target": 93.8,
-            "actual": 24.7,
-            "ratio": 0.26
+            "actual": 26.7,
+            "ratio": 0.29
           },
           {
             "synth_uid": 1084,
             "target": 49.42384504036106,
-            "actual": 16.1,
-            "ratio": 0.33
+            "actual": 14.4,
+            "ratio": 0.29
           },
           {
             "synth_uid": 1085,
             "target": 55.94674779341559,
-            "actual": 15.2,
-            "ratio": 0.27
+            "actual": 13.1,
+            "ratio": 0.23
           },
           {
             "synth_uid": 1087,
             "target": 102.6,
-            "actual": 18.0,
-            "ratio": 0.18
-          },
-          {
-            "synth_uid": 1115,
-            "target": 150.8,
-            "actual": 48.5,
-            "ratio": 0.32
+            "actual": 21.8,
+            "ratio": 0.21
           },
           {
             "synth_uid": 1119,
             "target": 470.8,
-            "actual": 91.4,
-            "ratio": 0.19
+            "actual": 114.3,
+            "ratio": 0.24
           },
           {
             "synth_uid": 1135,
             "target": 82.8,
-            "actual": 21.5,
-            "ratio": 0.26
-          },
-          {
-            "synth_uid": 1138,
-            "target": 128.76430741195557,
-            "actual": 40.9,
-            "ratio": 0.32
-          },
-          {
-            "synth_uid": 1147,
-            "target": 112.0,
-            "actual": 37.0,
-            "ratio": 0.33
+            "actual": 24.4,
+            "ratio": 0.3
           }
         ]
       }
@@ -164,17 +146,10 @@
       "pass": true,
       "diag": {
         "n_columns": 12,
-        "frobenius_norm": 0.751,
-        "off_diag_mae": 0.038,
+        "frobenius_norm": 0.701,
+        "off_diag_mae": 0.037,
         "tolerance_mae": 0.15,
         "worst_5_pairs": [
-          {
-            "col1": "steps30pre",
-            "col2": "steps10",
-            "real_rho": 0.481,
-            "synth_rho": 0.241,
-            "delta": 0.24
-          },
           {
             "col1": "weekday",
             "col2": "dosage",
@@ -197,6 +172,13 @@
             "delta": 0.155
           },
           {
+            "col1": "steps30pre",
+            "col2": "steps10",
+            "real_rho": 0.481,
+            "synth_rho": 0.337,
+            "delta": 0.144
+          },
+          {
             "col1": "hour_sin",
             "col2": "temp",
             "real_rho": -0.182,
@@ -210,8 +192,8 @@
       "pass": true,
       "diag": {
         "real_mean_pairwise_wasserstein": 51.05,
-        "synth_mean_pairwise_wasserstein": 32.41,
-        "synth_to_real_ratio": 0.635,
+        "synth_mean_pairwise_wasserstein": 43.49,
+        "synth_to_real_ratio": 0.852,
         "acceptable_range": [
           0.5,
           2.0
@@ -225,8 +207,8 @@
       "diag": {
         "per_column_wd": {
           "steps10": {
-            "wd": 36.95,
-            "wd_norm": 0.192,
+            "wd": 31.436,
+            "wd_norm": 0.164,
             "real_std": 191.999
           },
           "steps30pre": {
@@ -290,7 +272,7 @@
             "n_categories": 2
           }
         },
-        "mean_wd_norm": 0.15,
+        "mean_wd_norm": 0.146,
         "mean_jsd": 0.03,
         "tol_mean_wd_norm": 0.5,
         "tol_mean_jsd": 0.3
@@ -304,7 +286,7 @@
             "kind": "continuous",
             "real_min": 0.0,
             "real_max": 1860.0,
-            "frac_in_range": 0.9998
+            "frac_in_range": 0.9997
           },
           "steps30pre": {
             "kind": "continuous",
@@ -447,13 +429,13 @@
         "per_column": {
           "steps10": {
             "kind": "continuous",
-            "ks_stat": 0.083,
+            "ks_stat": 0.062,
             "ks_p": 0.0,
             "effect_threshold": 0.1,
             "significant": true,
             "large_effect": false,
             "passes": true,
-            "mw_p": 0.0
+            "mw_p": 0.4717
           },
           "steps30pre": {
             "kind": "continuous",
