@@ -260,8 +260,12 @@ ZERO_CAL_STRATEGY        = "low_s30_first"
 # ============================================================================
 # Chain-of-Thought (CoT) JSON schema for the steps10 LLM call
 # ----------------------------------------------------------------------------
-# 6 reasoning fields BEFORE the integer `value`, motivated by:
-#   - anchor_lookup     (Wang 2024 Chain-of-Table: force verbalize the lookup)
+# 7 reasoning fields BEFORE the integer `value`:
+#   - zero_check        FIRST: decide steps10 = 0 vs >0 from state cues
+#                       (real has 54% zero; LLM-positive-only collapsed to 5%
+#                        before this field was added).
+#   - anchor_lookup     (Wang 2024 Chain-of-Table: force verbalize the lookup;
+#                        now points at POSITIVE-only per-slot×action mean)
 #   - phase_application (Tam 2024: reasoning-before-value, NOT after)
 #   - context_adjustment (Sidorenko 2025: probability-driven prompting)
 #   - momentum_check    (Xu 2024 PAFT: parent-first column dependency)
@@ -273,7 +277,8 @@ ZERO_CAL_STRATEGY        = "low_s30_first"
 STEPS_COT_JSON_SCHEMA = {
     "type": "object",
     "properties": {
-        "anchor_lookup":      {"type": "string", "maxLength": 250},
+        "zero_check":         {"type": "string", "maxLength": 300},
+        "anchor_lookup":      {"type": "string", "maxLength": 300},
         "phase_application":  {"type": "string", "maxLength": 200},
         "context_adjustment": {"type": "string", "maxLength": 300},
         "momentum_check":     {"type": "string", "maxLength": 250},
@@ -281,8 +286,8 @@ STEPS_COT_JSON_SCHEMA = {
         "value":              {"type": "integer", "minimum": 0, "maximum": 10000},
     },
     "required": [
-        "anchor_lookup", "phase_application", "context_adjustment",
-        "momentum_check", "episodic_check", "value",
+        "zero_check", "anchor_lookup", "phase_application",
+        "context_adjustment", "momentum_check", "episodic_check", "value",
     ],
     "additionalProperties": False,
 }

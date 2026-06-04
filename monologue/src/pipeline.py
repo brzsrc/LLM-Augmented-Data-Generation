@@ -136,22 +136,24 @@ def main():
         synth_personas_dicts = [_persona_to_flat_dict(p) for p in synth_personas]
         synth_df = trajectory_sampler.generate_all_vllm(synth_personas_dicts, llm,
                                                     out_dir=gen_out, seed=args.seed)
-
-    if args.stage in ("pos-hoc", "validate", "evaluate", "all"):
-        print("\n[stage 5b] ZERO-DISTRIBUTION CALIBRATION")
-        synth_csv_path = os.path.join(gen_out, "synthetic_data_raw.csv")
-        synth_df = pd.read_csv(synth_csv_path)
-        synth_df = zero_calibration.apply(synth_df, df,
-                                           threshold=cfg.CLIP_LOW_THRESHOLD,
-                                           keys=cfg.ZERO_CAL_KEYS,
-                                           n_q_s30=cfg.ZERO_CAL_S30_N_QUANTILES,
-                                           strategy=cfg.ZERO_CAL_STRATEGY,
-                                           seed=args.seed)
-        synth_csv_path = os.path.join(gen_out, "synthetic_data_cal.csv")
-        synth_df.to_csv(synth_csv_path, index=False)
-        print(f"[stage 5b] overwrote {synth_csv_path} with calibrated synth")
-
+        
         synth_df = data_loader.add_derived_features(synth_df)
+
+    # if args.stage in ("pos-hoc", "validate", "evaluate", "all"):
+    #     print("\n[stage 5b] ZERO-DISTRIBUTION CALIBRATION")
+    #     synth_csv_path = os.path.join(gen_out, "synthetic_data_raw.csv")
+    #     synth_df = pd.read_csv(synth_csv_path)
+    #     synth_df = zero_calibration.apply(synth_df, df,
+    #                                        threshold=cfg.CLIP_LOW_THRESHOLD,
+    #                                        keys=cfg.ZERO_CAL_KEYS,
+    #                                        n_q_s30=cfg.ZERO_CAL_S30_N_QUANTILES,
+    #                                        strategy=cfg.ZERO_CAL_STRATEGY,
+    #                                        seed=args.seed)
+    #     synth_csv_path = os.path.join(gen_out, "synthetic_data_cal.csv")
+    #     synth_df.to_csv(synth_csv_path, index=False)
+    #     print(f"[stage 5b] overwrote {synth_csv_path} with calibrated synth")
+
+    #     synth_df = data_loader.add_derived_features(synth_df)
 
     # ---- 6. Validate -----
     if args.stage in ("pos-hoc", "validate", "evaluate", "all"):
@@ -202,11 +204,24 @@ def _persona_to_flat_dict(persona):
         "steps10_avail_true_mean":               persona.activity.steps10.avail_true.mean,
         "steps10_avail_true_zero_pct":           persona.activity.steps10.avail_true.zero_pct,
         "steps10_avail_true_per_slot_mean":      persona.activity.steps10.avail_true.per_slot_mean,
+        "steps10_avail_true_per_slot_zero_pct":  persona.activity.steps10.avail_true.per_slot_zero_pct,
         "steps10_avail_true_per_slot_action_mean": persona.activity.steps10.avail_true.per_slot_action_mean,
+        # Positive-only anchors (used after zero_check decides positive)
+        "steps10_avail_true_per_slot_action_mean_positive":
+            persona.activity.steps10.avail_true.per_slot_action_mean_positive,
+        "steps10_avail_true_per_slot_positive_quantiles":
+            persona.activity.steps10.avail_true.per_slot_positive_quantiles,
+        "steps10_avail_true_zero_pct_by_s30_bin":
+            persona.activity.steps10.avail_true.zero_pct_by_s30_bin,
         # steps10.avail_false (unreachable baseline; no per-action — send forced=0)
         "steps10_avail_false_mean":          persona.activity.steps10.avail_false.mean,
         "steps10_avail_false_zero_pct":      persona.activity.steps10.avail_false.zero_pct,
         "steps10_avail_false_per_slot_mean": persona.activity.steps10.avail_false.per_slot_mean,
+        "steps10_avail_false_per_slot_zero_pct": persona.activity.steps10.avail_false.per_slot_zero_pct,
+        "steps10_avail_false_per_slot_positive_quantiles":
+            persona.activity.steps10.avail_false.per_slot_positive_quantiles,
+        # Streak (used in zero_check)
+        "steps10_momentum_pair_pct":         persona.activity.steps10.momentum_pair_pct,
         # steps10.all (marginal: avail=True+False union) — default view, no _all_ prefix
         "steps10_mean":          persona.activity.steps10.all.mean,
         "steps10_median":        persona.activity.steps10.all.median,

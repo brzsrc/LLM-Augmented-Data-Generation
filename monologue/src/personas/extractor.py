@@ -160,7 +160,13 @@ def _extract_lifestyle(g: pd.DataFrame) -> LifestyleProfile:
 def _steps10_bucket(gg: pd.DataFrame, include_action: bool) -> "Steps10BucketStats":
     """Compute the steps10 stats for one availability bucket.
     `include_action`=True populates per_slot_action_mean (avail=True only);
-    avail=False leaves it None (action is structurally 0)."""
+    avail=False leaves it None (action is structurally 0).
+
+    Also populates the prompt-side fields:
+      - zero_pct_by_s30_bin: P(steps10=0 | steps30pre bin) for zero_check
+      - per_slot_action_mean_positive: anchor for positive prediction
+      - per_slot_positive_quantiles: long-tail shape for value magnitude
+    """
     if len(gg) == 0:
         return Steps10BucketStats(
             mean=0.0, median=0.0, zero_pct=0.0,
@@ -173,12 +179,47 @@ def _steps10_bucket(gg: pd.DataFrame, include_action: bool) -> "Steps10BucketSta
                   .groupby(cfg.COL_SLOT)["_z"].mean())
 
     psam: Optional[Dict[int, Dict[int, float]]] = None
+    psam_pos: Optional[Dict[int, Dict[int, float]]] = None
     if include_action:
         psa = (gg.groupby([cfg.COL_SLOT, cfg.COL_ACTION])[cfg.COL_REWARD_SOURCE]
                  .mean().unstack(cfg.COL_ACTION))
         psam = {int(slot): {int(a): float(round(v, 1))
                              for a, v in row.items() if pd.notna(v)}
                 for slot, row in psa.iterrows()}
+        gg_pos = gg[gg[cfg.COL_REWARD_SOURCE] > 0]
+        if len(gg_pos):
+            psa_p = (gg_pos.groupby([cfg.COL_SLOT, cfg.COL_ACTION])[cfg.COL_REWARD_SOURCE]
+                          .mean().unstack(cfg.COL_ACTION))
+            psam_pos = {int(slot): {int(a): float(round(v, 1))
+                                     for a, v in row.items() if pd.notna(v)}
+                        for slot, row in psa_p.iterrows()}
+        else:
+            psam_pos = {}
+
+    # zero_pct_by_s30_bin (per-persona qcut, same scheme as steps10_by_steps30pre_bin)
+    zero_by_bin: Dict[str, float] = {}
+    if "steps30pre" in gg.columns:
+        pre30 = gg["steps30pre"].astype(float)
+        if len(pre30) >= 8 and pre30.nunique() > 1:
+            try:
+                bins = pd.qcut(pre30, q=4, duplicates="drop")
+                tmp = gg.assign(_bin=bins.values,
+                                  _z=(gg[cfg.COL_REWARD_SOURCE] == 0))
+                zero_by_bin = {str(b): float(round(sub["_z"].mean(), 3))
+                                for b, sub in tmp.groupby("_bin")}
+            except Exception:
+                pass
+
+    # per_slot positive quantiles (only computed where ≥20 positive rows in cell)
+    psq: Dict[int, Dict[str, int]] = {}
+    pos_rows = gg[gg[cfg.COL_REWARD_SOURCE] > 0]
+    if len(pos_rows):
+        for slot, sub in pos_rows.groupby(cfg.COL_SLOT):
+            if len(sub) < 20:
+                continue
+            v = sub[cfg.COL_REWARD_SOURCE]
+            psq[int(slot)] = {str(int(q * 100)): int(round(v.quantile(q)))
+                                for q in (0.25, 0.50, 0.75, 0.95, 0.99)}
 
     return Steps10BucketStats(
         mean=float(round(s.mean(), 1)),
@@ -189,7 +230,30 @@ def _steps10_bucket(gg: pd.DataFrame, include_action: bool) -> "Steps10BucketSta
         per_slot_zero_pct={int(k): float(round(v, 3))
                             for k, v in ps_zero.items() if pd.notna(v)},
         per_slot_action_mean=psam,
+        zero_pct_by_s30_bin=zero_by_bin,
+        per_slot_action_mean_positive=psam_pos,
+        per_slot_positive_quantiles=psq,
     )
+
+
+def _momentum_pair_pct(g: pd.DataFrame) -> Dict[str, float]:
+    """Streak transition: P(steps10=0 | prev steps10=0) vs P(=0 | prev>0).
+    Within-patient, sorted by (day, slot). Empty if too few transitions.
+    """
+    if cfg.COL_DAY not in g.columns or cfg.COL_SLOT not in g.columns or len(g) < 5:
+        return {}
+    sorted_s = (g.sort_values([cfg.COL_DAY, cfg.COL_SLOT])[cfg.COL_REWARD_SOURCE]
+                  .astype(float).reset_index(drop=True))
+    prev = sorted_s.shift(1)
+    valid = prev.notna()
+    mask_z = valid & (prev == 0)
+    mask_p = valid & (prev > 0)
+    out: Dict[str, float] = {}
+    if mask_z.sum() >= 5:
+        out["zero_after_zero"] = float(round((sorted_s[mask_z] == 0).mean(), 3))
+    if mask_p.sum() >= 5:
+        out["zero_after_nonzero"] = float(round((sorted_s[mask_p] == 0).mean(), 3))
+    return out
 
 
 def _extract_activity(g: pd.DataFrame) -> ActivityProfile:
@@ -309,6 +373,7 @@ def _extract_activity(g: pd.DataFrame) -> ActivityProfile:
         avail_true=avail_true_b,
         avail_false=avail_false_b,
         all=all_b,
+        momentum_pair_pct=_momentum_pair_pct(g),
     )
 
     return ActivityProfile(

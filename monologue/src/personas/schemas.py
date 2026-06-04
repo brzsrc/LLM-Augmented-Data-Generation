@@ -88,6 +88,15 @@ class Steps10BucketStats:
     per_slot_zero_pct: Dict[int, float] = field(default_factory=dict)
     # {slot: {action: mean_steps10}} — only populated for the avail_true bucket.
     per_slot_action_mean: Optional[Dict[int, Dict[int, float]]] = None
+    # ── Fields below support prompt zero_check + positive-only anchoring ──
+    # P(steps10=0) bucketed by steps30pre quartile bin (per-persona qcut keys).
+    zero_pct_by_s30_bin: Dict[str, float] = field(default_factory=dict)
+    # Same shape as per_slot_action_mean but filtered to steps10>0 rows.
+    # Anchor used by LLM when zero_check decides "positive".
+    per_slot_action_mean_positive: Optional[Dict[int, Dict[int, float]]] = None
+    # {slot: {"25"|"50"|"75"|"95"|"99": int}} on steps10>0 only.
+    # Surfaces the right-skewed tail so LLM doesn't snap to the mean.
+    per_slot_positive_quantiles: Dict[int, Dict[str, int]] = field(default_factory=dict)
 
 
 @dataclass
@@ -117,6 +126,10 @@ class Steps10Profile:
     avail_true:  Steps10BucketStats     # message-eligible: per_slot_action_mean populated
     avail_false: Steps10BucketStats     # unreachable: action=0, per_slot_action_mean=None
     all:         Steps10AllBucket       # marginal + context-conditional + aggregates
+    # Streak transition for zero_check: {"zero_after_zero": float,
+    # "zero_after_nonzero": float}. Computed on the union (within-patient
+    # consecutive transitions). Empty if not enough rows.
+    momentum_pair_pct: Dict[str, float] = field(default_factory=dict)
 
 
 @dataclass
