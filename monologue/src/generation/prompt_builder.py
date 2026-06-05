@@ -250,9 +250,15 @@ OUTPUT FORMAT — a JSON object with EXACTLY these 7 keys, in this order:
                             Cite ALL THREE numbers from the "Zero-rate
                             baseline" block. Examples:
 {zero_check_examples}
-                            Bias toward 'zero' when ALL THREE of:
-                              (low steps30pre bin, morning slot,
-                               prev=0 streak)
+                            The cited numbers are PROBABILITIES, not verdicts.
+                            Across many similar windows your decisions should
+                            APPROXIMATE the cited rates: e.g. when the cited
+                            rates average ~55%, ~55% of similar prompts should
+                            resolve to zero — NOT 100%. Do NOT systematically
+                            round to 'zero' when the rates are near 50%.
+                            Split your calls in proportion to the cited
+                            probability; both 'zero' and 'positive' are
+                            legitimate outcomes.
 
   2. "anchor_lookup"     — {anchor_lookup_body}
 
@@ -294,15 +300,15 @@ CRITICAL rules:
 # --- BRANCH BODY: MESSAGE (send > 0) ----------------------------------------
 _BRANCH_BODY_MESSAGE = dict(
     branch_intro="A MESSAGE has just been sent (send > 0). Predict steps10 for this 10-minute window.",
-    calibration_block="""  Real HeartSteps data has steps10 = 0 in ~54% of windows.
-  Most windows the user is sitting / sleeping / unreachable → 0 steps.
-  Only ~46% of windows actually accumulate any steps.
-  Your output MUST reflect this. Use zero_check (step 1) to decide 0 vs
-  positive based on state cues, not by averaging out a positive guess.
-  NOTE: per-action zero rates are essentially equal across send (a=0 52%,
-  a=1 58%, a=2 55%). Sending a message does NOT meaningfully reduce zero
-  probability — it modulates the POSITIVE magnitude when activity happens,
-  not whether activity happens. Do not under-zero on send=1 or send=2.""",
+    calibration_block="""  Within the randomized arm (Available=True, where MESSAGE applies),
+  steps10 = 0 in ~56% of windows and >0 in ~44% of windows. Across many
+  similar prompts, your decisions should split roughly 56/44 — neither
+  over-zero nor over-positive. Use zero_check (step 1) to call each
+  window based on the cited rates.
+  NOTE: within avail=True, per-action zero rates are essentially equal
+  across send (a=0 57%, a=1 58%, a=2 55%). Sending a message does NOT
+  meaningfully reduce zero probability — it modulates the POSITIVE
+  magnitude when activity happens, not whether activity happens.""",
     zero_check_examples='''                              "decision=zero — slot=1 70%, s30=12 in '1-80' 64%,
                                prev=0 streak → 65% zero"
                               "decision=positive — slot=3 41%, s30=420 in '396-857'
@@ -322,8 +328,9 @@ _BRANCH_BODY_MESSAGE = dict(
                             ALL of (high s30, exercise/activity loc, peak slot
                             or high-activity anchor match) are present. Reach
                             p95+ ONLY for clear exercise events (~1% of cases).""",
-    extra_rule="""  * Across many windows, your zero-decision rate should approach ~54%
-    overall, modulated by state cues (morning ~70%, evening ~50%).""",
+    extra_rule="""  * Across many windows, your zero-decision rate should approach ~56%
+    (avail=True overall), modulated by state cues. The split is roughly
+    56/44 — do not collapse to 100% zero on borderline cases.""",
 )
 
 # --- BRANCH BODY: NO_MSG_AVAIL_T (send=0 ∧ avail=True) ----------------------
@@ -331,10 +338,11 @@ _BRANCH_BODY_NO_MSG_AVAIL_T = dict(
     branch_intro=("NO MESSAGE has been sent (send = 0) but the user is REACHABLE "
                   "(avail = True). MRT chose the no-message arm. Predict the user's "
                   "natural baseline at this state — phase multiplier does NOT apply."),
-    calibration_block="""  For Available=True + send=0: ~57% of windows have steps10 = 0.
-  send=0 just means no message was sent; it does NOT imply the user is in
-  a high-activity state. Let state cues (slot, s30, streak) drive zero_check
-  — don't default to "positive" just because no intervention happened.""",
+    calibration_block="""  For Available=True + send=0: ~57% of windows are 0, ~43% are positive.
+  Across many similar prompts, your decisions should split roughly 57/43
+  — call each window based on the cited slot / s30 / streak rates. send=0
+  is NOT evidence either way: it does not imply the user is high-activity,
+  AND it does not imply zero. Let the cited probabilities decide.""",
     zero_check_examples='''                              "decision=zero — avail=True slot=2 48%, s30=15
                                in '1-80' 64%, prev=0 → 65% zero"
                               "decision=positive — avail=True slot=4 23%, s30=420
@@ -351,7 +359,9 @@ _BRANCH_BODY_NO_MSG_AVAIL_T = dict(
                             ALL of (high s30, exercise/activity loc, peak slot
                             or high-activity anchor match) are present. Reach
                             p95+ ONLY for clear exercise events (~1% of cases).""",
-    extra_rule="  * Use the avail=True row of the zero-rate table; ignore avail=False.",
+    extra_rule="""  * Use the avail=True row of the zero-rate table; ignore avail=False.
+  * Trajectory zero rate should approach ~57% — slot 3-5 with prev>0 or
+    high s30 should give POSITIVE more often than not.""",
 )
 
 # --- BRANCH BODY: NO_MSG_AVAIL_F (send=0 ∧ avail=False) ---------------------
@@ -360,10 +370,12 @@ _BRANCH_BODY_NO_MSG_AVAIL_F = dict(
                   "This usually means commuting / driving / exercising / sleeping. "
                   "Predict the user's unavailable-context baseline — phase "
                   "multiplier does NOT apply."),
-    calibration_block="""  For Available=False: ~35% of windows have steps10 = 0 — significantly
-  LOWER than overall (~54%) because unavailable windows often coincide
-  with movement (commute, walk, workout). DO NOT carry over the avail=True
-  zero rate. Use the avail=False row of the zero-rate baseline block.""",
+    calibration_block="""  For Available=False: ~35% of windows are 0, ~65% are POSITIVE — the
+  MAJORITY of unavail windows have activity, because unavail correlates
+  with movement (commute, walk, workout). Across many similar prompts,
+  your decisions should split roughly 35/65 toward POSITIVE. DO NOT carry
+  over the avail=True zero rate; use the avail=False row of the zero-rate
+  baseline block.""",
     zero_check_examples='''                              "decision=zero — avail=False slot=2 50%, s30=15
                                in '1-80' 64%, prev=0 → 46% zero"
                               "decision=positive — avail=False slot=3 0%, s30=520
@@ -380,7 +392,9 @@ _BRANCH_BODY_NO_MSG_AVAIL_F = dict(
                             but DO NOT auto-jump to p95+ unless the slot's
                             unavail baseline itself is large (e.g. slot 3/5
                             commute peaks).""",
-    extra_rule="  * Use the avail=False row of the zero-rate table; ignore avail=True.",
+    extra_rule="""  * Use the avail=False row of the zero-rate table; ignore avail=True.
+  * Trajectory zero rate should approach ~35% — MAJORITY of unavail
+    windows are positive (commute/exercise).""",
 )
 
 
@@ -396,16 +410,18 @@ chain) in the JSON schema above. Each field MUST reference SPECIFIC numbers
 from the profile blocks above (e.g. "slot=3 a=2 positive → 218",
 "honeymoon ×2.20", "steps30pre=85 in low bin", "slot=1 zero baseline 70%").
 
-Remember: zero_check decides 0 vs positive based on the Zero-rate baseline
-block. ~54% of windows are 0 in real data; your decisions across this
-trajectory should reflect that overall.
+Remember: zero_check is a PROBABILISTIC call. Within avail=True the
+split is ~56% zero / ~44% positive; your trajectory should approximate
+that — DO NOT round every borderline case to zero.
 
 Output ONLY the JSON object — no markdown fences, no extra text."""
 
 _TASK_BLOCK_NO_MESSAGE_AVAIL_T = """## Task
-No message was sent and the user is REACHABLE. First do zero_check using the
-Zero-rate baseline (avail=True row): ~57% zero overall, modulated by slot /
-steps30pre bin / prev-streak.
+No message was sent and the user is REACHABLE. First do zero_check using
+the Zero-rate baseline (avail=True row). The split is ~57% zero / ~43%
+positive — call each window using the cited slot / s30 / streak rates,
+NOT a default. Across this trajectory your zero rate should APPROXIMATE
+57%, not 90%+.
 
 If decision="positive", reason through the BASELINE anchor chain:
   - anchor = per_slot_action_positive[slot][a=0]
@@ -416,9 +432,10 @@ Output ONLY the JSON object — no markdown fences, no extra text."""
 
 _TASK_BLOCK_NO_MESSAGE_AVAIL_F = """## Task
 No message was sent and the user is UNREACHABLE (commute / exercise /
-sleep). First do zero_check using the Zero-rate baseline (avail=False row):
-~35% zero overall — LOWER than avail=True because unavail correlates with
-movement.
+sleep). First do zero_check using the Zero-rate baseline (avail=False
+row). The split is ~35% zero / ~65% positive — MOST unavail windows
+are positive. Across this trajectory your zero rate should APPROXIMATE
+35%, not 50%+. DO NOT carry over the avail=True zero rate.
 
 If decision="positive", reason through the UNAVAIL anchor chain:
   - anchor = unavail_baseline[slot]   (per-slot mean when avail=False)

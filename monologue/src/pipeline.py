@@ -49,9 +49,9 @@ STAGES = ["audit", "personas", "generate", "pos-hoc", "validate", "evaluate", "a
 
 def get_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--out_root", default="src/outputs/run7-clip-cal-0.4")
+    p.add_argument("--out_root", default="src/outputs/run9-reprompt")
     p.add_argument("--backend", choices=["qwen8b", 'qwen32b', "stub"], default="qwen32b")
-    p.add_argument("--stage", choices=STAGES, default="pos-hoc")
+    p.add_argument("--stage", choices=STAGES, default="all")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--max_uids", type=int, default=None,
                    help="Smoke-test mode: keep only the first N unique uids "
