@@ -21,7 +21,7 @@ import numpy as np
 import pandas as pd
 
 from src import config as cfg
-from src.generation.prompt_builder import build_step_prompt, build_step_prompt_cot
+from src.generation.prompt_builder import build_step_prompt_cot
 
 
 def _predict_avail(persona: Dict, slot: int, loc_str: str,
@@ -132,109 +132,6 @@ def _sample_steps30pre(persona: Dict, slot: int,
     return int(round(np.clip(draw, 0.0, cfg.MAX_STEPS30PRE)))
 
 
-def generate_one_trajectory(persona: Dict, llm, seed: int = 0) -> pd.DataFrame:
-    rng = np.random.default_rng(seed)
-    n_days = int(persona.get("n_days", 30))
-    slot_1_hour = persona.get("slot_1_hour", 12) or 12
-
-    records = []
-    # dosage is NOT tracked here — empirically corr(dosage, steps10) ≈ -0.014
-    # (0/37 users with |corr|>0.2), so it's noise in the prompt. The DDQN-side
-    # dosage feature is recomputed by data_loader.add_derived_features after
-    # generation, identically to how it's added to real data.
-    episodic_history: List[Dict] = []
-
-    for day in range(1, n_days + 1):
-        weekday = (day - 1) % 7
-        prev_ctx = None   # reset each day; transitions are within-day only
-        for slot in range(1, 6):
-            hour = (slot_1_hour + cfg.SLOT_HOUR_OFFSET[slot]) % 24
-            hour_jitter = float(rng.uniform(-0.5, 0.5))
-            actual_hour = (hour + hour_jitter) % 24
-
-            ctx = _bootstrap_context(persona, slot, weekday, prev_ctx, rng)
-            prev_ctx = ctx
-            loc_str = ctx["loc"]
-
-            # ---- 1) Predict avail from state (angle 2 + 3) ----
-            avail = _predict_avail(persona, slot, loc_str, rng)
-
-            # ---- 2) Action: MRT randomize if avail; forced 0 if not ----
-            # HeartSteps MRT probs: 0.4 no_message, 0.3 anti_sedentary, 0.3 walking
-            if avail:
-                action = int(rng.choice([0, 1, 2], p=[0.4, 0.3, 0.3]))
-            else:
-                action = 0   # structural HeartSteps rule
-
-            #ctx: Dict with weather/temp/loc/steps30pre for this decision point — sampled
-            current_state = {
-                "day": day, "slot": slot, "hour": round(actual_hour, 1),
-                "weekday": weekday,
-                "avail": avail,        # surfaced to LLM (angle 6)
-                **ctx,
-            }
-
-            # ---- 3) LLM predicts steps10 (simpler prompt when avail=False) ----
-            sys_p, usr_p = build_step_prompt(persona, current_state, action,
-                                              episodic_history)
-            steps10 = llm.judge_steps(sys_p, usr_p)
-            try:
-                steps10 = max(0, min(10000, int(steps10)))
-            except Exception:
-                steps10 = 0
-
-            # NOTE: no `resp` column in synth output. In real data resp is the
-            # user's behavioural response to the sent message. In synth it
-            # would be a deterministic heuristic on (action, steps10) — adding
-            # nothing and risking confusion downstream. DDQN/OPE don't use it
-            # (resp is in FORBIDDEN_IN_STATE). If a synth resp is ever needed
-            # for compatibility, derive it from action + steps10 at that point.
-            rec = {
-                "uid":         persona["synth_uid"],
-                "source_uid":  persona["source_uid"],
-                "variant_type": persona["variant_type"],
-                "archetype":   persona["archetype"],
-                "study_day":   day,
-                "weekday":     weekday,
-                "hr":          int(round(actual_hour)),
-                "slot":        slot,
-                "weather":     ctx["weather"],
-                "temp":        ctx["temp"],
-                "loc":         ctx["loc"],
-                "avail":       avail,
-                "steps30pre":  int(ctx["steps30pre"]),
-                "send":        action,
-                "steps10":     int(steps10),
-            }
-            records.append(rec)
-
-            episodic_history.append({"day": day, "slot": slot, "action": action,
-                                      "steps10": steps10, "avail": avail})
-
-    return pd.DataFrame(records)
-
-
-def generate_all(personas: List[Dict], llm,
-                 out_dir: str, seed: int = 42) -> pd.DataFrame:
-    """Generate trajectories for every synthetic persona.
-    Persona-driven: no real_df needed (steps30pre / context / availability all
-    sampled from persona stats — see _bootstrap_context and _sample_steps30pre).
-    """
-    os.makedirs(out_dir, exist_ok=True)
-    all_rows = []
-    for i, p in enumerate(personas):
-        df_one = generate_one_trajectory(p, llm, seed=seed + i)
-        all_rows.append(df_one)
-        if (i + 1) % 10 == 0 or (i + 1) == len(personas):
-            print(f"  [generate] {i+1}/{len(personas)} personas "
-                  f"({sum(len(d) for d in all_rows)} rows so far)")
-    combined = pd.concat(all_rows, ignore_index=True)
-    out_csv = os.path.join(out_dir, "synthetic_data.csv")
-    combined.to_csv(out_csv, index=False)
-    print(f"[generate] Saved {len(combined)} synth rows -> {out_csv}")
-    return combined
-
-
 # ============================================================================
 # Batched / parallel variant for vLLM backends
 # ============================================================================
@@ -282,7 +179,7 @@ def generate_all_vllm(personas: List[Dict], llm,
         for i, p in enumerate(personas)
     ]
     max_n_days = max(s["n_days"] for s in states) if states else 0
-    _prompt_fn = build_step_prompt_cot if cot else build_step_prompt
+    _prompt_fn = build_step_prompt_cot
 
     # When cot=True, persist the 5 reasoning fields to a JSONL sidecar
     # (parallel to synthetic_data.csv, one line per decision). Lets you
