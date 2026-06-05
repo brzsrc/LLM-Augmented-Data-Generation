@@ -220,6 +220,12 @@ def _persona_to_flat_dict(persona):
         "steps10_avail_false_per_slot_zero_pct": persona.activity.steps10.avail_false.per_slot_zero_pct,
         "steps10_avail_false_per_slot_positive_quantiles":
             persona.activity.steps10.avail_false.per_slot_positive_quantiles,
+        # Flat per-user quantiles (no slot split) — primary anchor for the
+        # avail=False prompt branch, where per-(user,slot) cells are too thin.
+        "steps10_avail_false_positive_quantiles_user":
+            persona.activity.steps10.avail_false.positive_quantiles_user,
+        "steps10_avail_true_positive_quantiles_user":
+            persona.activity.steps10.avail_true.positive_quantiles_user,
         # Streak (used in zero_check)
         "steps10_momentum_pair_pct":         persona.activity.steps10.momentum_pair_pct,
         # steps10.all (marginal: avail=True+False union) — default view, no _all_ prefix

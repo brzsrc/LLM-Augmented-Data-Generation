@@ -221,6 +221,18 @@ def _steps10_bucket(gg: pd.DataFrame, include_action: bool) -> "Steps10BucketSta
             psq[int(slot)] = {str(int(q * 100)): int(round(v.quantile(q)))
                                 for q in (0.25, 0.50, 0.75, 0.95, 0.99)}
 
+    # Flat per-user quantiles across all slots (no slot split). Used by the
+    # avail=False prompt branch where per-(user,slot) positive cells are too
+    # thin (~2-3 rows typical) to give stable quantiles. The user-level pool
+    # is also small (median ≈14 positive rows for avail=False); threshold=5
+    # keeps 36/37 users populated. p95/p99 are noisy at this size but the
+    # p25-p75 spine remains informative.
+    pqu: Dict[str, int] = {}
+    if len(pos_rows) >= 5:
+        v_all = pos_rows[cfg.COL_REWARD_SOURCE]
+        pqu = {str(int(q * 100)): int(round(v_all.quantile(q)))
+               for q in (0.25, 0.50, 0.75, 0.95, 0.99)}
+
     return Steps10BucketStats(
         mean=float(round(s.mean(), 1)),
         median=float(round(s.median(), 1)),
@@ -233,6 +245,7 @@ def _steps10_bucket(gg: pd.DataFrame, include_action: bool) -> "Steps10BucketSta
         zero_pct_by_s30_bin=zero_by_bin,
         per_slot_action_mean_positive=psam_pos,
         per_slot_positive_quantiles=psq,
+        positive_quantiles_user=pqu,
     )
 
 

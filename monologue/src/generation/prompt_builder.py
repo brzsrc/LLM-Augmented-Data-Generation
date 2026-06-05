@@ -154,15 +154,13 @@ def _format_zero_baseline(persona: Dict, current_state: Dict) -> str:
 
 
 def _format_positive_quantiles(persona: Dict, current_state: Dict) -> str:
-    """Per-slot positive-distribution quantiles (steps10 | steps10>0).
+    """Per-slot positive-distribution quantiles (avail=True branch only).
 
-    Exposes the right-skewed tail so the LLM doesn't snap to the mean
-    when building the positive value. Marks the current slot with an arrow.
+    avail=True bucket has enough positive rows per (user, slot) to give stable
+    per-slot quantiles. Marks the current slot with an arrow. For the avail=False
+    branch, use `_format_unavail_quantiles` (flat per-user, no slot split).
     """
-    avail = bool(current_state.get("avail", True))
-    key = ("steps10_avail_true_per_slot_positive_quantiles" if avail
-           else "steps10_avail_false_per_slot_positive_quantiles")
-    qtab = persona.get(key) or {}
+    qtab = persona.get("steps10_avail_true_per_slot_positive_quantiles") or {}
     if not qtab:
         return ""
 
@@ -172,7 +170,7 @@ def _format_positive_quantiles(persona: Dict, current_state: Dict) -> str:
     except (TypeError, ValueError):
         cur_slot_i = None
 
-    lines = ["Positive-distribution quantiles (steps10 | steps10>0) — "
+    lines = ["Positive-distribution quantiles (steps10 | steps10>0, avail=True) — "
               "magnitude shape for value:"]
     for slot, q in sorted(qtab.items(), key=lambda x: int(x[0])):
         parts = [f"p{k}={int(v)}" for k, v in
@@ -181,6 +179,23 @@ def _format_positive_quantiles(persona: Dict, current_state: Dict) -> str:
         lines.append(f"  slot {slot}: " + " | ".join(parts) + marker)
     lines.append("  → ~5% of positive windows EXCEED p95; ~1% EXCEED p99.")
     return "\n".join(lines)
+
+
+def _format_unavail_quantiles(persona: Dict) -> str:
+    """Flat per-user positive quantiles for the avail=False branch.
+
+    Per-(user, slot) avail=False cells are too thin (~2-3 positive rows per
+    slot per user); pool across slots at the user level so the LLM has a
+    real long-tail shape to anchor the unavailable-commute baseline.
+    """
+    q = persona.get("steps10_avail_false_positive_quantiles_user") or {}
+    if not q:
+        return ""
+    parts = [f"p{k}={int(v)}" for k, v in sorted(q.items(), key=lambda x: int(x[0]))]
+    return ("Positive-distribution quantiles (steps10 | steps10>0, avail=False, "
+            "user-level across all slots):\n"
+            f"  {' | '.join(parts)}\n"
+            "  → ~5% of unavail positive windows EXCEED p95; ~1% EXCEED p99.")
 
 
 def _format_episodic(history: List[Dict]) -> str:
@@ -197,37 +212,34 @@ def _format_episodic(history: List[Dict]) -> str:
 
 
 # ============================================================================
-# Chain-of-Thought (CoT) variant — branches on `send`:
-#   send > 0:  _cot_message  — full 6-field CoT WITH phase-multiplier step
-#   send = 0:  _cot_no_message — 6-field schema, phase_application = "N/A",
-#                                anchor source depends on avail (per_slot_action
-#                                vs unavail_baseline)
+# Chain-of-Thought (CoT) — 3 branches keyed on (send, avail):
+#   send > 0                  → MESSAGE          (phase mult applies)
+#   send = 0 & avail = True   → NO_MSG_AVAIL_T   (MRT chose no-msg arm)
+#   send = 0 & avail = False  → NO_MSG_AVAIL_F   (user unreachable;
+#                                                  commute/exercise baseline)
 #
-# Why split on send (not avail): phase multiplier is a "message-response
-# amplifier". When no message is sent (regardless of avail), there's nothing
-# to amplify → phase_application should be N/A. Cases avail=True∧send=0
-# (MRT chose no-msg) and avail=False (no-msg forced) share the same prompt
-# structure but pick different anchor cells (Y1 vs Y2).
+# Each branch has a dedicated SYSTEM template, USER profile-section selection,
+# and TASK block. SYSTEMs are assembled from a single `_COMMON_HEADER_TPL` with
+# branch-specific text injected via `.format()` — keeps the 7-key JSON spec
+# defined in exactly one place so it can't drift.
 #
-# Output schema is the SAME 6-field cfg.STEPS_COT_JSON_SCHEMA for both
-# branches — phase_application accepts string, so "N/A — no message" is
-# valid. Refs: Tam 2024 reasoning-before-value, Wang 2024 Chain-of-Table,
+# Refs: Tam 2024 reasoning-before-value, Wang 2024 Chain-of-Table,
 # Xu 2024 PAFT, Sidorenko 2025.
 # ============================================================================
 
-SYSTEM_TEMPLATE_COT_MESSAGE = """You are a behavior simulator for HeartSteps users.
-A MESSAGE has just been sent (send > 0). Predict steps10 for this 10-minute window.
+# --- COMMON HEADER ----------------------------------------------------------
+# {branch_intro}         second line of the top declarative
+# {calibration_block}    branch-specific zero-rate fact + caveat
+# {zero_check_examples}  example lines for field 1
+# {anchor_lookup_body}   field 2 instruction
+# {phase_application}    field 3 instruction
+# {value_default_hint}   field 7 default-region nudge
+# {extra_rule}           any branch-specific rule (e.g. global zero-rate ~54%)
+_COMMON_HEADER_TPL = """You are a behavior simulator for HeartSteps users.
+{branch_intro}
 
 CRITICAL CALIBRATION FACT:
-  Real HeartSteps data has steps10 = 0 in ~54% of windows.
-  Most windows the user is sitting / sleeping / unreachable → 0 steps.
-  Only ~46% of windows actually accumulate any steps.
-  Your output MUST reflect this. Use zero_check (step 1) to decide 0 vs
-  positive based on state cues, not by averaging out a positive guess.
-  NOTE: per-action zero rates are essentially equal across send (a=0 52%,
-  a=1 58%, a=2 55%). Sending a message does NOT meaningfully reduce zero
-  probability — it modulates the POSITIVE magnitude when activity happens,
-  not whether activity happens. Do not under-zero on send=1 or send=2.
+{calibration_block}
 
 OUTPUT FORMAT — a JSON object with EXACTLY these 7 keys, in this order:
 
@@ -237,26 +249,14 @@ OUTPUT FORMAT — a JSON object with EXACTLY these 7 keys, in this order:
                                <s30 bin%>, <streak hint>"
                             Cite ALL THREE numbers from the "Zero-rate
                             baseline" block. Examples:
-                              "decision=zero — slot=1 70%, s30=12 in '1-80' 64%,
-                               prev=0 streak → 65% zero"
-                              "decision=positive — slot=3 41%, s30=420 in '396-857'
-                               14%, prev>0 → 42% zero"
+{zero_check_examples}
                             Bias toward 'zero' when ALL THREE of:
                               (low steps30pre bin, morning slot,
                                prev=0 streak)
 
-  2. "anchor_lookup"     — IF zero_check decision="positive": look up
-                            per_slot_action_mean_positive[slot][send] from
-                            the "Per-slot mean steps10 by action — STEPS10>0
-                            ROWS ONLY" table AND the slot's positive quantiles.
-                            Quote both, e.g.
-                              "mean=218 (slot=3 a=2 positive); p50=180 p75=320
-                               p95=720 — anchor is CENTER, real spans wide".
-                            IF decision="zero": write "N/A — zero_check decided zero".
+  2. "anchor_lookup"     — {anchor_lookup_body}
 
-  3. "phase_application" — IF positive: apply engagement-phase multiplier to
-                            the anchor, e.g. "honeymoon ×2.20 → 218×2.20=480".
-                            IF zero: "N/A".
+  3. "phase_application" — {phase_application}
 
   4. "context_adjustment" — IF positive: adjust for loc / weather / temp using
                              the context-conditional means, e.g.
@@ -279,10 +279,7 @@ OUTPUT FORMAT — a JSON object with EXACTLY these 7 keys, in this order:
                               ~25% in p50-p75 range
                               ~ 6% in p75-p95 (mid-tail)
                               ~ 1% > p95 (true bursts)
-                            DEFAULT to p25-p50 region. Move past p75 only when
-                            ALL of (high s30, exercise/activity loc, peak slot
-                            or high-activity anchor match) are present. Reach
-                            p95+ ONLY for clear exercise events (~1% of cases).
+{value_default_hint}
                             DO NOT use p95/p99 as the typical anchor — they
                             are the rare-burst ceiling, not the default.
                             Real values [1, 17] are essentially noise (~1%
@@ -291,108 +288,199 @@ OUTPUT FORMAT — a JSON object with EXACTLY these 7 keys, in this order:
 CRITICAL rules:
   * zero_check MUST be done FIRST. Do not skip it to fill positive chain.
   * Reference SPECIFIC numbers from the profile blocks; do not invent.
-  * Across many windows, your zero-decision rate should approach ~54%
-    overall, modulated by state cues (morning ~70%, evening ~50%).
-"""
+{extra_rule}"""
 
-SYSTEM_TEMPLATE_COT_NO_MESSAGE = """You are a behavior simulator for HeartSteps users.
-NO MESSAGE has been sent (send = 0). Predict the user's natural baseline
-steps10 at this state — phase multiplier does NOT apply (nothing to amplify).
 
-CRITICAL CALIBRATION FACT:
-  Real HeartSteps data has steps10 = 0 in ~54% of windows overall.
-  For Available=True + send=0: ~57% zero.
-  For Available=False: ~35% zero (unavailable often means
-  commuting/exercising — actively moving).
-  Note: send=0 just means no message was sent; it does NOT imply the
-  user is in a high-activity state. Let state cues (slot, s30, streak)
-  drive zero_check — don't default to "positive" just because no
-  intervention happened.
-  Use zero_check (step 1) to decide 0 vs positive based on state cues.
+# --- BRANCH BODY: MESSAGE (send > 0) ----------------------------------------
+_BRANCH_BODY_MESSAGE = dict(
+    branch_intro="A MESSAGE has just been sent (send > 0). Predict steps10 for this 10-minute window.",
+    calibration_block="""  Real HeartSteps data has steps10 = 0 in ~54% of windows.
+  Most windows the user is sitting / sleeping / unreachable → 0 steps.
+  Only ~46% of windows actually accumulate any steps.
+  Your output MUST reflect this. Use zero_check (step 1) to decide 0 vs
+  positive based on state cues, not by averaging out a positive guess.
+  NOTE: per-action zero rates are essentially equal across send (a=0 52%,
+  a=1 58%, a=2 55%). Sending a message does NOT meaningfully reduce zero
+  probability — it modulates the POSITIVE magnitude when activity happens,
+  not whether activity happens. Do not under-zero on send=1 or send=2.""",
+    zero_check_examples='''                              "decision=zero — slot=1 70%, s30=12 in '1-80' 64%,
+                               prev=0 streak → 65% zero"
+                              "decision=positive — slot=3 41%, s30=420 in '396-857'
+                               14%, prev>0 → 42% zero"''',
+    anchor_lookup_body="""IF zero_check decision="positive": look up
+                            per_slot_action_mean_positive[slot][send] from
+                            the "Per-slot mean steps10 by action — STEPS10>0
+                            ROWS ONLY" table AND the slot's positive quantiles.
+                            Quote both, e.g.
+                              "mean=218 (slot=3 a=2 positive); p50=180 p75=320
+                               p95=720 — anchor is CENTER, real spans wide".
+                            IF decision="zero": write "N/A — zero_check decided zero".""",
+    phase_application="""IF positive: apply engagement-phase multiplier to
+                            the anchor, e.g. "honeymoon ×2.20 → 218×2.20=480".
+                            IF zero: "N/A".""",
+    value_default_hint="""                            DEFAULT to p25-p50 region. Move past p75 only when
+                            ALL of (high s30, exercise/activity loc, peak slot
+                            or high-activity anchor match) are present. Reach
+                            p95+ ONLY for clear exercise events (~1% of cases).""",
+    extra_rule="""  * Across many windows, your zero-decision rate should approach ~54%
+    overall, modulated by state cues (morning ~70%, evening ~50%).""",
+)
 
-OUTPUT FORMAT — a JSON object with EXACTLY these 7 keys, in this order:
-
-  1. "zero_check"        — Decide whether THIS window's steps10 is 0 or >0.
-                            Same format / rules as the MESSAGE prompt. Cite
-                            slot baseline (picking avail-correct row),
-                            steps30pre bin rate, and streak hint. Examples:
-                              "decision=zero — avail=True slot=2 48%, s30=15
+# --- BRANCH BODY: NO_MSG_AVAIL_T (send=0 ∧ avail=True) ----------------------
+_BRANCH_BODY_NO_MSG_AVAIL_T = dict(
+    branch_intro=("NO MESSAGE has been sent (send = 0) but the user is REACHABLE "
+                  "(avail = True). MRT chose the no-message arm. Predict the user's "
+                  "natural baseline at this state — phase multiplier does NOT apply."),
+    calibration_block="""  For Available=True + send=0: ~57% of windows have steps10 = 0.
+  send=0 just means no message was sent; it does NOT imply the user is in
+  a high-activity state. Let state cues (slot, s30, streak) drive zero_check
+  — don't default to "positive" just because no intervention happened.""",
+    zero_check_examples='''                              "decision=zero — avail=True slot=2 48%, s30=15
                                in '1-80' 64%, prev=0 → 65% zero"
-                              "decision=positive — avail=False slot=3 35%,
-                               s30=520 in '396-857' 14%, prev>0 → 42% zero"
-                            Bias toward 'zero' when ALL THREE of:
-                              (low steps30pre bin, morning slot,
-                               prev=0 streak)
+                              "decision=positive — avail=True slot=4 23%, s30=420
+                               in '396-857' 14%, prev>0 → 42% zero"''',
+    anchor_lookup_body="""IF zero_check decision="positive": cite
+                            per_slot_action_mean_positive[slot][a=0] from the
+                            "Per-slot mean steps10 by action" table AND the
+                            avail=True positive quantiles for the slot, e.g.
+                              "mean=120 (slot=3 a=0 positive); p50=80 p75=180
+                               p95=480 — anchor is CENTER, real spans wide".
+                            IF decision="zero": "N/A — zero_check decided zero".""",
+    phase_application='Write "N/A — no message to amplify".',
+    value_default_hint="""                            DEFAULT to p25-p50 region. Move past p75 only when
+                            ALL of (high s30, exercise/activity loc, peak slot
+                            or high-activity anchor match) are present. Reach
+                            p95+ ONLY for clear exercise events (~1% of cases).""",
+    extra_rule="  * Use the avail=True row of the zero-rate table; ignore avail=False.",
+)
 
-  2. "anchor_lookup"     — IF zero_check decision="positive":
-       - If Available=True (user reachable; MRT chose no-msg arm):
-           cite per_slot_action_mean_positive[slot][a=0] AND positive
-           quantiles for the slot, e.g.
-             "mean=120 (slot=3 a=0 positive); p50=80 p95=480".
-       - If Available=False (user unreachable; send forced to 0):
-           cite per-slot unavail baseline AND quantiles, e.g.
-             "unavail slot=3 → 548; p95=900".
-                            IF decision="zero": "N/A — zero_check decided zero".
-
-  3. "phase_application" — Write "N/A — no message to amplify".
-
-  4. "context_adjustment" — IF positive: adjust the baseline for loc /
-                             weather / temp using context-conditional means,
-                             e.g. "loc=home neutral; temp=warm +5%".
-                             IF zero: "N/A".
-
-  5. "momentum_check"    — IF positive: adjust for steps30pre × momentum
-                            coefficient. IF zero: "N/A".
-
-  6. "episodic_check"    — 1-2 sentence sanity check vs. recent history.
-
-  7. "value"             — FINAL integer steps10 in [0, 10000].
-                            IF zero_check decision="zero": output 0.
-                            ELSE: integer from steps 2-5. Real positive
-                            distribution is right-skewed, but the BULK sits
-                            LOW:
-                              ~50% of positives < p50 (median ≈ 100)
-                              ~25% in p25-p50, ~25% in p50-p75
-                              ~ 6% in p75-p95 (mid-tail)
-                              ~ 1% > p95 (true bursts)
-                            DEFAULT to p25-p50 region. Move past p75 only
-                            when ALL of (high s30, exercise loc / avail=False
-                            commuting context, peak slot) are present. Reach
-                            p95+ ONLY for clear exercise events (~1%).
-                            DO NOT use p95/p99 as the typical anchor —
-                            they are the rare-burst ceiling, not the default.
-                            Prefer 0 or ≥ 18; values in [1, 17] are noise.
-
-CRITICAL rules:
-  * zero_check MUST be done FIRST.
-  * Pick the right baseline table (avail_true positive vs avail_false unavail).
-  * Reference SPECIFIC numbers from the profile blocks; do not invent.
-"""
+# --- BRANCH BODY: NO_MSG_AVAIL_F (send=0 ∧ avail=False) ---------------------
+_BRANCH_BODY_NO_MSG_AVAIL_F = dict(
+    branch_intro=("The user is UNREACHABLE (avail = False); send is forced to 0. "
+                  "This usually means commuting / driving / exercising / sleeping. "
+                  "Predict the user's unavailable-context baseline — phase "
+                  "multiplier does NOT apply."),
+    calibration_block="""  For Available=False: ~35% of windows have steps10 = 0 — significantly
+  LOWER than overall (~54%) because unavailable windows often coincide
+  with movement (commute, walk, workout). DO NOT carry over the avail=True
+  zero rate. Use the avail=False row of the zero-rate baseline block.""",
+    zero_check_examples='''                              "decision=zero — avail=False slot=2 50%, s30=15
+                               in '1-80' 64%, prev=0 → 46% zero"
+                              "decision=positive — avail=False slot=3 0%, s30=520
+                               in '396-857' 14%, prev>0 → 38% zero"''',
+    anchor_lookup_body="""IF zero_check decision="positive": cite the
+                            per-slot UNAVAIL baseline AND the user-level
+                            positive quantiles (flat, no slot split), e.g.
+                              "unavail slot=3 → 548; user p50=120 p75=280
+                               p95=820 — wide commute/exercise tail".
+                            IF decision="zero": "N/A — zero_check decided zero".""",
+    phase_application='Write "N/A — no message to amplify".',
+    value_default_hint="""                            DEFAULT to p25-p75 region — unavail windows skew
+                            higher (commute/exercise) than avail=True baseline,
+                            but DO NOT auto-jump to p95+ unless the slot's
+                            unavail baseline itself is large (e.g. slot 3/5
+                            commute peaks).""",
+    extra_rule="  * Use the avail=False row of the zero-rate table; ignore avail=True.",
+)
 
 
-def _cot_user_block(persona: Dict, current_state: Dict, action: int,
-                     episodic_history: List[Dict], task_block: str) -> str:
-    """Shared USER-side construction for both CoT branches.
-    Differs only in the `task_block` text appended at the end.
+SYSTEM_TEMPLATE_COT_MESSAGE             = _COMMON_HEADER_TPL.format(**_BRANCH_BODY_MESSAGE)
+SYSTEM_TEMPLATE_COT_NO_MESSAGE_avail_true  = _COMMON_HEADER_TPL.format(**_BRANCH_BODY_NO_MSG_AVAIL_T)
+SYSTEM_TEMPLATE_COT_NO_MESSAGE_avail_false = _COMMON_HEADER_TPL.format(**_BRANCH_BODY_NO_MSG_AVAIL_F)
 
-    Profile-block layout intentionally puts zero baseline FIRST and
-    positive quantiles right after the per-slot×action anchor, so the
-    LLM's eye-path matches the CoT order (zero_check → anchor_lookup → ...).
-    Anchor source is per_slot_action_mean_positive (conditional on >0)
-    because zero_check now owns the 0/positive split.
+
+# --- TASK blocks (appended to USER prompt) ----------------------------------
+_TASK_BLOCK_MESSAGE = """## Task
+Reason through the 6 reasoning fields (zero_check first, then the positive
+chain) in the JSON schema above. Each field MUST reference SPECIFIC numbers
+from the profile blocks above (e.g. "slot=3 a=2 positive → 218",
+"honeymoon ×2.20", "steps30pre=85 in low bin", "slot=1 zero baseline 70%").
+
+Remember: zero_check decides 0 vs positive based on the Zero-rate baseline
+block. ~54% of windows are 0 in real data; your decisions across this
+trajectory should reflect that overall.
+
+Output ONLY the JSON object — no markdown fences, no extra text."""
+
+_TASK_BLOCK_NO_MESSAGE_AVAIL_T = """## Task
+No message was sent and the user is REACHABLE. First do zero_check using the
+Zero-rate baseline (avail=True row): ~57% zero overall, modulated by slot /
+steps30pre bin / prev-streak.
+
+If decision="positive", reason through the BASELINE anchor chain:
+  - anchor = per_slot_action_positive[slot][a=0]
+  - widen / narrow using the avail=True positive quantiles for the slot
+In `phase_application`, write "N/A — no message".
+
+Output ONLY the JSON object — no markdown fences, no extra text."""
+
+_TASK_BLOCK_NO_MESSAGE_AVAIL_F = """## Task
+No message was sent and the user is UNREACHABLE (commute / exercise /
+sleep). First do zero_check using the Zero-rate baseline (avail=False row):
+~35% zero overall — LOWER than avail=True because unavail correlates with
+movement.
+
+If decision="positive", reason through the UNAVAIL anchor chain:
+  - anchor = unavail_baseline[slot]   (per-slot mean when avail=False)
+  - widen / narrow using the user-level avail=False positive quantiles
+    (flat, no slot split — per-(user,slot) cells are too thin)
+In `phase_application`, write "N/A — no message".
+
+Output ONLY the JSON object — no markdown fences, no extra text."""
+
+
+# --- USER profile-section assembly per branch -------------------------------
+# Each branch sees a different combination of profile blocks. Sections that
+# don't apply are dropped (not left empty) so the LLM's eye path is tight.
+_BRANCH_MESSAGE        = "message"
+_BRANCH_NO_MSG_AVAIL_T = "no_msg_avail_true"
+_BRANCH_NO_MSG_AVAIL_F = "no_msg_avail_false"
+
+
+def _cot_profile_sections(branch: str, persona: Dict, current_state: Dict) -> List[str]:
+    """Return the ordered list of profile-section strings for the given branch.
+
+    MESSAGE / NO_MSG_AVAIL_T:
+      use per-slot×action table + per-slot avail=True positive quantiles.
+    NO_MSG_AVAIL_F:
+      drop per-slot×action (no randomized action when unavail) and per-slot
+      quantiles (data too thin); use unavail_baseline + flat user-level
+      positive quantiles instead.
     """
-    day = current_state.get("day", 1)
-    profile_sections = [
+    common_head = [
         "## Synthetic User Profile",
         _format_persona(persona),
         _format_zero_baseline(persona, current_state),
-        _format_avail_baseline(persona.get("steps10_avail_true_per_slot_action_mean_positive", {})),
-        _format_positive_quantiles(persona, current_state),
-        _format_unavail_baseline(persona),
+    ]
+    common_tail = [
         _format_context_conditional(persona),
         _format_high_activity_anchors(persona),
     ]
-    profile_block = "\n\n".join(s for s in profile_sections if s)
+
+    if branch == _BRANCH_NO_MSG_AVAIL_F:
+        middle = [
+            _format_unavail_baseline(persona),
+            _format_unavail_quantiles(persona),
+        ]
+    else:
+        # MESSAGE and NO_MSG_AVAIL_T share the same per-slot×action block;
+        # the SYSTEM template tells the LLM which column (a=send vs a=0) to read.
+        middle = [
+            _format_avail_baseline(
+                persona.get("steps10_avail_true_per_slot_action_mean_positive", {})),
+            _format_positive_quantiles(persona, current_state),
+        ]
+
+    return common_head + middle + common_tail
+
+
+def _cot_user_block(branch: str, persona: Dict, current_state: Dict, action: int,
+                     episodic_history: List[Dict], task_block: str) -> str:
+    """USER-side construction. `branch` selects which profile sections appear."""
+    day = current_state.get("day", 1)
+    profile_block = "\n\n".join(
+        s for s in _cot_profile_sections(branch, persona, current_state) if s
+    )
 
     phase_line = _format_compliance_phase(persona, day)
     phase_header = (phase_line + "\n") if phase_line else ""
@@ -416,66 +504,41 @@ Action just taken: send={action}  ({cfg.ACTION_NAMES.get(action, '?')})
 {task_block}"""
 
 
-_TASK_BLOCK_MESSAGE = """## Task
-Reason through the 6 reasoning fields (zero_check first, then the positive
-chain) in the JSON schema above. Each field MUST reference SPECIFIC numbers
-from the profile blocks above (e.g. "slot=3 a=2 positive → 218",
-"honeymoon ×2.20", "steps30pre=85 in low bin", "slot=1 zero baseline 70%").
-
-Remember: zero_check decides 0 vs positive based on the Zero-rate baseline
-block. ~54% of windows are 0 in real data; your decisions across this
-trajectory should reflect that overall.
-
-Output ONLY the JSON object — no markdown fences, no extra text."""
-
-_TASK_BLOCK_NO_MESSAGE = """## Task
-No message was sent. First do zero_check using the Zero-rate baseline block
-(avail-conditional: avail=True+send=0 ~57% zero; avail=False ~35% zero).
-If decision="positive", reason through the BASELINE anchor chain:
-  - "per_slot_action_positive[slot][a=0] = X" if Available=True
-  - "unavail_baseline[slot] = X" if Available=False
-In `phase_application`, write "N/A — no message".
-
-Output ONLY the JSON object — no markdown fences, no extra text."""
-
-
 def _cot_message(persona: Dict, current_state: Dict, action: int,
                   episodic_history: List[Dict]) -> tuple[str, str]:
-    """Branch X: avail=True AND send > 0 — full CoT with phase multiplier."""
-    user = _cot_user_block(persona, current_state, action,
+    user = _cot_user_block(_BRANCH_MESSAGE, persona, current_state, action,
                             episodic_history, _TASK_BLOCK_MESSAGE)
     return SYSTEM_TEMPLATE_COT_MESSAGE, user
 
 
-def _cot_no_message(persona: Dict, current_state: Dict, action: int,
-                     episodic_history: List[Dict]) -> tuple[str, str]:
-    """Branch Y: send = 0 (Y1 avail=T or Y2 avail=F) — baseline CoT, no
-    phase mult. Anchor source picked at runtime by LLM based on avail field
-    in current_state (instructions live in SYSTEM_TEMPLATE_COT_NO_MESSAGE)."""
-    user = _cot_user_block(persona, current_state, action,
-                            episodic_history, _TASK_BLOCK_NO_MESSAGE)
-    return SYSTEM_TEMPLATE_COT_NO_MESSAGE, user
+def _cot_no_message_avail_true(persona: Dict, current_state: Dict, action: int,
+                                 episodic_history: List[Dict]) -> tuple[str, str]:
+    user = _cot_user_block(_BRANCH_NO_MSG_AVAIL_T, persona, current_state, action,
+                            episodic_history, _TASK_BLOCK_NO_MESSAGE_AVAIL_T)
+    return SYSTEM_TEMPLATE_COT_NO_MESSAGE_avail_true, user
+
+
+def _cot_no_message_avail_false(persona: Dict, current_state: Dict, action: int,
+                                  episodic_history: List[Dict]) -> tuple[str, str]:
+    user = _cot_user_block(_BRANCH_NO_MSG_AVAIL_F, persona, current_state, action,
+                            episodic_history, _TASK_BLOCK_NO_MESSAGE_AVAIL_F)
+    return SYSTEM_TEMPLATE_COT_NO_MESSAGE_avail_false, user
 
 
 def build_step_prompt_cot(persona: Dict,
                            current_state: Dict,
                            action: int,
                            episodic_history: List[Dict]) -> tuple[str, str]:
-    """CoT/JSON variant of build_step_prompt — dispatches by `action`:
-      action > 0 → message-effect CoT (with phase multiplier)
-      action = 0 → baseline CoT (no phase multiplier; anchor source decided
-                                 by avail flag, instructed in SYSTEM prompt)
-
-    LLM output: JSON matching cfg.STEPS_COT_JSON_SCHEMA (same schema both
-    branches; phase_application accepts "N/A — no message" string when no
-    message was sent). Use Qwen{8,32}BLLM.judge_steps_cot to consume.
+    """3-way dispatch over (action, avail):
+      action > 0                  → MESSAGE
+      action == 0 ∧ avail=True    → NO_MSG_AVAIL_T (MRT no-msg arm)
+      action == 0 ∧ avail=False   → NO_MSG_AVAIL_F (unreachable baseline)
     """
     if action > 0:
         return _cot_message(persona, current_state, action, episodic_history)
-    return _cot_no_message(persona, current_state, action, episodic_history)
+    if bool(current_state.get("avail", True)):
+        return _cot_no_message_avail_true(persona, current_state, action, episodic_history)
+    return _cot_no_message_avail_false(persona, current_state, action, episodic_history)
 
 
-# Back-compat: the original single SYSTEM_TEMPLATE_COT alias still resolves
-# (in case something imported it elsewhere). Points to the MESSAGE branch
-# since that was the historical default behavior.
-SYSTEM_TEMPLATE_COT = SYSTEM_TEMPLATE_COT_MESSAGE
+

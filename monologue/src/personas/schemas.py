@@ -97,6 +97,9 @@ class Steps10BucketStats:
     # {slot: {"25"|"50"|"75"|"95"|"99": int}} on steps10>0 only.
     # Surfaces the right-skewed tail so LLM doesn't snap to the mean.
     per_slot_positive_quantiles: Dict[int, Dict[str, int]] = field(default_factory=dict)
+    # Flat per-user quantiles on steps10>0 (no slot split). Used by avail=False
+    # branch where per-(user,slot) cells are too thin for stable quantiles.
+    positive_quantiles_user: Dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
