@@ -1,0 +1,1575 @@
+{
+  "1": {
+    "anchor": {
+      "source_uid": 1,
+      "archetype": "high_activity",
+      "variant_type": "source",
+      "synth_uid": 1,
+      "slot_1_hour": 10,
+      "n_days": 35,
+      "borrowed_uids": []
+    },
+    "context": {
+      "weather_dist": {
+        "cloudy": 0.497,
+        "clear": 0.473,
+        "bad": 0.03
+      },
+      "temp_dist": {
+        "warm": 0.379,
+        "hot": 0.343,
+        "mild": 0.154,
+        "cool": 0.112,
+        "cold": 0.012
+      },
+      "weather_transition": {
+        "clear": {
+          "clear": 0.698,
+          "cloudy": 0.302,
+          "bad": 0.0
+        },
+        "cloudy": {
+          "clear": 0.299,
+          "cloudy": 0.642,
+          "bad": 0.06
+        },
+        "bad": {
+          "clear": 0.002,
+          "cloudy": 0.747,
+          "bad": 0.251
+        }
+      },
+      "temp_transition": {
+        "freezing": {
+          "freezing": 0.167,
+          "cold": 0.167,
+          "cool": 0.167,
+          "mild": 0.167,
+          "warm": 0.167,
+          "hot": 0.167
+        },
+        "cold": {
+          "freezing": 0.005,
+          "cold": 0.005,
+          "cool": 0.005,
+          "mild": 0.005,
+          "warm": 0.976,
+          "hot": 0.005
+        },
+        "cool": {
+          "freezing": 0.001,
+          "cold": 0.001,
+          "cool": 0.222,
+          "mild": 0.056,
+          "warm": 0.388,
+          "hot": 0.333
+        },
+        "mild": {
+          "freezing": 0.0,
+          "cold": 0.046,
+          "cool": 0.0,
+          "mild": 0.182,
+          "warm": 0.499,
+          "hot": 0.272
+        },
+        "warm": {
+          "freezing": 0.0,
+          "cold": 0.022,
+          "cool": 0.0,
+          "mild": 0.067,
+          "warm": 0.71,
+          "hot": 0.2
+        },
+        "hot": {
+          "freezing": 0.0,
+          "cold": 0.0,
+          "cool": 0.0,
+          "mild": 0.0,
+          "warm": 0.234,
+          "hot": 0.765
+        }
+      }
+    },
+    "lifestyle": {
+      "weekday_loc_dist": {
+        "home": 0.54,
+        "work": 0.274,
+        "dining": 0.081,
+        "shopping": 0.048,
+        "service": 0.04,
+        "activity": 0.016
+      },
+      "weekend_loc_dist": {
+        "home": 0.667,
+        "service": 0.111,
+        "dining": 0.111,
+        "shopping": 0.111
+      },
+      "weekday_slot_loc": {
+        "1": {
+          "home": 0.958,
+          "dining": 0.042
+        },
+        "2": {
+          "work": 0.68,
+          "home": 0.2,
+          "dining": 0.04,
+          "service": 0.04,
+          "shopping": 0.04
+        },
+        "3": {
+          "work": 0.64,
+          "home": 0.24,
+          "service": 0.12
+        },
+        "4": {
+          "home": 0.84,
+          "dining": 0.04,
+          "service": 0.04,
+          "shopping": 0.04,
+          "activity": 0.04
+        },
+        "5": {
+          "home": 0.48,
+          "dining": 0.28,
+          "shopping": 0.16,
+          "activity": 0.04,
+          "work": 0.04
+        }
+      },
+      "weekend_slot_loc": {
+        "1": {
+          "home": 0.889,
+          "dining": 0.111
+        },
+        "2": {
+          "home": 0.667,
+          "service": 0.111,
+          "shopping": 0.111,
+          "dining": 0.111
+        },
+        "3": {
+          "home": 0.556,
+          "dining": 0.222,
+          "service": 0.111,
+          "shopping": 0.111
+        },
+        "4": {
+          "home": 0.667,
+          "service": 0.111,
+          "dining": 0.111,
+          "shopping": 0.111
+        },
+        "5": {
+          "home": 0.556,
+          "shopping": 0.222,
+          "service": 0.222
+        }
+      },
+      "weekday_loc_transition": {
+        "home": {
+          "home": 0.454,
+          "work": 0.291,
+          "dining": 0.127,
+          "shopping": 0.091,
+          "service": 0.018,
+          "activity": 0.018,
+          "other": 0.0
+        },
+        "work": {
+          "home": 0.454,
+          "work": 0.454,
+          "dining": 0.031,
+          "shopping": 0.0,
+          "service": 0.061,
+          "activity": 0.0,
+          "other": 0.0
+        },
+        "dining": {
+          "home": 0.329,
+          "work": 0.655,
+          "dining": 0.003,
+          "shopping": 0.003,
+          "service": 0.003,
+          "activity": 0.003,
+          "other": 0.003
+        },
+        "shopping": {
+          "home": 0.005,
+          "work": 0.005,
+          "dining": 0.005,
+          "shopping": 0.488,
+          "service": 0.488,
+          "activity": 0.005,
+          "other": 0.005
+        },
+        "service": {
+          "home": 0.248,
+          "work": 0.248,
+          "dining": 0.002,
+          "shopping": 0.002,
+          "service": 0.248,
+          "activity": 0.248,
+          "other": 0.002
+        },
+        "activity": {
+          "home": 0.944,
+          "work": 0.009,
+          "dining": 0.009,
+          "shopping": 0.009,
+          "service": 0.009,
+          "activity": 0.009,
+          "other": 0.009
+        },
+        "other": {
+          "home": 0.143,
+          "work": 0.143,
+          "dining": 0.143,
+          "shopping": 0.143,
+          "service": 0.143,
+          "activity": 0.143,
+          "other": 0.143
+        }
+      },
+      "weekend_loc_transition": {
+        "home": {
+          "home": 0.758,
+          "work": 0.0,
+          "dining": 0.08,
+          "shopping": 0.08,
+          "service": 0.08,
+          "activity": 0.0,
+          "other": 0.0
+        },
+        "work": {
+          "home": 0.143,
+          "work": 0.143,
+          "dining": 0.143,
+          "shopping": 0.143,
+          "service": 0.143,
+          "activity": 0.143,
+          "other": 0.143
+        },
+        "dining": {
+          "home": 0.594,
+          "work": 0.002,
+          "dining": 0.002,
+          "shopping": 0.396,
+          "service": 0.002,
+          "activity": 0.002,
+          "other": 0.002
+        },
+        "shopping": {
+          "home": 0.003,
+          "work": 0.003,
+          "dining": 0.329,
+          "shopping": 0.329,
+          "service": 0.329,
+          "activity": 0.003,
+          "other": 0.003
+        },
+        "service": {
+          "home": 0.003,
+          "work": 0.003,
+          "dining": 0.329,
+          "shopping": 0.003,
+          "service": 0.655,
+          "activity": 0.003,
+          "other": 0.003
+        },
+        "activity": {
+          "home": 0.143,
+          "work": 0.143,
+          "dining": 0.143,
+          "shopping": 0.143,
+          "service": 0.143,
+          "activity": 0.143,
+          "other": 0.143
+        },
+        "other": {
+          "home": 0.143,
+          "work": 0.143,
+          "dining": 0.143,
+          "shopping": 0.143,
+          "service": 0.143,
+          "activity": 0.143,
+          "other": 0.143
+        }
+      },
+      "avail_rate": 0.9349112426035503,
+      "avail_by_slot": {
+        "1": 0.97,
+        "2": 0.941,
+        "3": 0.941,
+        "4": 0.912,
+        "5": 0.912
+      },
+      "avail_by_loc": {
+        "home": 0.979,
+        "work": 1.0,
+        "dining": 0.8,
+        "shopping": 0.727,
+        "service": 0.8,
+        "activity": 0.5
+      },
+      "unavail_triggers": [
+        "slot=5 + loc=shopping: avail=67% (n=6)"
+      ],
+      "unusual_loc_events": []
+    },
+    "activity": {
+      "steps30pre": {
+        "mean": 368.2,
+        "median": 137.0,
+        "zero_pct": 0.284,
+        "per_slot_mean": {
+          "1": 8.3,
+          "2": 344.6,
+          "3": 492.9,
+          "4": 454.3,
+          "5": 530.1
+        },
+        "per_slot_zero_pct": {
+          "1": 0.879,
+          "2": 0.118,
+          "3": 0.176,
+          "4": 0.029,
+          "5": 0.235
+        },
+        "sigma_log": 1.454
+      },
+      "steps10": {
+        "avail_true": {
+          "mean": 130.0,
+          "median": 37.0,
+          "zero_pct": 0.43,
+          "per_slot_mean": {
+            "1": 40.8,
+            "2": 159.1,
+            "3": 135.4,
+            "4": 162.3,
+            "5": 154.3
+          },
+          "per_slot_zero_pct": {
+            "1": 0.688,
+            "2": 0.344,
+            "3": 0.438,
+            "4": 0.226,
+            "5": 0.452
+          },
+          "per_slot_action_mean": {
+            "1": {
+              "0": 24.6,
+              "1": 99.0,
+              "2": 31.2
+            },
+            "2": {
+              "0": 159.7,
+              "1": 159.9,
+              "2": 157.8
+            },
+            "3": {
+              "0": 79.4,
+              "1": 108.3,
+              "2": 218.3
+            },
+            "4": {
+              "0": 146.8,
+              "1": 63.5,
+              "2": 261.3
+            },
+            "5": {
+              "0": 234.3,
+              "1": 52.8,
+              "2": 151.0
+            }
+          },
+          "zero_pct_by_s30_bin": {
+            "(-0.001, 136.5]": 0.671,
+            "(136.5, 448.25]": 0.308,
+            "(448.25, 2913.0]": 0.075
+          },
+          "per_slot_action_mean_positive": {
+            "1": {
+              "0": 92.2,
+              "1": 297.0,
+              "2": 85.8
+            },
+            "2": {
+              "0": 351.4,
+              "1": 228.4,
+              "2": 192.9
+            },
+            "3": {
+              "0": 158.8,
+              "1": 189.5,
+              "2": 363.8
+            },
+            "4": {
+              "0": 159.1,
+              "1": 127.0,
+              "2": 326.6
+            },
+            "5": {
+              "0": 338.4,
+              "1": 105.6,
+              "2": 402.7
+            }
+          },
+          "per_slot_positive_quantiles": {
+            "2": {
+              "25": 71,
+              "50": 147,
+              "75": 368,
+              "95": 673,
+              "99": 720
+            },
+            "4": {
+              "25": 60,
+              "50": 127,
+              "75": 200,
+              "95": 703,
+              "99": 1038
+            }
+          }
+        },
+        "avail_false": {
+          "mean": 259.6,
+          "median": 69.0,
+          "zero_pct": 0.273,
+          "per_slot_mean": {
+            "1": 39.0,
+            "2": 52.5,
+            "3": 519.5,
+            "4": 109.0,
+            "5": 448.7
+          },
+          "per_slot_zero_pct": {
+            "1": 0.0,
+            "2": 0.5,
+            "3": 0.5,
+            "4": 0.333,
+            "5": 0.0
+          },
+          "per_slot_action_mean": null,
+          "zero_pct_by_s30_bin": {
+            "(-0.001, 37.5]": 0.667,
+            "(37.5, 174.0]": 0.333,
+            "(174.0, 471.0]": 0.0,
+            "(471.0, 2510.0]": 0.0
+          },
+          "per_slot_action_mean_positive": null,
+          "per_slot_positive_quantiles": {}
+        },
+        "all": {
+          "mean": 138.5,
+          "median": 45.0,
+          "zero_pct": 0.42,
+          "per_slot_mean": {
+            "1": 40.8,
+            "2": 152.9,
+            "3": 158.0,
+            "4": 157.6,
+            "5": 180.2
+          },
+          "per_slot_zero_pct": {
+            "1": 0.667,
+            "2": 0.353,
+            "3": 0.441,
+            "4": 0.235,
+            "5": 0.412
+          },
+          "per_slot_action_mean": null,
+          "zero_pct_by_s30_bin": {},
+          "per_slot_action_mean_positive": null,
+          "per_slot_positive_quantiles": {},
+          "by_loc": {
+            "home": 142.1,
+            "work": 138.9,
+            "dining": 111.3,
+            "shopping": 58.2,
+            "service": 170.3,
+            "activity": 439.5
+          },
+          "by_weather": {
+            "clear": 168.3,
+            "cloudy": 118.2,
+            "bad": 0.0
+          },
+          "by_temp": {
+            "cold": 146.0,
+            "cool": 17.6,
+            "mild": 44.1,
+            "warm": 158.0,
+            "hot": 198.6
+          },
+          "by_steps30pre_bin": {
+            "(-0.001, 137.0]": 39.2,
+            "(137.0, 454.0]": 114.9,
+            "(454.0, 2913.0]": 369.0
+          },
+          "momentum_score": 0.617,
+          "context_sensitivity": {
+            "loc": 122.5,
+            "weather": 70.6,
+            "temp": 69.7,
+            "steps30pre": 141.1
+          },
+          "high_activity_contexts": []
+        },
+        "momentum_pair_pct": {
+          "zero_after_zero": 0.465,
+          "zero_after_nonzero": 0.381
+        }
+      }
+    },
+    "compliance": {
+      "phases": [
+        {
+          "name": "honeymoon",
+          "day_range": [
+            1,
+            11
+          ],
+          "activity_mult": 1.65
+        },
+        {
+          "name": "plateau",
+          "day_range": [
+            12,
+            999
+          ],
+          "activity_mult": 1.0
+        }
+      ]
+    }
+  },
+  "2": {
+    "anchor": {
+      "source_uid": 2,
+      "archetype": "standard",
+      "variant_type": "source",
+      "synth_uid": 2,
+      "slot_1_hour": 13,
+      "n_days": 35,
+      "borrowed_uids": []
+    },
+    "context": {
+      "weather_dist": {
+        "cloudy": 0.552,
+        "clear": 0.428,
+        "bad": 0.021
+      },
+      "temp_dist": {
+        "warm": 0.497,
+        "mild": 0.283,
+        "hot": 0.207,
+        "freezing": 0.007,
+        "cool": 0.007
+      },
+      "weather_transition": {
+        "clear": {
+          "clear": 0.52,
+          "cloudy": 0.48,
+          "bad": 0.0
+        },
+        "cloudy": {
+          "clear": 0.224,
+          "cloudy": 0.724,
+          "bad": 0.052
+        },
+        "bad": {
+          "clear": 0.498,
+          "cloudy": 0.498,
+          "bad": 0.005
+        }
+      },
+      "temp_transition": {
+        "freezing": {
+          "freezing": 0.009,
+          "cold": 0.009,
+          "cool": 0.009,
+          "mild": 0.009,
+          "warm": 0.953,
+          "hot": 0.009
+        },
+        "cold": {
+          "freezing": 0.167,
+          "cold": 0.167,
+          "cool": 0.167,
+          "mild": 0.167,
+          "warm": 0.167,
+          "hot": 0.167
+        },
+        "cool": {
+          "freezing": 0.009,
+          "cold": 0.009,
+          "cool": 0.009,
+          "mild": 0.953,
+          "warm": 0.009,
+          "hot": 0.009
+        },
+        "mild": {
+          "freezing": 0.0,
+          "cold": 0.0,
+          "cool": 0.0,
+          "mild": 0.322,
+          "warm": 0.483,
+          "hot": 0.193
+        },
+        "warm": {
+          "freezing": 0.0,
+          "cold": 0.0,
+          "cool": 0.0,
+          "mild": 0.123,
+          "warm": 0.673,
+          "hot": 0.204
+        },
+        "hot": {
+          "freezing": 0.036,
+          "cold": 0.0,
+          "cool": 0.0,
+          "mild": 0.072,
+          "warm": 0.392,
+          "hot": 0.499
+        }
+      }
+    },
+    "lifestyle": {
+      "weekday_loc_dist": {
+        "work": 0.939,
+        "service": 0.051,
+        "activity": 0.01
+      },
+      "weekend_loc_dist": {
+        "work": 0.426,
+        "service": 0.383,
+        "shopping": 0.106,
+        "dining": 0.043,
+        "activity": 0.043
+      },
+      "weekday_slot_loc": {
+        "1": {
+          "work": 1.0
+        },
+        "2": {
+          "work": 1.0
+        },
+        "3": {
+          "work": 1.0
+        },
+        "4": {
+          "work": 1.0
+        },
+        "5": {
+          "work": 0.667,
+          "service": 0.278,
+          "activity": 0.056
+        }
+      },
+      "weekend_slot_loc": {
+        "1": {
+          "work": 0.7,
+          "service": 0.2,
+          "shopping": 0.1
+        },
+        "2": {
+          "service": 0.667,
+          "work": 0.333
+        },
+        "3": {
+          "service": 0.556,
+          "work": 0.222,
+          "shopping": 0.111,
+          "activity": 0.111
+        },
+        "4": {
+          "work": 0.364,
+          "service": 0.273,
+          "shopping": 0.273,
+          "dining": 0.091
+        },
+        "5": {
+          "work": 0.455,
+          "service": 0.364,
+          "dining": 0.091,
+          "activity": 0.091
+        }
+      },
+      "weekday_loc_transition": {
+        "home": {
+          "home": 0.143,
+          "work": 0.143,
+          "dining": 0.143,
+          "shopping": 0.143,
+          "service": 0.143,
+          "activity": 0.143,
+          "other": 0.143
+        },
+        "work": {
+          "home": 0.0,
+          "work": 0.918,
+          "dining": 0.0,
+          "shopping": 0.0,
+          "service": 0.068,
+          "activity": 0.014,
+          "other": 0.0
+        },
+        "dining": {
+          "home": 0.143,
+          "work": 0.143,
+          "dining": 0.143,
+          "shopping": 0.143,
+          "service": 0.143,
+          "activity": 0.143,
+          "other": 0.143
+        },
+        "shopping": {
+          "home": 0.143,
+          "work": 0.143,
+          "dining": 0.143,
+          "shopping": 0.143,
+          "service": 0.143,
+          "activity": 0.143,
+          "other": 0.143
+        },
+        "service": {
+          "home": 0.143,
+          "work": 0.143,
+          "dining": 0.143,
+          "shopping": 0.143,
+          "service": 0.143,
+          "activity": 0.143,
+          "other": 0.143
+        },
+        "activity": {
+          "home": 0.143,
+          "work": 0.143,
+          "dining": 0.143,
+          "shopping": 0.143,
+          "service": 0.143,
+          "activity": 0.143,
+          "other": 0.143
+        },
+        "other": {
+          "home": 0.143,
+          "work": 0.143,
+          "dining": 0.143,
+          "shopping": 0.143,
+          "service": 0.143,
+          "activity": 0.143,
+          "other": 0.143
+        }
+      },
+      "weekend_loc_transition": {
+        "home": {
+          "home": 0.143,
+          "work": 0.143,
+          "dining": 0.143,
+          "shopping": 0.143,
+          "service": 0.143,
+          "activity": 0.143,
+          "other": 0.143
+        },
+        "work": {
+          "home": 0.001,
+          "work": 0.266,
+          "dining": 0.001,
+          "shopping": 0.067,
+          "service": 0.598,
+          "activity": 0.067,
+          "other": 0.001
+        },
+        "dining": {
+          "home": 0.009,
+          "work": 0.944,
+          "dining": 0.009,
+          "shopping": 0.009,
+          "service": 0.009,
+          "activity": 0.009,
+          "other": 0.009
+        },
+        "shopping": {
+          "home": 0.002,
+          "work": 0.002,
+          "dining": 0.199,
+          "shopping": 0.199,
+          "service": 0.396,
+          "activity": 0.199,
+          "other": 0.002
+        },
+        "service": {
+          "home": 0.001,
+          "work": 0.427,
+          "dining": 0.072,
+          "shopping": 0.143,
+          "service": 0.356,
+          "activity": 0.001,
+          "other": 0.001
+        },
+        "activity": {
+          "home": 0.009,
+          "work": 0.944,
+          "dining": 0.009,
+          "shopping": 0.009,
+          "service": 0.009,
+          "activity": 0.009,
+          "other": 0.009
+        },
+        "other": {
+          "home": 0.143,
+          "work": 0.143,
+          "dining": 0.143,
+          "shopping": 0.143,
+          "service": 0.143,
+          "activity": 0.143,
+          "other": 0.143
+        }
+      },
+      "avail_rate": 0.9241379310344827,
+      "avail_by_slot": {
+        "1": 0.935,
+        "2": 0.923,
+        "3": 1.0,
+        "4": 0.821,
+        "5": 0.931
+      },
+      "avail_by_loc": {
+        "work": 0.938,
+        "dining": 1.0,
+        "shopping": 0.6,
+        "service": 0.913,
+        "activity": 1.0
+      },
+      "unavail_triggers": [],
+      "unusual_loc_events": []
+    },
+    "activity": {
+      "steps30pre": {
+        "mean": 180.3,
+        "median": 20.0,
+        "zero_pct": 0.476,
+        "per_slot_mean": {
+          "1": 59.7,
+          "2": 269.8,
+          "3": 271.3,
+          "4": 167.3,
+          "5": 144.2
+        },
+        "per_slot_zero_pct": {
+          "1": 0.839,
+          "2": 0.308,
+          "3": 0.387,
+          "4": 0.393,
+          "5": 0.414
+        },
+        "sigma_log": 1.254
+      },
+      "steps10": {
+        "avail_true": {
+          "mean": 60.0,
+          "median": 0.0,
+          "zero_pct": 0.672,
+          "per_slot_mean": {
+            "1": 34.0,
+            "2": 113.0,
+            "3": 62.1,
+            "4": 51.8,
+            "5": 45.6
+          },
+          "per_slot_zero_pct": {
+            "1": 0.897,
+            "2": 0.583,
+            "3": 0.548,
+            "4": 0.696,
+            "5": 0.63
+          },
+          "per_slot_action_mean": {
+            "1": {
+              "0": 23.8,
+              "1": 0.0,
+              "2": 51.9
+            },
+            "2": {
+              "0": 36.4,
+              "1": 118.4,
+              "2": 206.0
+            },
+            "3": {
+              "0": 72.2,
+              "1": 99.7,
+              "2": 15.9
+            },
+            "4": {
+              "0": 0.0,
+              "1": 31.8,
+              "2": 114.7
+            },
+            "5": {
+              "0": 52.6,
+              "1": 7.8,
+              "2": 62.5
+            }
+          },
+          "zero_pct_by_s30_bin": {
+            "(-0.001, 18.0]": 0.824,
+            "(18.0, 143.25]": 0.562,
+            "(143.25, 1870.0]": 0.471
+          },
+          "per_slot_action_mean_positive": {
+            "1": {
+              "0": 155.0,
+              "2": 675.0
+            },
+            "2": {
+              "0": 97.0,
+              "1": 296.0,
+              "2": 412.0
+            },
+            "3": {
+              "0": 154.7,
+              "1": 174.5,
+              "2": 47.7
+            },
+            "4": {
+              "1": 79.5,
+              "2": 206.4
+            },
+            "5": {
+              "0": 171.0,
+              "1": 47.0,
+              "2": 100.0
+            }
+          },
+          "per_slot_positive_quantiles": {}
+        },
+        "avail_false": {
+          "mean": 228.6,
+          "median": 55.0,
+          "zero_pct": 0.455,
+          "per_slot_mean": {
+            "1": 477.0,
+            "2": 313.5,
+            "4": 50.2,
+            "5": 341.5
+          },
+          "per_slot_zero_pct": {
+            "1": 0.5,
+            "2": 0.0,
+            "4": 0.8,
+            "5": 0.0
+          },
+          "per_slot_action_mean": null,
+          "zero_pct_by_s30_bin": {
+            "(-0.001, 8.5]": 1.0,
+            "(8.5, 200.0]": 0.0,
+            "(200.0, 507.0]": 0.5,
+            "(507.0, 1683.0]": 0.333
+          },
+          "per_slot_action_mean_positive": null,
+          "per_slot_positive_quantiles": {}
+        },
+        "all": {
+          "mean": 72.8,
+          "median": 0.0,
+          "zero_pct": 0.655,
+          "per_slot_mean": {
+            "1": 62.5,
+            "2": 128.4,
+            "3": 62.1,
+            "4": 51.5,
+            "5": 66.0
+          },
+          "per_slot_zero_pct": {
+            "1": 0.871,
+            "2": 0.538,
+            "3": 0.548,
+            "4": 0.714,
+            "5": 0.586
+          },
+          "per_slot_action_mean": null,
+          "zero_pct_by_s30_bin": {},
+          "per_slot_action_mean_positive": null,
+          "per_slot_positive_quantiles": {},
+          "by_loc": {
+            "work": 72.6,
+            "dining": 45.5,
+            "shopping": 86.4,
+            "service": 77.5,
+            "activity": 39.3
+          },
+          "by_weather": {
+            "clear": 71.3,
+            "cloudy": 76.4,
+            "bad": 8.3
+          },
+          "by_temp": {
+            "freezing": 0.0,
+            "cool": 0.0,
+            "mild": 26.7,
+            "warm": 82.3,
+            "hot": 117.9
+          },
+          "by_steps30pre_bin": {
+            "(-0.001, 20.0]": 34.9,
+            "(20.0, 183.0]": 70.6,
+            "(183.0, 1870.0]": 152.0
+          },
+          "momentum_score": 0.215,
+          "context_sensitivity": {
+            "loc": 18.5,
+            "weather": 31.0,
+            "temp": 47.1,
+            "steps30pre": 49.0
+          },
+          "high_activity_contexts": []
+        },
+        "momentum_pair_pct": {
+          "zero_after_zero": 0.596,
+          "zero_after_nonzero": 0.78
+        }
+      }
+    },
+    "compliance": {
+      "phases": [
+        {
+          "name": "plateau",
+          "day_range": [
+            1,
+            999
+          ],
+          "activity_mult": 1.0
+        }
+      ]
+    }
+  },
+  "3": {
+    "anchor": {
+      "source_uid": 3,
+      "archetype": "low_activity",
+      "variant_type": "source",
+      "synth_uid": 3,
+      "slot_1_hour": 13,
+      "n_days": 38,
+      "borrowed_uids": []
+    },
+    "context": {
+      "weather_dist": {
+        "cloudy": 0.624,
+        "clear": 0.371,
+        "bad": 0.006
+      },
+      "temp_dist": {
+        "warm": 0.489,
+        "mild": 0.287,
+        "hot": 0.163,
+        "cool": 0.056,
+        "freezing": 0.006
+      },
+      "weather_transition": {
+        "clear": {
+          "clear": 0.745,
+          "cloudy": 0.255,
+          "bad": 0.0
+        },
+        "cloudy": {
+          "clear": 0.148,
+          "cloudy": 0.841,
+          "bad": 0.011
+        },
+        "bad": {
+          "clear": 0.01,
+          "cloudy": 0.981,
+          "bad": 0.01
+        }
+      },
+      "temp_transition": {
+        "freezing": {
+          "freezing": 0.009,
+          "cold": 0.009,
+          "cool": 0.009,
+          "mild": 0.009,
+          "warm": 0.953,
+          "hot": 0.009
+        },
+        "cold": {
+          "freezing": 0.167,
+          "cold": 0.167,
+          "cool": 0.167,
+          "mild": 0.167,
+          "warm": 0.167,
+          "hot": 0.167
+        },
+        "cool": {
+          "freezing": 0.001,
+          "cold": 0.001,
+          "cool": 0.498,
+          "mild": 0.373,
+          "warm": 0.125,
+          "hot": 0.001
+        },
+        "mild": {
+          "freezing": 0.0,
+          "cold": 0.0,
+          "cool": 0.0,
+          "mild": 0.666,
+          "warm": 0.333,
+          "hot": 0.0
+        },
+        "warm": {
+          "freezing": 0.016,
+          "cold": 0.0,
+          "cool": 0.016,
+          "mild": 0.031,
+          "warm": 0.765,
+          "hot": 0.172
+        },
+        "hot": {
+          "freezing": 0.0,
+          "cold": 0.0,
+          "cool": 0.0,
+          "mild": 0.0,
+          "warm": 0.32,
+          "hot": 0.679
+        }
+      }
+    },
+    "lifestyle": {
+      "weekday_loc_dist": {
+        "work": 0.463,
+        "activity": 0.203,
+        "service": 0.13,
+        "dining": 0.122,
+        "shopping": 0.081
+      },
+      "weekend_loc_dist": {
+        "activity": 0.6,
+        "shopping": 0.164,
+        "dining": 0.109,
+        "work": 0.091,
+        "service": 0.036
+      },
+      "weekday_slot_loc": {
+        "1": {
+          "work": 0.769,
+          "activity": 0.115,
+          "service": 0.077,
+          "dining": 0.038
+        },
+        "2": {
+          "work": 0.64,
+          "dining": 0.2,
+          "service": 0.08,
+          "activity": 0.08
+        },
+        "3": {
+          "work": 0.609,
+          "service": 0.13,
+          "activity": 0.13,
+          "shopping": 0.087,
+          "dining": 0.043
+        },
+        "4": {
+          "work": 0.25,
+          "service": 0.25,
+          "activity": 0.25,
+          "shopping": 0.167,
+          "dining": 0.083
+        },
+        "5": {
+          "activity": 0.44,
+          "dining": 0.24,
+          "shopping": 0.16,
+          "service": 0.12,
+          "work": 0.04
+        }
+      },
+      "weekend_slot_loc": {
+        "1": {
+          "activity": 0.7,
+          "shopping": 0.2,
+          "dining": 0.1
+        },
+        "2": {
+          "activity": 0.818,
+          "shopping": 0.091,
+          "dining": 0.091
+        },
+        "3": {
+          "activity": 0.636,
+          "shopping": 0.182,
+          "work": 0.091,
+          "dining": 0.091
+        },
+        "4": {
+          "work": 0.364,
+          "activity": 0.364,
+          "shopping": 0.091,
+          "service": 0.091,
+          "dining": 0.091
+        },
+        "5": {
+          "activity": 0.5,
+          "shopping": 0.25,
+          "dining": 0.167,
+          "service": 0.083
+        }
+      },
+      "weekday_loc_transition": {
+        "home": {
+          "home": 0.143,
+          "work": 0.143,
+          "dining": 0.143,
+          "shopping": 0.143,
+          "service": 0.143,
+          "activity": 0.143,
+          "other": 0.143
+        },
+        "work": {
+          "home": 0.0,
+          "work": 0.607,
+          "dining": 0.089,
+          "shopping": 0.072,
+          "service": 0.072,
+          "activity": 0.161,
+          "other": 0.0
+        },
+        "dining": {
+          "home": 0.001,
+          "work": 0.222,
+          "dining": 0.111,
+          "shopping": 0.111,
+          "service": 0.222,
+          "activity": 0.332,
+          "other": 0.001
+        },
+        "shopping": {
+          "home": 0.002,
+          "work": 0.002,
+          "dining": 0.331,
+          "shopping": 0.166,
+          "service": 0.002,
+          "activity": 0.496,
+          "other": 0.002
+        },
+        "service": {
+          "home": 0.001,
+          "work": 0.001,
+          "dining": 0.077,
+          "shopping": 0.307,
+          "service": 0.536,
+          "activity": 0.077,
+          "other": 0.001
+        },
+        "activity": {
+          "home": 0.001,
+          "work": 0.077,
+          "dining": 0.383,
+          "shopping": 0.001,
+          "service": 0.077,
+          "activity": 0.46,
+          "other": 0.001
+        },
+        "other": {
+          "home": 0.143,
+          "work": 0.143,
+          "dining": 0.143,
+          "shopping": 0.143,
+          "service": 0.143,
+          "activity": 0.143,
+          "other": 0.143
+        }
+      },
+      "weekend_loc_transition": {
+        "home": {
+          "home": 0.143,
+          "work": 0.143,
+          "dining": 0.143,
+          "shopping": 0.143,
+          "service": 0.143,
+          "activity": 0.143,
+          "other": 0.143
+        },
+        "work": {
+          "home": 0.002,
+          "work": 0.199,
+          "dining": 0.199,
+          "shopping": 0.199,
+          "service": 0.002,
+          "activity": 0.396,
+          "other": 0.002
+        },
+        "dining": {
+          "home": 0.002,
+          "work": 0.002,
+          "dining": 0.494,
+          "shopping": 0.002,
+          "service": 0.248,
+          "activity": 0.248,
+          "other": 0.002
+        },
+        "shopping": {
+          "home": 0.002,
+          "work": 0.002,
+          "dining": 0.002,
+          "shopping": 0.496,
+          "service": 0.002,
+          "activity": 0.496,
+          "other": 0.002
+        },
+        "service": {
+          "home": 0.009,
+          "work": 0.009,
+          "dining": 0.009,
+          "shopping": 0.944,
+          "service": 0.009,
+          "activity": 0.009,
+          "other": 0.009
+        },
+        "activity": {
+          "home": 0.0,
+          "work": 0.111,
+          "dining": 0.074,
+          "shopping": 0.074,
+          "service": 0.037,
+          "activity": 0.702,
+          "other": 0.0
+        },
+        "other": {
+          "home": 0.143,
+          "work": 0.143,
+          "dining": 0.143,
+          "shopping": 0.143,
+          "service": 0.143,
+          "activity": 0.143,
+          "other": 0.143
+        }
+      },
+      "avail_rate": 0.8314606741573034,
+      "avail_by_slot": {
+        "1": 0.972,
+        "2": 0.944,
+        "3": 0.971,
+        "4": 0.571,
+        "5": 0.703
+      },
+      "avail_by_loc": {
+        "work": 0.919,
+        "dining": 0.857,
+        "shopping": 0.737,
+        "service": 0.667,
+        "activity": 0.81
+      },
+      "unavail_triggers": [
+        "slot=4 + loc=shopping: avail=20% (n=5)",
+        "slot=4 + loc=service: avail=43% (n=7)",
+        "slot=4 + loc=activity: avail=60% (n=10)"
+      ],
+      "unusual_loc_events": []
+    },
+    "activity": {
+      "steps30pre": {
+        "mean": 182.2,
+        "median": 28.0,
+        "zero_pct": 0.444,
+        "per_slot_mean": {
+          "1": 33.2,
+          "2": 204.2,
+          "3": 168.4,
+          "4": 307.3,
+          "5": 199.9
+        },
+        "per_slot_zero_pct": {
+          "1": 0.75,
+          "2": 0.222,
+          "3": 0.529,
+          "4": 0.257,
+          "5": 0.459
+        },
+        "sigma_log": 1.461
+      },
+      "steps10": {
+        "avail_true": {
+          "mean": 34.5,
+          "median": 0.0,
+          "zero_pct": 0.73,
+          "per_slot_mean": {
+            "1": 14.7,
+            "2": 38.8,
+            "3": 26.7,
+            "4": 94.8,
+            "5": 18.9
+          },
+          "per_slot_zero_pct": {
+            "1": 0.8,
+            "2": 0.853,
+            "3": 0.606,
+            "4": 0.55,
+            "5": 0.769
+          },
+          "per_slot_action_mean": {
+            "1": {
+              "0": 0.0,
+              "1": 12.3,
+              "2": 27.5
+            },
+            "2": {
+              "0": 11.8,
+              "1": 0.0,
+              "2": 103.8
+            },
+            "3": {
+              "0": 11.6,
+              "1": 74.3,
+              "2": 16.5
+            },
+            "4": {
+              "0": 40.9,
+              "1": 95.7,
+              "2": 142.3
+            },
+            "5": {
+              "0": 27.9,
+              "1": 5.0,
+              "2": 4.2
+            }
+          },
+          "zero_pct_by_s30_bin": {
+            "(-0.001, 1.5]": 0.811,
+            "(1.5, 166.25]": 0.865,
+            "(166.25, 2655.0]": 0.432
+          },
+          "per_slot_action_mean_positive": {
+            "1": {
+              "1": 24.7,
+              "2": 110.0
+            },
+            "2": {
+              "0": 59.0,
+              "2": 571.0
+            },
+            "3": {
+              "0": 40.8,
+              "1": 173.3,
+              "2": 33.0
+            },
+            "4": {
+              "0": 109.0,
+              "1": 287.0,
+              "2": 256.2
+            },
+            "5": {
+              "0": 111.5,
+              "1": 25.0,
+              "2": 21.0
+            }
+          },
+          "per_slot_positive_quantiles": {}
+        },
+        "avail_false": {
+          "mean": 145.0,
+          "median": 0.0,
+          "zero_pct": 0.533,
+          "per_slot_mean": {
+            "1": 0.0,
+            "2": 218.5,
+            "3": 295.0,
+            "4": 99.7,
+            "5": 193.0
+          },
+          "per_slot_zero_pct": {
+            "1": 1.0,
+            "2": 0.5,
+            "3": 0.0,
+            "4": 0.6,
+            "5": 0.455
+          },
+          "per_slot_action_mean": null,
+          "zero_pct_by_s30_bin": {
+            "(-0.001, 123.75]": 0.75,
+            "(123.75, 269.5]": 0.714,
+            "(269.5, 709.25]": 0.286,
+            "(709.25, 1015.0]": 0.375
+          },
+          "per_slot_action_mean_positive": null,
+          "per_slot_positive_quantiles": {}
+        },
+        "all": {
+          "mean": 53.1,
+          "median": 0.0,
+          "zero_pct": 0.697,
+          "per_slot_mean": {
+            "1": 14.3,
+            "2": 48.8,
+            "3": 34.6,
+            "4": 96.9,
+            "5": 70.7
+          },
+          "per_slot_zero_pct": {
+            "1": 0.806,
+            "2": 0.833,
+            "3": 0.588,
+            "4": 0.571,
+            "5": 0.676
+          },
+          "per_slot_action_mean": null,
+          "zero_pct_by_s30_bin": {},
+          "per_slot_action_mean_positive": null,
+          "per_slot_positive_quantiles": {},
+          "by_loc": {
+            "work": 36.9,
+            "dining": 19.4,
+            "shopping": 27.7,
+            "service": 43.9,
+            "activity": 93.8
+          },
+          "by_weather": {
+            "clear": 72.0,
+            "cloudy": 42.4,
+            "bad": 0.0
+          },
+          "by_temp": {
+            "freezing": 14.0,
+            "cool": 61.2,
+            "mild": 29.9,
+            "warm": 68.6,
+            "hot": 45.9
+          },
+          "by_steps30pre_bin": {
+            "(-0.001, 28.0]": 19.6,
+            "(28.0, 256.5]": 65.3,
+            "(256.5, 2655.0]": 107.5
+          },
+          "momentum_score": 0.268,
+          "context_sensitivity": {
+            "loc": 26.1,
+            "weather": 29.5,
+            "temp": 20.0,
+            "steps30pre": 35.9
+          },
+          "high_activity_contexts": [
+            "slot=4 + loc=work (mean=131, n=10)",
+            "slot=4 + loc=activity (mean=157, n=10)",
+            "slot=5 + loc=activity (mean=124, n=17)"
+          ]
+        },
+        "momentum_pair_pct": {
+          "zero_after_zero": 0.748,
+          "zero_after_nonzero": 0.574
+        }
+      }
+    },
+    "compliance": {
+      "phases": [
+        {
+          "name": "plateau",
+          "day_range": [
+            1,
+            999
+          ],
+          "activity_mult": 1.0
+        }
+      ]
+    }
+  }
+}

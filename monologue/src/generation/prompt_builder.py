@@ -313,6 +313,10 @@ CRITICAL CALIBRATION FACT:
   Only ~46% of windows actually accumulate any steps.
   Your output MUST reflect this. Use zero_check (step 1) to decide 0 vs
   positive based on state cues, not by averaging out a positive guess.
+  NOTE: per-action zero rates are essentially equal across send (a=0 52%,
+  a=1 58%, a=2 55%). Sending a message does NOT meaningfully reduce zero
+  probability — it modulates the POSITIVE magnitude when activity happens,
+  not whether activity happens. Do not under-zero on send=1 or send=2.
 
 OUTPUT FORMAT — a JSON object with EXACTLY these 7 keys, in this order:
 
@@ -327,8 +331,10 @@ OUTPUT FORMAT — a JSON object with EXACTLY these 7 keys, in this order:
                               "decision=positive — slot=3 41%, s30=420 in '396-857'
                                14%, prev>0 → 42% zero"
                             Bias toward 'zero' when ANY TWO of:
-                              (low steps30pre bin, morning slot, prev=0 streak)
-                            agree.
+                              (low steps30pre bin, morning/evening slot,
+                               prev=0 streak)
+                            agree. Default reflex (no strong cue either way)
+                            should still be ~50/50; do NOT default 'positive'.
 
   2. "anchor_lookup"     — IF zero_check decision="positive": look up
                             per_slot_action_mean_positive[slot][send] from
@@ -357,12 +363,21 @@ OUTPUT FORMAT — a JSON object with EXACTLY these 7 keys, in this order:
   7. "value"             — FINAL integer steps10 in [0, 10000].
                             IF zero_check decision="zero": output 0.
                             ELSE: integer derived from steps 2-5. Real positive
-                            distribution is RIGHT-SKEWED — when the chain says
-                            "burst context" (high s30, exercise loc, peak slot,
-                            high-activity anchor match), allow value to approach
-                            p95 or p99 rather than regressing to mean.
-                            Real values [1, 17] are essentially noise (~1% of
-                            positives); prefer 0 or ≥ 18.
+                            distribution is right-skewed, but the BULK sits
+                            LOW:
+                              ~50% of positives < p50 (median ≈ 100)
+                              ~25% in p25-p50 range
+                              ~25% in p50-p75 range
+                              ~ 6% in p75-p95 (mid-tail)
+                              ~ 1% > p95 (true bursts)
+                            DEFAULT to p25-p50 region. Move past p75 only when
+                            ALL of (high s30, exercise/activity loc, peak slot
+                            or high-activity anchor match) are present. Reach
+                            p95+ ONLY for clear exercise events (~1% of cases).
+                            DO NOT use p95/p99 as the typical anchor — they
+                            are the rare-burst ceiling, not the default.
+                            Real values [1, 17] are essentially noise (~1%
+                            of positives); prefer 0 or ≥ 18.
 
 CRITICAL rules:
   * zero_check MUST be done FIRST. Do not skip it to fill positive chain.
@@ -377,8 +392,17 @@ steps10 at this state — phase multiplier does NOT apply (nothing to amplify).
 
 CRITICAL CALIBRATION FACT:
   Real HeartSteps data has steps10 = 0 in ~54% of windows overall.
-  For Available=True + send=0: ~57% zero. For Available=False: ~35% zero
-  (unavailable often means commuting/exercising — actively moving).
+  For Available=True + send=0: **~57% zero** (highest of any cell!).
+  For Available=False: ~35% zero (unavailable often means
+  commuting/exercising — actively moving).
+
+  CRITICAL: send=0 does NOT mean "user is in their natural high-activity
+  baseline". send=0 just means no message was sent — at any given moment,
+  there's an equal-or-higher chance the user is sitting/sleeping/idle
+  compared to when a message IS sent. Do NOT default zero_check to
+  "positive" just because no intervention happened. avail=True+send=0
+  should be your HIGHEST zero-rate cell, not your lowest.
+
   Use zero_check (step 1) to decide 0 vs positive based on state cues.
 
 OUTPUT FORMAT — a JSON object with EXACTLY these 7 keys, in this order:
@@ -386,9 +410,16 @@ OUTPUT FORMAT — a JSON object with EXACTLY these 7 keys, in this order:
   1. "zero_check"        — Decide whether THIS window's steps10 is 0 or >0.
                             Same format / rules as the MESSAGE prompt. Cite
                             slot baseline (picking avail-correct row),
-                            steps30pre bin rate, and streak hint. Example:
+                            steps30pre bin rate, and streak hint. Examples:
+                              "decision=zero — avail=True slot=2 48%, s30=15
+                               in '1-80' 64%, prev=0 → 65% zero"
                               "decision=positive — avail=False slot=3 35%,
                                s30=520 in '396-857' 14%, prev>0 → 42% zero"
+                            Bias toward 'zero' when ANY TWO of:
+                              (low steps30pre bin, morning/evening slot,
+                               prev=0 streak, avail=True)
+                            agree. avail=True alone is a STRONG zero signal
+                            (57% baseline) — do not under-zero on it.
 
   2. "anchor_lookup"     — IF zero_check decision="positive":
        - If Available=True (user reachable; MRT chose no-msg arm):
@@ -415,13 +446,24 @@ OUTPUT FORMAT — a JSON object with EXACTLY these 7 keys, in this order:
   7. "value"             — FINAL integer steps10 in [0, 10000].
                             IF zero_check decision="zero": output 0.
                             ELSE: integer from steps 2-5. Real positive
-                            distribution is RIGHT-SKEWED — burst contexts
-                            (avail=False with high s30, peak slot, etc.)
-                            should approach p95/p99 not snap to mean.
+                            distribution is right-skewed, but the BULK sits
+                            LOW:
+                              ~50% of positives < p50 (median ≈ 100)
+                              ~25% in p25-p50, ~25% in p50-p75
+                              ~ 6% in p75-p95 (mid-tail)
+                              ~ 1% > p95 (true bursts)
+                            DEFAULT to p25-p50 region. Move past p75 only
+                            when ALL of (high s30, exercise loc / avail=False
+                            commuting context, peak slot) are present. Reach
+                            p95+ ONLY for clear exercise events (~1%).
+                            DO NOT use p95/p99 as the typical anchor —
+                            they are the rare-burst ceiling, not the default.
                             Prefer 0 or ≥ 18; values in [1, 17] are noise.
 
 CRITICAL rules:
   * zero_check MUST be done FIRST.
+  * avail=True + send=0 has the HIGHEST zero baseline (~57%) — bias toward
+    'zero' unless state cues clearly say otherwise.
   * Pick the right baseline table (avail_true positive vs avail_false unavail).
   * Reference SPECIFIC numbers from the profile blocks; do not invent.
 """
