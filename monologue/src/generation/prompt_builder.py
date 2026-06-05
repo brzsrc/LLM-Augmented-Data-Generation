@@ -73,6 +73,20 @@ def _format_unavail_baseline(p: Dict) -> str:
     parts = [f"slot {s}:{v:.0f}" for s, v in sorted(base.items())]
     return ("When unreachable (avail=False), per-slot baseline steps10:\n"
             "  " + " | ".join(parts))
+    
+def _format_avail_baseline(steps10_avail_true_per_slot_action_mean: Dict) -> str:
+    """Per-slot POSITIVE-only mean steps10 by action — anchor for the
+    positive branch of zero_check. Computed from real rows where steps10 > 0,
+    so the values represent E[steps10 | slot, action, steps10>0]. The
+    bimodality (zero vs positive) is handled by zero_check separately."""
+    if not steps10_avail_true_per_slot_action_mean:
+        return "  (no per-slot positive signal extracted — use default)"
+    lines = ["Per-slot mean steps10 by action — STEPS10>0 ROWS ONLY (avail=True):"]
+    for slot, by_act in sorted(steps10_avail_true_per_slot_action_mean.items()):
+        parts = [f"a={a}:{r:.0f}" for a, r in sorted(by_act.items())]
+        lines.append(f"  slot {slot}: " + " | ".join(parts))
+    return "\n".join(lines)
+
 
 
 def _format_compliance_phase(p: Dict, day: int) -> str:
@@ -99,20 +113,6 @@ def _format_high_activity_anchors(p: Dict) -> str:
         return ""
     return ("High-activity context anchors (real bursts):\n  "
             + "\n  ".join(anchors[:5]))
-
-
-def _format_signal(per_slot_signal: Dict) -> str:
-    """Per-slot POSITIVE-only mean steps10 by action — anchor for the
-    positive branch of zero_check. Computed from real rows where steps10 > 0,
-    so the values represent E[steps10 | slot, action, steps10>0]. The
-    bimodality (zero vs positive) is handled by zero_check separately."""
-    if not per_slot_signal:
-        return "  (no per-slot positive signal extracted — use default)"
-    lines = ["Per-slot mean steps10 by action — STEPS10>0 ROWS ONLY (avail=True):"]
-    for slot, by_act in sorted(per_slot_signal.items()):
-        parts = [f"a={a}:{r:.0f}" for a, r in sorted(by_act.items())]
-        lines.append(f"  slot {slot}: " + " | ".join(parts))
-    return "\n".join(lines)
 
 
 def _format_zero_baseline(persona: Dict, current_state: Dict) -> str:
@@ -194,95 +194,6 @@ def _format_episodic(history: List[Dict]) -> str:
             f"send={h.get('action','?')} → steps10={h.get('steps10','?')}"
         )
     return "\n".join(lines)
-
-
-
-# ============================================================================
-# No Chain-of-Thought (CoT) --- Outputs a interger steps10 prediction 
-# ============================================================================
-
-SYSTEM_TEMPLATE = """You are a behavior simulator for HeartSteps users. Generate one
-transition (next steps10 count) given the user's profile, current state, and
-the message action taken.
-
-Output ONLY an integer steps count between 0 and 10000. No explanation.
-
-Important rules — DO NOT violate:
-  * Messages do NOT universally help. Some users respond negatively, especially
-    at the wrong time of day.
-  * Match the user's profile EXACTLY — do not invent traits not in the profile.
-  * Be stochastic — even the same state can produce different outcomes.
-  * When "Available for intervention: False", the user is in a state where no
-    message could be sent (driving / sleeping / unreachable); send is always 0
-    and steps10 should reflect the user's natural baseline at this slot.
-"""
-
-
-def build_step_prompt(persona: Dict,
-                      current_state: Dict,
-                      action: int,
-                      episodic_history: List[Dict]) -> tuple[str, str]:
-    """Build (system, user) prompt for one transition step.
-
-    `current_state` :
-    {
-        "day": day, "slot": slot, "hour": round(actual_hour, 1),
-        "weekday": weekday,
-        "avail": avail,
-        **ctx: weather/temp/loc/steps30pre for this decision point,
-    }
-    `action` is the send chosen (will be in the prompt).
-    `episodic_history` is the trajectory so far for this synth user.
-    """
-    
-    day = current_state.get("day", 1)
-    # Build profile sections, skip empty ones so the prompt stays tight.
-    profile_sections = [
-        "## Synthetic User Profile",
-        _format_persona(persona),
-        _format_signal(persona.get("steps10_avail_true_per_slot_action_mean", {})),
-        _format_unavail_baseline(persona),         # B
-        _format_context_conditional(persona),      # A
-        _format_high_activity_anchors(persona),    # D
-    ]
-    profile_block = "\n\n".join(s for s in profile_sections if s)
-
-    # Engagement-phase header (C) prepended inside "Current Decision Context"
-    # since it depends on `day` — same persona has different phase across days.
-    phase_line = _format_compliance_phase(persona, day)
-    phase_header = (phase_line + "\n") if phase_line else ""
-
-    user = f"""\
-{profile_block}
-
-## Current Decision Context
-{phase_header}Day: {day}
-Slot: {current_state.get('slot', '?')} (hour ≈ {current_state.get('hour', '?')})
-Weekday: {current_state.get('weekday', '?')}
-Weather: {current_state.get('weather', '?')}, Temp: {current_state.get('temp', '?')}
-Location: {current_state.get('loc', '?')}
-steps30pre (prior 30-min step count): {current_state.get('steps30pre', '?')}
-Available for intervention: {current_state.get('avail', '?')}
-Action just taken: send={action}  ({cfg.ACTION_NAMES.get(action, '?')})
-
-## Episodic Memory (this trajectory so far)
-{_format_episodic(episodic_history)}
-
-## Task
-
-Predict this user's steps10 count for the NEXT 10 minutes after the decision.
-Consider:
-  - The per-slot action signal (what THIS user does at this slot per action)
-  - Context-conditional means above (steps10 by loc/weather/temp/steps30pre bin)
-  - If avail=False, use the unavailable-baseline section, not the per-slot signal
-  - Engagement phase multiplier (honeymoon ↑, fatigue ↓)
-  - High-activity anchors hint at when this user actually bursts
-  - The user's archetype's response style
-  - Be realistic: many slots have 0 steps; only some are active windows.
-
-Output ONLY one integer between 0 and 10000."""
-
-    return SYSTEM_TEMPLATE, user
 
 
 # ============================================================================
@@ -409,10 +320,9 @@ OUTPUT FORMAT — a JSON object with EXACTLY these 7 keys, in this order:
                                in '1-80' 64%, prev=0 → 65% zero"
                               "decision=positive — avail=False slot=3 35%,
                                s30=520 in '396-857' 14%, prev>0 → 42% zero"
-                            Bias toward 'zero' when ANY TWO of:
+                            Bias toward 'zero' when ALL THREE of:
                               (low steps30pre bin, morning slot,
                                prev=0 streak)
-                            agree.
 
   2. "anchor_lookup"     — IF zero_check decision="positive":
        - If Available=True (user reachable; MRT chose no-msg arm):
@@ -476,7 +386,7 @@ def _cot_user_block(persona: Dict, current_state: Dict, action: int,
         "## Synthetic User Profile",
         _format_persona(persona),
         _format_zero_baseline(persona, current_state),
-        _format_signal(persona.get("steps10_avail_true_per_slot_action_mean_positive", {})),
+        _format_avail_baseline(persona.get("steps10_avail_true_per_slot_action_mean_positive", {})),
         _format_positive_quantiles(persona, current_state),
         _format_unavail_baseline(persona),
         _format_context_conditional(persona),
