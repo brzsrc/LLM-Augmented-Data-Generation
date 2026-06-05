@@ -330,11 +330,9 @@ OUTPUT FORMAT — a JSON object with EXACTLY these 7 keys, in this order:
                                prev=0 streak → 65% zero"
                               "decision=positive — slot=3 41%, s30=420 in '396-857'
                                14%, prev>0 → 42% zero"
-                            Bias toward 'zero' when ANY TWO of:
-                              (low steps30pre bin, morning/evening slot,
+                            Bias toward 'zero' when ALL THREE of:
+                              (low steps30pre bin, morning slot,
                                prev=0 streak)
-                            agree. Default reflex (no strong cue either way)
-                            should still be ~50/50; do NOT default 'positive'.
 
   2. "anchor_lookup"     — IF zero_check decision="positive": look up
                             per_slot_action_mean_positive[slot][send] from
@@ -392,17 +390,13 @@ steps10 at this state — phase multiplier does NOT apply (nothing to amplify).
 
 CRITICAL CALIBRATION FACT:
   Real HeartSteps data has steps10 = 0 in ~54% of windows overall.
-  For Available=True + send=0: **~57% zero** (highest of any cell!).
+  For Available=True + send=0: ~57% zero.
   For Available=False: ~35% zero (unavailable often means
   commuting/exercising — actively moving).
-
-  CRITICAL: send=0 does NOT mean "user is in their natural high-activity
-  baseline". send=0 just means no message was sent — at any given moment,
-  there's an equal-or-higher chance the user is sitting/sleeping/idle
-  compared to when a message IS sent. Do NOT default zero_check to
-  "positive" just because no intervention happened. avail=True+send=0
-  should be your HIGHEST zero-rate cell, not your lowest.
-
+  Note: send=0 just means no message was sent; it does NOT imply the
+  user is in a high-activity state. Let state cues (slot, s30, streak)
+  drive zero_check — don't default to "positive" just because no
+  intervention happened.
   Use zero_check (step 1) to decide 0 vs positive based on state cues.
 
 OUTPUT FORMAT — a JSON object with EXACTLY these 7 keys, in this order:
@@ -416,10 +410,9 @@ OUTPUT FORMAT — a JSON object with EXACTLY these 7 keys, in this order:
                               "decision=positive — avail=False slot=3 35%,
                                s30=520 in '396-857' 14%, prev>0 → 42% zero"
                             Bias toward 'zero' when ANY TWO of:
-                              (low steps30pre bin, morning/evening slot,
-                               prev=0 streak, avail=True)
-                            agree. avail=True alone is a STRONG zero signal
-                            (57% baseline) — do not under-zero on it.
+                              (low steps30pre bin, morning slot,
+                               prev=0 streak)
+                            agree.
 
   2. "anchor_lookup"     — IF zero_check decision="positive":
        - If Available=True (user reachable; MRT chose no-msg arm):
@@ -462,8 +455,6 @@ OUTPUT FORMAT — a JSON object with EXACTLY these 7 keys, in this order:
 
 CRITICAL rules:
   * zero_check MUST be done FIRST.
-  * avail=True + send=0 has the HIGHEST zero baseline (~57%) — bias toward
-    'zero' unless state cues clearly say otherwise.
   * Pick the right baseline table (avail_true positive vs avail_false unavail).
   * Reference SPECIFIC numbers from the profile blocks; do not invent.
 """
