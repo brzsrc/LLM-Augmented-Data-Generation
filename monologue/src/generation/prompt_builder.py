@@ -283,15 +283,27 @@ OUTPUT FORMAT — a JSON object with EXACTLY these 8 keys, in this order:
   1. "zero_check"        — Decide whether THIS window's steps10 is 0 or >0.
 {zero_check_format_and_count}
 {zero_check_examples}
-                            The cited numbers are PROBABILITIES, not verdicts.
-                            Across many similar windows your decisions should
-                            APPROXIMATE the cited rates: e.g. when the cited
-                            rates average ~55%, ~55% of similar prompts should
-                            resolve to zero — NOT 100%. Do NOT systematically
-                            round to 'zero' when the rates are near 50%.
-                            Split your calls in proportion to the cited
-                            probability; both 'zero' and 'positive' are
-                            legitimate outcomes.
+                            P_zero computation (commit to a number, not just
+                            a label):
+                              1) mean = average of the cited rates
+                              2) boost = +15pp if ≥3 rates >55%
+                                        = -15pp if ≥3 rates <45%
+                                        =   0   otherwise
+                              3) P_zero = clip(mean + boost, 5, 95)
+                            decision is a BERNOULLI DRAW weighted by P_zero,
+                            NOT a hard threshold. For THIS call, sample:
+                              decision = "zero"     with prob = P_zero/100
+                                       = "positive" with prob = 1 − P_zero/100
+                            Examples:
+                              P_zero=80 → ~80% of similar calls say "zero",
+                                          ~20% say "positive"
+                              P_zero=50 → ~50/50 split — do NOT auto-pick
+                                          "zero" just because it's the tie
+                              P_zero=15 → ~15% "zero", ~85% "positive"
+                            Across the trajectory, the empirical "zero" rate
+                            must track the mean of P_zero. Borderline cases
+                            (P_zero 40-60) MUST split — never collapse to one
+                            side.
 
   2. "anchor_lookup"     — {anchor_lookup_body}
 
@@ -354,14 +366,15 @@ CRITICAL rules:
 # avail=True branches (MESSAGE, NO_MSG_AVAIL_T) cite 4 numbers; avail=False
 # (NO_MSG_AVAIL_F) cites 3, since send is structurally 0.
 _ZERO_CHECK_FORMAT_4 = """                            Format the field as:
-                              "decision=<zero|positive> — <slot baseline%>,
-                               <s30 bin%>, <loc rate%>, <send rate%>"
+                              "decision=<zero|positive> (P_zero=<NN>%) —
+                               <slot baseline%>, <s30 bin%>, <loc rate%>,
+                               <send rate%>"
                             Cite ALL FOUR numbers from the "Zero-rate
                             baseline" block. Examples:"""
 
 _ZERO_CHECK_FORMAT_3 = """                            Format the field as:
-                              "decision=<zero|positive> — <slot baseline%>,
-                               <s30 bin%>, <loc rate%>"
+                              "decision=<zero|positive> (P_zero=<NN>%) —
+                               <slot baseline%>, <s30 bin%>, <loc rate%>"
                             Cite ALL THREE numbers from the "Zero-rate
                             baseline" block. Examples:"""
 
@@ -381,10 +394,12 @@ _BRANCH_BODY_MESSAGE = dict(
   when it differs from the population baseline. Send still modulates the
   POSITIVE magnitude (handled in anchor_lookup), not just P(zero).""",
     zero_check_format_and_count=_ZERO_CHECK_FORMAT_4,
-    zero_check_examples='''                              "decision=zero — slot=1 70%, s30=12 in '1-80' 64%,
-                               loc=home 62% zero, a=1 58% zero"
-                              "decision=positive — slot=3 41%, s30=420 in '396-857'
-                               14%, loc=work 38% zero, a=2 55% zero"''',
+    zero_check_examples='''                              "decision=zero (P_zero=79%) — slot=1 70%,
+                               s30=12 in '1-80' 64%, loc=home 62% zero,
+                               a=1 58% zero"  (mean 63.5, 4/4>55 → +15)
+                              "decision=positive (P_zero=22%) — slot=3 41%,
+                               s30=420 in '396-857' 14%, loc=work 38% zero,
+                               a=2 55% zero"  (mean 37, 3/4<45 → -15)''',
     anchor_lookup_body="""IF zero_check decision="positive":
                             Step 1 — Cite the slot's positive quantile bands
                               from the profile, e.g.
@@ -439,12 +454,12 @@ _BRANCH_BODY_NO_MSG_AVAIL_T = dict(
   PER-USER `a=0` rate may diverge if this user behaves differently when
   unsent — treat that personalized signal as a real cue.""",
     zero_check_format_and_count=_ZERO_CHECK_FORMAT_4,
-    zero_check_examples='''                              "decision=zero — avail=True slot=2 48%, s30=15
-                               in '1-80' 64%, avail=True loc=home 62% zero,
-                               a=0 57% zero"
-                              "decision=positive — avail=True slot=4 23%, s30=420
-                               in '396-857' 14%, avail=True loc=work 38% zero,
-                               a=0 52% zero"''',
+    zero_check_examples='''                              "decision=zero (P_zero=73%) — avail=True slot=2
+                               48%, s30=15 in '1-80' 64%, avail=True loc=home
+                               62% zero, a=0 57% zero"  (mean 57.75, 3/4>55 → +15)
+                              "decision=positive (P_zero=17%) — avail=True slot=4
+                               23%, s30=420 in '396-857' 14%, avail=True loc=work
+                               38% zero, a=0 52% zero"  (mean 31.75, 3/4<45 → -15)''',
     anchor_lookup_body="""IF zero_check decision="positive":
                             Step 1 — Cite the slot's positive quantile bands
                               for a=0, e.g.
@@ -495,10 +510,12 @@ _BRANCH_BODY_NO_MSG_AVAIL_F = dict(
   over the avail=True zero rate; use the avail=False row of the zero-rate
   baseline block.""",
     zero_check_format_and_count=_ZERO_CHECK_FORMAT_3,
-    zero_check_examples='''                              "decision=zero — avail=False slot=2 50%, s30=15
-                               in '1-80' 64%, avail=False loc=home 18% zero"
-                              "decision=positive — avail=False slot=3 18%, s30=520
-                               in '396-857' 14%, avail=False loc=transit 24% zero"''',
+    zero_check_examples='''                              "decision=zero (P_zero=60%) — avail=False slot=2
+                               60%, s30=64%, avail=False loc=home 55% zero"
+                               (mean 59.7, 2/3>55 → no boost)
+                              "decision=positive (P_zero=5%) — avail=False slot=3
+                               18%, s30=14%, avail=False loc=transit 24% zero"
+                               (mean 18.7, 3/3<45 → -15, clipped to 5)''',
     anchor_lookup_body="""IF zero_check decision="positive":
                             Step 1 — Cite the user-level avail=False positive
                               quantile bands (per-(user,slot) avail=F cells
