@@ -13,7 +13,7 @@ from typing import Dict, List
 from src import config as cfg
 
 
-def _format_persona(p: Dict) -> str:
+def _format_persona(p: Dict, current_state: Dict | None = None) -> str:
     """Survey-format persona traits (Pay-What-LLM-Wants 2025: Survey 4.0% vs
     Storytelling 0.2% accuracy → keep key:value, do NOT prose-ify)."""
     lines = [
@@ -32,10 +32,17 @@ def _format_persona(p: Dict) -> str:
         cs = p.get("steps10_context_sensitivity", {})
         parts = [f"{k}={v:.0f}" for k, v in cs.items()]
         lines.append(f"Context sensitivity (std of steps10 by ...): {', '.join(parts)}")
-    if p.get("location_distribution"):
-        top = sorted(p["location_distribution"].items(),
-                     key=lambda x: -x[1])[:3]
-        lines.append("Common locations: " + ", ".join(
+    # Pick weekday vs weekend loc dist by current state's weekday (0=Mon..6=Sun;
+    # <5 weekday, >=5 weekend). Falls back to weekday if state missing.
+    wd = (current_state or {}).get("weekday")
+    try:
+        kind = "weekend" if int(wd) >= 5 else "weekday"
+    except (TypeError, ValueError):
+        kind = "weekday"
+    dist = p.get(f"{kind}_loc_dist") or {}
+    if dist:
+        top = sorted(dist.items(), key=lambda x: -x[1])[:3]
+        lines.append(f"Common locations ({kind}): " + ", ".join(
             f"{loc}({pct:.0%})" for loc, pct in top))
     return "\n".join(lines)
 
@@ -121,12 +128,13 @@ def _format_zero_baseline(persona: Dict, current_state: Dict) -> str:
     Three signals (any subset may be empty depending on persona richness):
       - per-slot zero rate, picking avail_true vs avail_false table
       - per-steps30pre-bin zero rate (always from avail_true)
-      - streak transition (P(zero | prev=0) vs P(zero | prev>0))
+      - per-loc zero rate, picking avail_true vs avail_false table — current
+        location marked with an arrow
     """
     avail = bool(current_state.get("avail", True))
-    table_key = ("steps10_avail_true_per_slot_zero_pct" if avail
-                 else "steps10_avail_false_per_slot_zero_pct")
-    per_slot = persona.get(table_key) or {}
+    slot_key = ("steps10_avail_true_per_slot_zero_pct" if avail
+                else "steps10_avail_false_per_slot_zero_pct")
+    per_slot = persona.get(slot_key) or {}
 
     lines: List[str] = []
     if per_slot:
@@ -140,12 +148,27 @@ def _format_zero_baseline(persona: Dict, current_state: Dict) -> str:
                  for k, p in bin_table.items()]
         lines.append("  by steps30pre bin: " + " | ".join(parts))
 
-    pair = persona.get("steps10_momentum_pair_pct") or {}
-    za, zn = pair.get("zero_after_zero"), pair.get("zero_after_nonzero")
-    if za is not None and zn is not None:
-        lines.append(
-            f"  streak effect: after prev=0 → {int(round(float(za)*100))}% zero; "
-            f"after prev>0 → {int(round(float(zn)*100))}% zero")
+    loc_key = ("steps10_avail_true_per_loc_zero_pct" if avail
+               else "steps10_avail_false_per_loc_zero_pct")
+    per_loc = persona.get(loc_key) or {}
+    if per_loc:
+        cur_loc = current_state.get("loc")
+        parts = []
+        for loc, pct in sorted(per_loc.items(), key=lambda x: -float(x[1])):
+            marker = " ← current" if loc == cur_loc else ""
+            parts.append(f"{loc}:{int(round(float(pct)*100))}%{marker}")
+        lines.append(f"  by loc (avail={avail}): " + " | ".join(parts))
+    else:
+        # Fallback: per-loc cells too thin → cite the bucket's overall zero rate
+        # as a single number. Mostly hits avail=False users with sparse buckets
+        # (~11% of personas). LLM still has SOMETHING to cite for the "loc rate".
+        scalar_key = ("steps10_avail_true_zero_pct" if avail
+                      else "steps10_avail_false_zero_pct")
+        scalar = persona.get(scalar_key)
+        if scalar is not None:
+            lines.append(
+                f"  by loc (avail={avail}): overall={int(round(float(scalar)*100))}% "
+                f"(per-loc cells too thin to split)")
 
     if not lines:
         return ""
@@ -156,85 +179,86 @@ def _format_zero_baseline(persona: Dict, current_state: Dict) -> str:
 def _format_positive_quantiles(persona: Dict, current_state: Dict) -> str:
     """Per-slot positive-distribution quantiles (avail=True branch only).
 
-    avail=True bucket has enough positive rows per (user, slot) to give stable
-    per-slot quantiles. Marks the current slot with an arrow. For the avail=False
-    branch, use `_format_unavail_quantiles` (flat per-user, no slot split).
+    Primary: per-slot quantiles (≥20 positive rows per slot, ~38% of personas).
+    Fallback: flat per-user quantiles pooled across slots (covers the remaining
+    ~62% of personas where per-slot cells are too thin). Marks current slot
+    when per-slot is available. For avail=False branch, use
+    `_format_unavail_quantiles`.
     """
     qtab = persona.get("steps10_avail_true_per_slot_positive_quantiles") or {}
-    if not qtab:
+    if qtab:
+        cur_slot = current_state.get("slot")
+        try:
+            cur_slot_i = int(cur_slot) if cur_slot is not None else None
+        except (TypeError, ValueError):
+            cur_slot_i = None
+
+        lines = ["Positive-distribution quantiles (steps10 | steps10>0, avail=True) — "
+                  "magnitude shape for value:"]
+        for slot, q in sorted(qtab.items(), key=lambda x: int(x[0])):
+            parts = [f"p{k}={int(v)}" for k, v in
+                     sorted(q.items(), key=lambda x: int(x[0]))]
+            marker = "  ← current slot" if int(slot) == cur_slot_i else ""
+            lines.append(f"  slot {slot}: " + " | ".join(parts) + marker)
+        lines.append("  → ~5% of positive windows EXCEED p95; ~1% EXCEED p99.")
+        return "\n".join(lines)
+
+    # Fallback: flat per-user quantiles (per-slot cells too thin for this user).
+    q_user = persona.get("steps10_avail_true_positive_quantiles_user") or {}
+    if not q_user:
         return ""
-
-    cur_slot = current_state.get("slot")
-    try:
-        cur_slot_i = int(cur_slot) if cur_slot is not None else None
-    except (TypeError, ValueError):
-        cur_slot_i = None
-
-    lines = ["Positive-distribution quantiles (steps10 | steps10>0, avail=True) — "
-              "magnitude shape for value:"]
-    for slot, q in sorted(qtab.items(), key=lambda x: int(x[0])):
-        parts = [f"p{k}={int(v)}" for k, v in
-                 sorted(q.items(), key=lambda x: int(x[0]))]
-        marker = "  ← current slot" if int(slot) == cur_slot_i else ""
-        lines.append(f"  slot {slot}: " + " | ".join(parts) + marker)
-    lines.append("  → ~5% of positive windows EXCEED p95; ~1% EXCEED p99.")
-    return "\n".join(lines)
+    parts = [f"p{k}={int(v)}" for k, v in sorted(q_user.items(), key=lambda x: int(x[0]))]
+    return ("Positive-distribution quantiles (steps10 | steps10>0, avail=True, "
+            "user-level across all slots — per-slot cells too thin):\n"
+            f"  {' | '.join(parts)}\n"
+            "  → ~5% of positive windows EXCEED p95; ~1% EXCEED p99.")
 
 
 def _format_unavail_quantiles(persona: Dict) -> str:
     """Flat per-user positive quantiles for the avail=False branch.
 
-    Per-(user, slot) avail=False cells are too thin (~2-3 positive rows per
-    slot per user); pool across slots at the user level so the LLM has a
-    real long-tail shape to anchor the unavailable-commute baseline.
+    Primary: avail=False user-level quantiles (per-(user, slot) cells too thin).
+    Fallback: avail=True user-level quantiles for the ~3% of users with <5
+    positive avail=False rows. Caveat: avail=True magnitudes likely under-
+    estimate the commute/exercise tail, but better than no anchor.
     """
     q = persona.get("steps10_avail_false_positive_quantiles_user") or {}
-    if not q:
+    if q:
+        parts = [f"p{k}={int(v)}" for k, v in sorted(q.items(), key=lambda x: int(x[0]))]
+        return ("Positive-distribution quantiles (steps10 | steps10>0, avail=False, "
+                "user-level across all slots):\n"
+                f"  {' | '.join(parts)}\n"
+                "  → ~5% of unavail positive windows EXCEED p95; ~1% EXCEED p99.")
+
+    # Fallback: avail=False positive rows too few → use avail=True quantiles.
+    q_fb = persona.get("steps10_avail_true_positive_quantiles_user") or {}
+    if not q_fb:
         return ""
-    parts = [f"p{k}={int(v)}" for k, v in sorted(q.items(), key=lambda x: int(x[0]))]
-    return ("Positive-distribution quantiles (steps10 | steps10>0, avail=False, "
-            "user-level across all slots):\n"
+    parts = [f"p{k}={int(v)}" for k, v in sorted(q_fb.items(), key=lambda x: int(x[0]))]
+    return ("Positive-distribution quantiles (avail=False positive cells too thin; "
+            "showing avail=True user-level as proxy — likely UNDERESTIMATES the "
+            "commute/exercise tail):\n"
             f"  {' | '.join(parts)}\n"
-            "  → ~5% of unavail positive windows EXCEED p95; ~1% EXCEED p99.")
+            "  → ~5% of positive windows EXCEED p95; ~1% EXCEED p99.")
 
 
 def _format_episodic(history: List[Dict]) -> str:
-    """Recently generated (s, a, post_steps) — keeps trajectory self-consistent."""
+    """Recently generated (s, a, post_steps) — keeps trajectory self-consistent.
+    Includes loc/weather/temp/avail so episodic_check can compare context.
+    """
     if not history:
         return "  (this is the first decision today)"
     lines = ["Recent history within this trajectory:"]
     for h in history[-5:]:
         lines.append(
             f"  day={h.get('day','?')} slot={h.get('slot','?')} "
+            f"loc={h.get('loc','?')} weather={h.get('weather','?')} "
+            f"temp={h.get('temp','?')} avail={h.get('avail','?')} "
             f"send={h.get('action','?')} → steps10={h.get('steps10','?')}"
         )
     return "\n".join(lines)
 
 
-# ============================================================================
-# Chain-of-Thought (CoT) — 3 branches keyed on (send, avail):
-#   send > 0                  → MESSAGE          (phase mult applies)
-#   send = 0 & avail = True   → NO_MSG_AVAIL_T   (MRT chose no-msg arm)
-#   send = 0 & avail = False  → NO_MSG_AVAIL_F   (user unreachable;
-#                                                  commute/exercise baseline)
-#
-# Each branch has a dedicated SYSTEM template, USER profile-section selection,
-# and TASK block. SYSTEMs are assembled from a single `_COMMON_HEADER_TPL` with
-# branch-specific text injected via `.format()` — keeps the 7-key JSON spec
-# defined in exactly one place so it can't drift.
-#
-# Refs: Tam 2024 reasoning-before-value, Wang 2024 Chain-of-Table,
-# Xu 2024 PAFT, Sidorenko 2025.
-# ============================================================================
-
-# --- COMMON HEADER ----------------------------------------------------------
-# {branch_intro}         second line of the top declarative
-# {calibration_block}    branch-specific zero-rate fact + caveat
-# {zero_check_examples}  example lines for field 1
-# {anchor_lookup_body}   field 2 instruction
-# {phase_application}    field 3 instruction
-# {value_default_hint}   field 7 default-region nudge
-# {extra_rule}           any branch-specific rule (e.g. global zero-rate ~54%)
 _COMMON_HEADER_TPL = """You are a behavior simulator for HeartSteps users.
 {branch_intro}
 
@@ -246,7 +270,7 @@ OUTPUT FORMAT — a JSON object with EXACTLY these 7 keys, in this order:
   1. "zero_check"        — Decide whether THIS window's steps10 is 0 or >0.
                             Format the field as:
                               "decision=<zero|positive> — <slot baseline%>,
-                               <s30 bin%>, <streak hint>"
+                               <s30 bin%>, <loc rate%>"
                             Cite ALL THREE numbers from the "Zero-rate
                             baseline" block. Examples:
 {zero_check_examples}
@@ -310,9 +334,9 @@ _BRANCH_BODY_MESSAGE = dict(
   meaningfully reduce zero probability — it modulates the POSITIVE
   magnitude when activity happens, not whether activity happens.""",
     zero_check_examples='''                              "decision=zero — slot=1 70%, s30=12 in '1-80' 64%,
-                               prev=0 streak → 65% zero"
+                               loc=home 62% zero"
                               "decision=positive — slot=3 41%, s30=420 in '396-857'
-                               14%, prev>0 → 42% zero"''',
+                               14%, loc=work 38% zero"''',
     anchor_lookup_body="""IF zero_check decision="positive": look up
                             per_slot_action_mean_positive[slot][send] from
                             the "Per-slot mean steps10 by action — STEPS10>0
@@ -340,13 +364,13 @@ _BRANCH_BODY_NO_MSG_AVAIL_T = dict(
                   "natural baseline at this state — phase multiplier does NOT apply."),
     calibration_block="""  For Available=True + send=0: ~57% of windows are 0, ~43% are positive.
   Across many similar prompts, your decisions should split roughly 57/43
-  — call each window based on the cited slot / s30 / streak rates. send=0
+  — call each window based on the cited slot / s30 / loc rates. send=0
   is NOT evidence either way: it does not imply the user is high-activity,
   AND it does not imply zero. Let the cited probabilities decide.""",
     zero_check_examples='''                              "decision=zero — avail=True slot=2 48%, s30=15
-                               in '1-80' 64%, prev=0 → 65% zero"
+                               in '1-80' 64%, avail=True loc=home 62% zero"
                               "decision=positive — avail=True slot=4 23%, s30=420
-                               in '396-857' 14%, prev>0 → 42% zero"''',
+                               in '396-857' 14%, avail=True loc=work 38% zero"''',
     anchor_lookup_body="""IF zero_check decision="positive": cite
                             per_slot_action_mean_positive[slot][a=0] from the
                             "Per-slot mean steps10 by action" table AND the
@@ -360,8 +384,8 @@ _BRANCH_BODY_NO_MSG_AVAIL_T = dict(
                             or high-activity anchor match) are present. Reach
                             p95+ ONLY for clear exercise events (~1% of cases).""",
     extra_rule="""  * Use the avail=True row of the zero-rate table; ignore avail=False.
-  * Trajectory zero rate should approach ~57% — slot 3-5 with prev>0 or
-    high s30 should give POSITIVE more often than not.""",
+  * Trajectory zero rate should approach ~57% — slot 3-5 with low-zero loc
+    (e.g. work / activity) or high s30 should give POSITIVE more often than not.""",
 )
 
 # --- BRANCH BODY: NO_MSG_AVAIL_F (send=0 ∧ avail=False) ---------------------
@@ -377,9 +401,9 @@ _BRANCH_BODY_NO_MSG_AVAIL_F = dict(
   over the avail=True zero rate; use the avail=False row of the zero-rate
   baseline block.""",
     zero_check_examples='''                              "decision=zero — avail=False slot=2 50%, s30=15
-                               in '1-80' 64%, prev=0 → 46% zero"
-                              "decision=positive — avail=False slot=3 0%, s30=520
-                               in '396-857' 14%, prev>0 → 38% zero"''',
+                               in '1-80' 64%, avail=False loc=home 18% zero"
+                              "decision=positive — avail=False slot=3 18%, s30=520
+                               in '396-857' 14%, avail=False loc=transit 24% zero"''',
     anchor_lookup_body="""IF zero_check decision="positive": cite the
                             per-slot UNAVAIL baseline AND the user-level
                             positive quantiles (flat, no slot split), e.g.
@@ -419,7 +443,7 @@ Output ONLY the JSON object — no markdown fences, no extra text."""
 _TASK_BLOCK_NO_MESSAGE_AVAIL_T = """## Task
 No message was sent and the user is REACHABLE. First do zero_check using
 the Zero-rate baseline (avail=True row). The split is ~57% zero / ~43%
-positive — call each window using the cited slot / s30 / streak rates,
+positive — call each window using the cited slot / s30 / loc rates,
 NOT a default. Across this trajectory your zero rate should APPROXIMATE
 57%, not 90%+.
 
@@ -466,7 +490,7 @@ def _cot_profile_sections(branch: str, persona: Dict, current_state: Dict) -> Li
     """
     common_head = [
         "## Synthetic User Profile",
-        _format_persona(persona),
+        _format_persona(persona, current_state),
         _format_zero_baseline(persona, current_state),
     ]
     common_tail = [

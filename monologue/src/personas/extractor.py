@@ -196,6 +196,20 @@ def _steps10_bucket(gg: pd.DataFrame, include_action: bool) -> "Steps10BucketSta
         else:
             psam_pos = {}
 
+    # per_loc_zero_pct (this avail bucket only). Drop cells with <5 rows to
+    # avoid per-user noise — same threshold as unavail_triggers.
+    per_loc_zero: Dict[str, float] = {}
+    if "loc" in gg.columns:
+        loc_decoder = cfg.DECODERS["loc"]
+        loc_stats = (gg.assign(_z=(gg[cfg.COL_REWARD_SOURCE] == 0))
+                       .groupby("loc")
+                       .agg(n=("_z", "size"), zero=("_z", "mean")))
+        for loc_int, row in loc_stats.iterrows():
+            if row["n"] < 5:
+                continue
+            loc_str = loc_decoder.get(int(loc_int), str(loc_int))
+            per_loc_zero[loc_str] = float(round(row["zero"], 3))
+
     # zero_pct_by_s30_bin (per-persona qcut, same scheme as steps10_by_steps30pre_bin)
     zero_by_bin: Dict[str, float] = {}
     if "steps30pre" in gg.columns:
@@ -243,6 +257,7 @@ def _steps10_bucket(gg: pd.DataFrame, include_action: bool) -> "Steps10BucketSta
                             for k, v in ps_zero.items() if pd.notna(v)},
         per_slot_action_mean=psam,
         zero_pct_by_s30_bin=zero_by_bin,
+        per_loc_zero_pct=per_loc_zero,
         per_slot_action_mean_positive=psam_pos,
         per_slot_positive_quantiles=psq,
         positive_quantiles_user=pqu,

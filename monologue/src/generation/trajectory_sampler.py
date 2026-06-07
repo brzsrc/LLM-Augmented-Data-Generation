@@ -294,6 +294,9 @@ def generate_all_vllm(personas: List[Dict], llm,
                     "action":  action,
                     "steps10": steps10,
                     "avail":   avail,
+                    "loc":     ctx["loc"],
+                    "weather": ctx["weather"],
+                    "temp":    ctx["temp"],
                 })
 
                 # JSONL sidecar: full state + reasoning + value, one line per decision

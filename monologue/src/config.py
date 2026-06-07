@@ -29,7 +29,7 @@ COL_HOUR = "hr"                 # integer hour-of-day
 COL_SLOT = "slot"               # 1..5
 COL_WEEKDAY = "weekday"         # 0..6 (Mon=0)
 COL_REWARD_SOURCE = "steps10"
-COL_AVAIL = "avail"             # in data_gen this is always True (pre-filtered)
+COL_AVAIL = "avail"             
 
 # Categorical encoders (string → int)
 ENCODERS = {

@@ -213,11 +213,15 @@ def _persona_to_flat_dict(persona):
             persona.activity.steps10.avail_true.per_slot_positive_quantiles,
         "steps10_avail_true_zero_pct_by_s30_bin":
             persona.activity.steps10.avail_true.zero_pct_by_s30_bin,
+        "steps10_avail_true_per_loc_zero_pct":
+            persona.activity.steps10.avail_true.per_loc_zero_pct,
         # steps10.avail_false (unreachable baseline; no per-action — send forced=0)
         "steps10_avail_false_mean":          persona.activity.steps10.avail_false.mean,
         "steps10_avail_false_zero_pct":      persona.activity.steps10.avail_false.zero_pct,
         "steps10_avail_false_per_slot_mean": persona.activity.steps10.avail_false.per_slot_mean,
         "steps10_avail_false_per_slot_zero_pct": persona.activity.steps10.avail_false.per_slot_zero_pct,
+        "steps10_avail_false_per_loc_zero_pct":
+            persona.activity.steps10.avail_false.per_loc_zero_pct,
         "steps10_avail_false_per_slot_positive_quantiles":
             persona.activity.steps10.avail_false.per_slot_positive_quantiles,
         # Flat per-user quantiles (no slot split) — primary anchor for the

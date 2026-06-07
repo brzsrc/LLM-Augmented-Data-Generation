@@ -91,6 +91,10 @@ class Steps10BucketStats:
     # ── Fields below support prompt zero_check + positive-only anchoring ──
     # P(steps10=0) bucketed by steps30pre quartile bin (per-persona qcut keys).
     zero_pct_by_s30_bin: Dict[str, float] = field(default_factory=dict)
+    # P(steps10=0) per location for this avail bucket. avail=True vs avail=False
+    # zero rates differ by 10-25pp per loc, so they MUST be kept separate.
+    # Cells with <5 rows are dropped (per-user noise).
+    per_loc_zero_pct: Dict[str, float] = field(default_factory=dict)
     # Same shape as per_slot_action_mean but filtered to steps10>0 rows.
     # Anchor used by LLM when zero_check decides "positive".
     per_slot_action_mean_positive: Optional[Dict[int, Dict[int, float]]] = None
