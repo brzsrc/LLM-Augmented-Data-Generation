@@ -54,6 +54,7 @@ BLLM."""
                 "context_adjustment": "[stub]",
                 "momentum_check":     "[stub]",
                 "episodic_check":     "[stub]",
+                "value_band":         "p25-p50",
             },
         }
 

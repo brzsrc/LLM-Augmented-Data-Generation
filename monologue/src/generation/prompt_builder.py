@@ -278,7 +278,7 @@ _COMMON_HEADER_TPL = """You are a behavior simulator for HeartSteps users.
 CRITICAL CALIBRATION FACT:
 {calibration_block}
 
-OUTPUT FORMAT — a JSON object with EXACTLY these 7 keys, in this order:
+OUTPUT FORMAT — a JSON object with EXACTLY these 8 keys, in this order:
 
   1. "zero_check"        — Decide whether THIS window's steps10 is 0 or >0.
 {zero_check_format_and_count}
@@ -308,16 +308,36 @@ OUTPUT FORMAT — a JSON object with EXACTLY these 7 keys, in this order:
   6. "episodic_check"    — 1-2 sentence sanity check vs. recent history,
                             regardless of zero_check decision.
 
-  7. "value"             — FINAL integer steps10 in [0, 10000].
-                            IF zero_check decision="zero": output 0.
-                            ELSE: integer derived from steps 2-5. Real positive
-                            distribution is right-skewed, but the BULK sits
-                            LOW:
-                              ~50% of positives < p50 (median ≈ 100)
+  7. "value_band"        — Quantile band the final value will land in. ONE
+                            of: "zero", "<p25", "p25-p50", "p50-p75",
+                            "p75-p95", ">p95".
+                            IF zero_check decision="zero": output "zero".
+                            ELSE: commit to the band BEFORE the integer.
+                            Procedure:
+                              a) Apply phase/context/momentum to the p50
+                                 anchor from anchor_lookup.
+                              b) Identify the band the adjusted value lies in.
+                              c) VERIFY the band matches the branch default
+                                 rule (see field 8). If signals are weak but
+                                 the band is high, PULL BACK to the default
+                                 region. If signals are strong, the higher
+                                 band is justified.
+                            Right-skew reference (population-level):
+                              ~50% of positives < p50 (median)
                               ~25% in p25-p50 range
                               ~25% in p50-p75 range
                               ~ 6% in p75-p95 (mid-tail)
                               ~ 1% > p95 (true bursts)
+
+  8. "value"             — FINAL integer steps10 in [0, 10000].
+                            IF value_band="zero": output 0.
+                            ELSE: integer consistent with the band declared
+                            in field 7. Pick a number inside the band's
+                            range as quoted in anchor_lookup (e.g. if
+                            value_band="p50-p75" and anchor_lookup shows
+                            "p25-p75 = 100-320", value must be in roughly
+                            [p50, 320]; use p50 ≤ value ≤ p75 from the
+                            anchor block).
 {value_default_hint}
                             DO NOT use p95/p99 as the typical anchor — they
                             are the rare-burst ceiling, not the default.
@@ -365,13 +385,16 @@ _BRANCH_BODY_MESSAGE = dict(
                                loc=home 62% zero, a=1 58% zero"
                               "decision=positive — slot=3 41%, s30=420 in '396-857'
                                14%, loc=work 38% zero, a=2 55% zero"''',
-    anchor_lookup_body="""IF zero_check decision="positive": look up
-                            per_slot_action_mean_positive[slot][send] from
-                            the "Per-slot mean steps10 by action — STEPS10>0
-                            ROWS ONLY" table AND the slot's positive quantiles.
-                            Quote both, e.g.
-                              "mean=218 (slot=3 a=2 positive); p50=180 p75=320
-                               p95=720 — anchor is CENTER, real spans wide".
+    anchor_lookup_body="""IF zero_check decision="positive": lead with
+                            the slot's positive p50 as the PRIMARY ANCHOR
+                            (median is robust to right skew); cite the
+                            per_slot_action_mean_positive[slot][send] as
+                            supplementary context (mean may exceed p50).
+                            Format:
+                              "anchor=p50=180 (slot=3 a=2 positive); range
+                               p25-p75 = 100-320, p95 = 720; mean=218 supp."
+                            All subsequent adjustments (ctx, momentum,
+                            phase) multiply the p50 anchor, NOT the mean.
                             IF decision="zero": write "N/A — zero_check decided zero".""",
     phase_application="""IF positive: apply engagement-phase multiplier to
                             the anchor, e.g. "honeymoon ×2.20 → 218×2.20=480".
@@ -405,12 +428,14 @@ _BRANCH_BODY_NO_MSG_AVAIL_T = dict(
                               "decision=positive — avail=True slot=4 23%, s30=420
                                in '396-857' 14%, avail=True loc=work 38% zero,
                                a=0 52% zero"''',
-    anchor_lookup_body="""IF zero_check decision="positive": cite
-                            per_slot_action_mean_positive[slot][a=0] from the
-                            "Per-slot mean steps10 by action" table AND the
-                            avail=True positive quantiles for the slot, e.g.
-                              "mean=120 (slot=3 a=0 positive); p50=80 p75=180
-                               p95=480 — anchor is CENTER, real spans wide".
+    anchor_lookup_body="""IF zero_check decision="positive": lead with
+                            the slot's positive p50 as the PRIMARY ANCHOR;
+                            cite per_slot_action_mean_positive[slot][a=0]
+                            as supplementary context. Format:
+                              "anchor=p50=80 (slot=3 a=0 positive); range
+                               p25-p75 = 40-180, p95 = 480; mean=120 supp."
+                            All subsequent adjustments multiply the p50
+                            anchor, NOT the mean.
                             IF decision="zero": "N/A — zero_check decided zero".""",
     phase_application='Write "N/A — no message to amplify".',
     value_default_hint="""                            DEFAULT to p25-p50 region. Move past p75 only when
@@ -439,11 +464,18 @@ _BRANCH_BODY_NO_MSG_AVAIL_F = dict(
                                in '1-80' 64%, avail=False loc=home 18% zero"
                               "decision=positive — avail=False slot=3 18%, s30=520
                                in '396-857' 14%, avail=False loc=transit 24% zero"''',
-    anchor_lookup_body="""IF zero_check decision="positive": cite the
-                            per-slot UNAVAIL baseline AND the user-level
-                            positive quantiles (flat, no slot split), e.g.
-                              "unavail slot=3 → 548; user p50=120 p75=280
-                               p95=820 — wide commute/exercise tail".
+    anchor_lookup_body="""IF zero_check decision="positive": lead with
+                            user-level p50 as the PRIMARY ANCHOR (slot-
+                            specific avail=F cells too thin for stable
+                            quantiles); cite the per-slot UNAVAIL baseline
+                            as a slot-conditional ADJUSTMENT — pull toward
+                            it for commute/exercise slot peaks. Format:
+                              "anchor=p50=120 (user avail=F positive);
+                               slot=3 unavail mean=548 (slot peak — adjust
+                               toward this if commute slot); range p25-p75
+                               = 60-280, p95 = 820"
+                            All subsequent adjustments multiply the p50
+                            anchor, NOT the slot mean.
                             IF decision="zero": "N/A — zero_check decided zero".""",
     phase_application='Write "N/A — no message to amplify".',
     value_default_hint="""                            DEFAULT to p25-p75 region — unavail windows skew

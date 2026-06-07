@@ -270,10 +270,16 @@ ZERO_CAL_STRATEGY        = "low_s30_first"
 #   - context_adjustment (Sidorenko 2025: probability-driven prompting)
 #   - momentum_check    (Xu 2024 PAFT: parent-first column dependency)
 #   - episodic_check    (StructSynth 2025: temporal coherence)
+#   - value_band        Quantile band the final value will land in. Gates the
+#                       integer commit — forces LLM to pick the band BEFORE
+#                       emitting the number, so quantile reasoning is binding,
+#                       not decorative.
 #   - value             (final integer, schema-constrained 0-10000)
 # Property order matters: vLLM/outlines emits keys in this order, which gates
 # the LLM into reasoning before committing the answer.
 # ============================================================================
+VALUE_BAND_CHOICES = ["zero", "<p25", "p25-p50", "p50-p75", "p75-p95", ">p95"]
+
 STEPS_COT_JSON_SCHEMA = {
     "type": "object",
     "properties": {
@@ -283,11 +289,13 @@ STEPS_COT_JSON_SCHEMA = {
         "context_adjustment": {"type": "string", "maxLength": 300},
         "momentum_check":     {"type": "string", "maxLength": 250},
         "episodic_check":     {"type": "string", "maxLength": 500},
+        "value_band":         {"type": "string", "enum": VALUE_BAND_CHOICES},
         "value":              {"type": "integer", "minimum": 0, "maximum": 10000},
     },
     "required": [
         "zero_check", "anchor_lookup", "phase_application",
-        "context_adjustment", "momentum_check", "episodic_check", "value",
+        "context_adjustment", "momentum_check", "episodic_check",
+        "value_band", "value",
     ],
     "additionalProperties": False,
 }
