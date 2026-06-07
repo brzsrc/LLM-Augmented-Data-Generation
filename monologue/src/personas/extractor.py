@@ -180,6 +180,7 @@ def _steps10_bucket(gg: pd.DataFrame, include_action: bool) -> "Steps10BucketSta
 
     psam: Optional[Dict[int, Dict[int, float]]] = None
     psam_pos: Optional[Dict[int, Dict[int, float]]] = None
+    per_action_zero: Dict[int, float] = {}
     if include_action:
         psa = (gg.groupby([cfg.COL_SLOT, cfg.COL_ACTION])[cfg.COL_REWARD_SOURCE]
                  .mean().unstack(cfg.COL_ACTION))
@@ -195,6 +196,16 @@ def _steps10_bucket(gg: pd.DataFrame, include_action: bool) -> "Steps10BucketSta
                         for slot, row in psa_p.iterrows()}
         else:
             psam_pos = {}
+
+        # per_action_zero_pct — marginal across slots. n≥20 keeps it stable
+        # (~55 rows per action expected for a typical user's avail=True bucket).
+        act_stats = (gg.assign(_z=(gg[cfg.COL_REWARD_SOURCE] == 0))
+                       .groupby(cfg.COL_ACTION)
+                       .agg(n=("_z", "size"), zero=("_z", "mean")))
+        for a, row in act_stats.iterrows():
+            if row["n"] < 20:
+                continue
+            per_action_zero[int(a)] = float(round(row["zero"], 3))
 
     # per_loc_zero_pct (this avail bucket only). Drop cells with <5 rows to
     # avoid per-user noise — same threshold as unavail_triggers.
@@ -258,6 +269,7 @@ def _steps10_bucket(gg: pd.DataFrame, include_action: bool) -> "Steps10BucketSta
         per_slot_action_mean=psam,
         zero_pct_by_s30_bin=zero_by_bin,
         per_loc_zero_pct=per_loc_zero,
+        per_action_zero_pct=per_action_zero,
         per_slot_action_mean_positive=psam_pos,
         per_slot_positive_quantiles=psq,
         positive_quantiles_user=pqu,

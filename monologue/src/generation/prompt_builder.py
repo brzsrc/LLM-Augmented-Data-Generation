@@ -122,14 +122,17 @@ def _format_high_activity_anchors(p: Dict) -> str:
             + "\n  ".join(anchors[:5]))
 
 
-def _format_zero_baseline(persona: Dict, current_state: Dict) -> str:
+def _format_zero_baseline(persona: Dict, current_state: Dict,
+                            action: int | None = None) -> str:
     """Per-cell P(steps10=0) baselines for the zero_check reasoning step.
 
-    Three signals (any subset may be empty depending on persona richness):
+    Up to four signals (any subset may be empty depending on persona richness):
       - per-slot zero rate, picking avail_true vs avail_false table
       - per-steps30pre-bin zero rate (always from avail_true)
       - per-loc zero rate, picking avail_true vs avail_false table — current
         location marked with an arrow
+      - per-action zero rate (avail=True only — avail=False has send forced 0).
+        Current action marked with an arrow.
     """
     avail = bool(current_state.get("avail", True))
     slot_key = ("steps10_avail_true_per_slot_zero_pct" if avail
@@ -169,6 +172,16 @@ def _format_zero_baseline(persona: Dict, current_state: Dict) -> str:
             lines.append(
                 f"  by loc (avail={avail}): overall={int(round(float(scalar)*100))}% "
                 f"(per-loc cells too thin to split)")
+
+    # by send — avail=True branch only (avail=False has send forced 0).
+    if avail:
+        per_action = persona.get("steps10_avail_true_per_action_zero_pct") or {}
+        if per_action:
+            parts = []
+            for a, pct in sorted(per_action.items(), key=lambda x: int(x[0])):
+                marker = " ← current" if action is not None and int(a) == int(action) else ""
+                parts.append(f"a={a}:{int(round(float(pct)*100))}%{marker}")
+            lines.append("  by send (avail=True): " + " | ".join(parts))
 
     if not lines:
         return ""
@@ -268,11 +281,7 @@ CRITICAL CALIBRATION FACT:
 OUTPUT FORMAT — a JSON object with EXACTLY these 7 keys, in this order:
 
   1. "zero_check"        — Decide whether THIS window's steps10 is 0 or >0.
-                            Format the field as:
-                              "decision=<zero|positive> — <slot baseline%>,
-                               <s30 bin%>, <loc rate%>"
-                            Cite ALL THREE numbers from the "Zero-rate
-                            baseline" block. Examples:
+{zero_check_format_and_count}
 {zero_check_examples}
                             The cited numbers are PROBABILITIES, not verdicts.
                             Across many similar windows your decisions should
@@ -321,6 +330,22 @@ CRITICAL rules:
 {extra_rule}"""
 
 
+# Shared spec text — branches with vs without the per-action signal.
+# avail=True branches (MESSAGE, NO_MSG_AVAIL_T) cite 4 numbers; avail=False
+# (NO_MSG_AVAIL_F) cites 3, since send is structurally 0.
+_ZERO_CHECK_FORMAT_4 = """                            Format the field as:
+                              "decision=<zero|positive> — <slot baseline%>,
+                               <s30 bin%>, <loc rate%>, <send rate%>"
+                            Cite ALL FOUR numbers from the "Zero-rate
+                            baseline" block. Examples:"""
+
+_ZERO_CHECK_FORMAT_3 = """                            Format the field as:
+                              "decision=<zero|positive> — <slot baseline%>,
+                               <s30 bin%>, <loc rate%>"
+                            Cite ALL THREE numbers from the "Zero-rate
+                            baseline" block. Examples:"""
+
+
 # --- BRANCH BODY: MESSAGE (send > 0) ----------------------------------------
 _BRANCH_BODY_MESSAGE = dict(
     branch_intro="A MESSAGE has just been sent (send > 0). Predict steps10 for this 10-minute window.",
@@ -329,14 +354,17 @@ _BRANCH_BODY_MESSAGE = dict(
   similar prompts, your decisions should split roughly 56/44 — neither
   over-zero nor over-positive. Use zero_check (step 1) to call each
   window based on the cited rates.
-  NOTE: within avail=True, per-action zero rates are essentially equal
-  across send (a=0 57%, a=1 58%, a=2 55%). Sending a message does NOT
-  meaningfully reduce zero probability — it modulates the POSITIVE
-  magnitude when activity happens, not whether activity happens.""",
+  NOTE: at the POPULATION level, per-action zero rates are nearly equal
+  (a=0 57%, a=1 58%, a=2 55%) — sending doesn't broadly reduce P(zero).
+  But the PER-USER "by send" row in the Zero-rate baseline can diverge for
+  message-responsive users; treat that personalized rate as a real cue
+  when it differs from the population baseline. Send still modulates the
+  POSITIVE magnitude (handled in anchor_lookup), not just P(zero).""",
+    zero_check_format_and_count=_ZERO_CHECK_FORMAT_4,
     zero_check_examples='''                              "decision=zero — slot=1 70%, s30=12 in '1-80' 64%,
-                               loc=home 62% zero"
+                               loc=home 62% zero, a=1 58% zero"
                               "decision=positive — slot=3 41%, s30=420 in '396-857'
-                               14%, loc=work 38% zero"''',
+                               14%, loc=work 38% zero, a=2 55% zero"''',
     anchor_lookup_body="""IF zero_check decision="positive": look up
                             per_slot_action_mean_positive[slot][send] from
                             the "Per-slot mean steps10 by action — STEPS10>0
@@ -364,13 +392,19 @@ _BRANCH_BODY_NO_MSG_AVAIL_T = dict(
                   "natural baseline at this state — phase multiplier does NOT apply."),
     calibration_block="""  For Available=True + send=0: ~57% of windows are 0, ~43% are positive.
   Across many similar prompts, your decisions should split roughly 57/43
-  — call each window based on the cited slot / s30 / loc rates. send=0
-  is NOT evidence either way: it does not imply the user is high-activity,
-  AND it does not imply zero. Let the cited probabilities decide.""",
+  — call each window based on the cited slot / s30 / loc / send rates.
+  send=0 is NOT evidence either way: it does not imply the user is high-
+  activity, AND it does not imply zero. Let the cited probabilities decide.
+  At the population level a=0 zero rate ≈ a=1/a=2 (all ~55-58%); the
+  PER-USER `a=0` rate may diverge if this user behaves differently when
+  unsent — treat that personalized signal as a real cue.""",
+    zero_check_format_and_count=_ZERO_CHECK_FORMAT_4,
     zero_check_examples='''                              "decision=zero — avail=True slot=2 48%, s30=15
-                               in '1-80' 64%, avail=True loc=home 62% zero"
+                               in '1-80' 64%, avail=True loc=home 62% zero,
+                               a=0 57% zero"
                               "decision=positive — avail=True slot=4 23%, s30=420
-                               in '396-857' 14%, avail=True loc=work 38% zero"''',
+                               in '396-857' 14%, avail=True loc=work 38% zero,
+                               a=0 52% zero"''',
     anchor_lookup_body="""IF zero_check decision="positive": cite
                             per_slot_action_mean_positive[slot][a=0] from the
                             "Per-slot mean steps10 by action" table AND the
@@ -400,6 +434,7 @@ _BRANCH_BODY_NO_MSG_AVAIL_F = dict(
   your decisions should split roughly 35/65 toward POSITIVE. DO NOT carry
   over the avail=True zero rate; use the avail=False row of the zero-rate
   baseline block.""",
+    zero_check_format_and_count=_ZERO_CHECK_FORMAT_3,
     zero_check_examples='''                              "decision=zero — avail=False slot=2 50%, s30=15
                                in '1-80' 64%, avail=False loc=home 18% zero"
                               "decision=positive — avail=False slot=3 18%, s30=520
@@ -478,7 +513,8 @@ _BRANCH_NO_MSG_AVAIL_T = "no_msg_avail_true"
 _BRANCH_NO_MSG_AVAIL_F = "no_msg_avail_false"
 
 
-def _cot_profile_sections(branch: str, persona: Dict, current_state: Dict) -> List[str]:
+def _cot_profile_sections(branch: str, persona: Dict, current_state: Dict,
+                            action: int) -> List[str]:
     """Return the ordered list of profile-section strings for the given branch.
 
     MESSAGE / NO_MSG_AVAIL_T:
@@ -491,7 +527,7 @@ def _cot_profile_sections(branch: str, persona: Dict, current_state: Dict) -> Li
     common_head = [
         "## Synthetic User Profile",
         _format_persona(persona, current_state),
-        _format_zero_baseline(persona, current_state),
+        _format_zero_baseline(persona, current_state, action),
     ]
     common_tail = [
         _format_context_conditional(persona),
@@ -520,7 +556,7 @@ def _cot_user_block(branch: str, persona: Dict, current_state: Dict, action: int
     """USER-side construction. `branch` selects which profile sections appear."""
     day = current_state.get("day", 1)
     profile_block = "\n\n".join(
-        s for s in _cot_profile_sections(branch, persona, current_state) if s
+        s for s in _cot_profile_sections(branch, persona, current_state, action) if s
     )
 
     phase_line = _format_compliance_phase(persona, day)

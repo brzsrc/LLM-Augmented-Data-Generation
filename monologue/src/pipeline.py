@@ -215,6 +215,8 @@ def _persona_to_flat_dict(persona):
             persona.activity.steps10.avail_true.zero_pct_by_s30_bin,
         "steps10_avail_true_per_loc_zero_pct":
             persona.activity.steps10.avail_true.per_loc_zero_pct,
+        "steps10_avail_true_per_action_zero_pct":
+            persona.activity.steps10.avail_true.per_action_zero_pct,
         # steps10.avail_false (unreachable baseline; no per-action — send forced=0)
         "steps10_avail_false_mean":          persona.activity.steps10.avail_false.mean,
         "steps10_avail_false_zero_pct":      persona.activity.steps10.avail_false.zero_pct,
