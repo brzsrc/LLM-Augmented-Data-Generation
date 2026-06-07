@@ -48,7 +48,7 @@ STAGES = ["audit", "personas", "generate", "validate", "evaluate", "all"]
 
 def get_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--out_root", default="src/outputs/run3")
+    p.add_argument("--out_root", default="src/outputs/run3-no0-replay")
     p.add_argument("--backend", choices=["qwen8b", 'qwen32b', "stub"], default="qwen32b")
     p.add_argument("--stage", choices=STAGES, default="all")
     p.add_argument("--seed", type=int, default=42)
