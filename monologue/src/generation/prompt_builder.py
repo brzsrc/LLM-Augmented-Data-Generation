@@ -326,8 +326,8 @@ OUTPUT FORMAT — a JSON object with EXACTLY these 8 keys, in this order:
                               ~50% of positives < p50 (median)
                               ~25% in p25-p50 range
                               ~25% in p50-p75 range
-                              ~ 6% in p75-p95 (mid-tail)
-                              ~ 1% > p95 (true bursts)
+                              ~ 20% in p75-p95 (mid-tail)
+                              ~ 5% > p95 (true bursts)
 
   8. "value"             — FINAL integer steps10 in [0, 10000].
                             IF value_band="zero": output 0.
@@ -385,24 +385,41 @@ _BRANCH_BODY_MESSAGE = dict(
                                loc=home 62% zero, a=1 58% zero"
                               "decision=positive — slot=3 41%, s30=420 in '396-857'
                                14%, loc=work 38% zero, a=2 55% zero"''',
-    anchor_lookup_body="""IF zero_check decision="positive": lead with
-                            the slot's positive p50 as the PRIMARY ANCHOR
-                            (median is robust to right skew); cite the
-                            per_slot_action_mean_positive[slot][send] as
-                            supplementary context (mean may exceed p50).
-                            Format:
-                              "anchor=p50=180 (slot=3 a=2 positive); range
-                               p25-p75 = 100-320, p95 = 720; mean=218 supp."
-                            All subsequent adjustments (ctx, momentum,
-                            phase) multiply the p50 anchor, NOT the mean.
-                            IF decision="zero": write "N/A — zero_check decided zero".""",
+    anchor_lookup_body="""IF zero_check decision="positive":
+                            Step 1 — Cite the slot's positive quantile bands
+                              from the profile, e.g.
+                                "slot=3 a=2 positive: p25=100, p50=180,
+                                 p75=320, p95=720"
+                            Step 2 — STOCHASTICALLY pick a band per the
+                              right-skew weights (default; see value field
+                              for signal-driven shifts):
+                                25% <p25 | 25% p25-p50 | 25% p50-p75
+                                | 20% p75-p95 | 5% >p95
+                            Step 3 — Within the chosen band, pick a
+                              representative point (band CENTER for neutral
+                              signals; LOW edge for weak; HIGH edge for strong).
+                              State as:
+                                "sampled band=p50-p75, anchor=240 (mid)"
+                            Step 4 — That anchor is the input to phase/ctx/
+                              momentum adjustments below.
+                            IF decision="zero": "N/A — zero_check decided zero".""",
     phase_application="""IF positive: apply engagement-phase multiplier to
-                            the anchor, e.g. "honeymoon ×2.20 → 218×2.20=480".
+                            the sampled anchor, e.g.
+                            "honeymoon ×2.20 → 240×2.20=528".
                             IF zero: "N/A".""",
-    value_default_hint="""                            DEFAULT to p25-p50 region. Move past p75 only when
-                            ALL of (high s30, exercise/activity loc, peak slot
-                            or high-activity anchor match) are present. Reach
-                            p95+ ONLY for clear exercise events (~1% of cases).""",
+    value_default_hint="""                            Adjust the band-sampling weights from the default
+                            25/25/25/20/5 based on signal strength:
+                              • Strong upward (high s30 AND exercise/peak loc
+                                AND/OR high-activity anchor match) → shift
+                                ~15pp from <p50 to p75+.
+                              • Weak (low s30 + sedentary loc) → shift ~10pp
+                                from p50+ to <p25.
+                              • Neutral → keep default weights.
+                            NEVER force >p95 deterministically — keep <10%
+                            mass even under strong signals (true bursts ~1%).
+                            The sampled band BEFORE adjustments goes into
+                            value_band; after adjustments value should sit
+                            inside (or one band away from) that band.""",
     extra_rule="""  * Across many windows, your zero-decision rate should approach ~56%
     (avail=True overall), modulated by state cues. The split is roughly
     56/44 — do not collapse to 100% zero on borderline cases.""",
@@ -428,20 +445,38 @@ _BRANCH_BODY_NO_MSG_AVAIL_T = dict(
                               "decision=positive — avail=True slot=4 23%, s30=420
                                in '396-857' 14%, avail=True loc=work 38% zero,
                                a=0 52% zero"''',
-    anchor_lookup_body="""IF zero_check decision="positive": lead with
-                            the slot's positive p50 as the PRIMARY ANCHOR;
-                            cite per_slot_action_mean_positive[slot][a=0]
-                            as supplementary context. Format:
-                              "anchor=p50=80 (slot=3 a=0 positive); range
-                               p25-p75 = 40-180, p95 = 480; mean=120 supp."
-                            All subsequent adjustments multiply the p50
-                            anchor, NOT the mean.
+    anchor_lookup_body="""IF zero_check decision="positive":
+                            Step 1 — Cite the slot's positive quantile bands
+                              for a=0, e.g.
+                                "slot=3 a=0 positive: p25=40, p50=80,
+                                 p75=180, p95=480"
+                            Step 2 — STOCHASTICALLY pick a band per the
+                              right-skew weights (default; see value field
+                              for signal-driven shifts):
+                                25% <p25 | 25% p25-p50 | 25% p50-p75
+                                | 20% p75-p95 | 5% >p95
+                            Step 3 — Within the chosen band, pick a
+                              representative point (CENTER neutral, LOW edge
+                              weak, HIGH edge strong). State:
+                                "sampled band=p25-p50, anchor=60 (mid)"
+                            Step 4 — That anchor is the input to ctx/momentum
+                              adjustments below.
                             IF decision="zero": "N/A — zero_check decided zero".""",
     phase_application='Write "N/A — no message to amplify".',
-    value_default_hint="""                            DEFAULT to p25-p50 region. Move past p75 only when
-                            ALL of (high s30, exercise/activity loc, peak slot
-                            or high-activity anchor match) are present. Reach
-                            p95+ ONLY for clear exercise events (~1% of cases).""",
+    value_default_hint="""                            Adjust the band-sampling weights from the default
+                            25/25/25/20/5 based on signal strength:
+                              • Strong upward (high s30 AND exercise/peak loc
+                                AND/OR high-activity anchor match) → shift
+                                ~15pp from <p50 to p75+.
+                              • Weak (low s30 + sedentary loc) → shift ~10pp
+                                from p50+ to <p25.
+                              • Neutral → keep default weights.
+                            send=0 itself is NOT a strong upward signal —
+                            it's the natural baseline. NEVER force >p95
+                            deterministically (~1% true bursts only).
+                            Sampled band goes into value_band; after
+                            adjustments value should sit inside (or one band
+                            away from) that band.""",
     extra_rule="""  * Use the avail=True row of the zero-rate table; ignore avail=False.
   * Trajectory zero rate should approach ~57% — slot 3-5 with low-zero loc
     (e.g. work / activity) or high s30 should give POSITIVE more often than not.""",
@@ -464,25 +499,40 @@ _BRANCH_BODY_NO_MSG_AVAIL_F = dict(
                                in '1-80' 64%, avail=False loc=home 18% zero"
                               "decision=positive — avail=False slot=3 18%, s30=520
                                in '396-857' 14%, avail=False loc=transit 24% zero"''',
-    anchor_lookup_body="""IF zero_check decision="positive": lead with
-                            user-level p50 as the PRIMARY ANCHOR (slot-
-                            specific avail=F cells too thin for stable
-                            quantiles); cite the per-slot UNAVAIL baseline
-                            as a slot-conditional ADJUSTMENT — pull toward
-                            it for commute/exercise slot peaks. Format:
-                              "anchor=p50=120 (user avail=F positive);
-                               slot=3 unavail mean=548 (slot peak — adjust
-                               toward this if commute slot); range p25-p75
-                               = 60-280, p95 = 820"
-                            All subsequent adjustments multiply the p50
-                            anchor, NOT the slot mean.
+    anchor_lookup_body="""IF zero_check decision="positive":
+                            Step 1 — Cite the user-level avail=False positive
+                              quantile bands (per-(user,slot) avail=F cells
+                              too thin to split by slot), AND cite the
+                              per-slot UNAVAIL mean as a slot-peak signal:
+                                "user avail=F positive: p25=60, p50=120,
+                                 p75=280, p95=820; slot=3 unavail mean=548
+                                 (slot peak — commute/exercise)"
+                            Step 2 — STOCHASTICALLY pick a band per the
+                              UNAVAIL-shifted weights (unavail skews higher
+                              than avail=True; see value field for signal-
+                              driven further shifts):
+                                15% <p25 | 20% p25-p50 | 25% p50-p75
+                                | 25% p75-p95 | 15% >p95
+                            Step 3 — Within the chosen band, pick a
+                              representative point (CENTER neutral; HIGH edge
+                              if slot is a commute peak / slot mean > p75
+                              of user; LOW edge if off-peak/sleep slot).
+                              State:
+                                "sampled band=p50-p75, anchor=200 (mid)"
+                            Step 4 — That anchor is the input to ctx/momentum
+                              adjustments below.
                             IF decision="zero": "N/A — zero_check decided zero".""",
     phase_application='Write "N/A — no message to amplify".',
-    value_default_hint="""                            DEFAULT to p25-p75 region — unavail windows skew
-                            higher (commute/exercise) than avail=True baseline,
-                            but DO NOT auto-jump to p95+ unless the slot's
-                            unavail baseline itself is large (e.g. slot 3/5
-                            commute peaks).""",
+    value_default_hint="""                            UNAVAIL default weights are pre-shifted right
+                            (15/20/25/25/15). Further adjust based on signal:
+                              • Slot is commute peak (slot mean > user p75) →
+                                shift another ~10pp toward p75+.
+                              • Off-peak/likely sleep (slot mean < user p25)
+                                → shift ~10pp toward <p50.
+                              • Otherwise → keep the UNAVAIL default weights.
+                            Reach >p95 ONLY for clear commute/exercise
+                            slot-peak combos (still <15% of mass).
+                            Sampled band goes into value_band.""",
     extra_rule="""  * Use the avail=False row of the zero-rate table; ignore avail=True.
   * Trajectory zero rate should approach ~35% — MAJORITY of unavail
     windows are positive (commute/exercise).""",
