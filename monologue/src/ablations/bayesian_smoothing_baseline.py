@@ -71,6 +71,21 @@ def _add_steps30pre_bin(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+# Synth uids MUST NOT collide with real uids (1..N). `run_kfold` splits the
+# test fold on real_uids; if synth shares uids with real, `filter_trans` pulls
+# synth rows into test_trans, contaminating FQE and inflating V estimates.
+# We follow the LLM convention of placing synth uids well above the real range:
+# copy k uses uid = original_uid + k * UID_OFFSET.
+UID_OFFSET = 1000
+
+
+def _shift_uids(df: pd.DataFrame, copy_idx: int) -> pd.DataFrame:
+    """Shift uids by copy_idx * UID_OFFSET so synth never collides with real."""
+    out = df.copy()
+    out["uid"] = out["uid"].astype(int) + UID_OFFSET * copy_idx
+    return out
+
+
 @dataclass
 class EBFit:
     """Empirical-Bayes hierarchical shrinkage on per-cell means."""
@@ -129,31 +144,35 @@ def fit_eb(real_df: pd.DataFrame) -> EBFit:
 
 
 def make_replace(real_df: pd.DataFrame, fit: EBFit,
-                  rng: np.random.Generator) -> pd.DataFrame:
+                  rng: np.random.Generator,
+                  copy_idx: int = 1) -> pd.DataFrame:
     """Variant A: same rows as real, but reward sampled from posterior.
 
-    The cell key includes steps30pre_bin; we compute it here so the input
-    real_df doesn't need to carry it. The synth output preserves the bin
-    column too (harmless — DDQN's STATE_FEATURES does not include it)."""
+    `copy_idx` shifts uids by copy_idx * UID_OFFSET so synth never collides
+    with real (otherwise the test fold pulls synth into FQE eval and inflates
+    V — see report Section X)."""
     df = _add_steps30pre_bin(real_df)
     cells = list(zip(*[df[k].values for k in CELL_KEYS]))
     new_steps = np.array([fit.sample(c, rng) for c in cells])
     df[TARGET] = new_steps
-    return df
+    return _shift_uids(df, copy_idx)
 
 
 def make_replace_oversample(real_df: pd.DataFrame, fit: EBFit, k: int,
                               rng: np.random.Generator) -> pd.DataFrame:
-    """Variant B: real rows replicated k times, each with a fresh posterior draw."""
-    out = []
-    for _ in range(k):
-        out.append(make_replace(real_df, fit, rng))
+    """Variant B: real rows replicated k times, each copy gets fresh posterior
+    draws AND a distinct uid block (1001-1037, 2001-2037, ..., k001-k037).
+    Total k*N unique synth uids — matches LLM convention (148 = 4×37)."""
+    out = [make_replace(real_df, fit, rng, copy_idx=i + 1) for i in range(k)]
     return pd.concat(out, ignore_index=True)
 
 
 def make_oversample_only(real_df: pd.DataFrame, k: int) -> pd.DataFrame:
-    """Variant C: real rows replicated k times, original reward (no smoothing)."""
-    return pd.concat([real_df] * k, ignore_index=True)
+    """Variant C: real rows replicated k times, original reward (no smoothing).
+    Each copy gets a distinct uid block so it acts as a separate train patient
+    instead of contaminating the test fold via uid collision."""
+    out = [_shift_uids(real_df, copy_idx=i + 1) for i in range(k)]
+    return pd.concat(out, ignore_index=True)
 
 
 def write_synth(df: pd.DataFrame, out_root: Path, label: str):
