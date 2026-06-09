@@ -22,7 +22,9 @@ from src.evaluation import runner as eval_runner
 # monologue/  (parents: ablations -> src -> monologue)
 MONOLOGUE = Path(__file__).resolve().parents[2]
 
-VARIANTS = ("replace", "replace_4x", "oversample")
+VARIANTS = (
+    "replace_4x", "replace", "oversample",       # cell-EB baselines + volume control
+)
 
 
 def main():

@@ -17,7 +17,10 @@ that the existing pipeline.evaluate stage can consume directly:
   C. oversample     — real rows, original reward, replicated 4x (volume ≈ run3,
                       original noise). Isolates pure data-volume effect.
 
-The cell is defined as (slot, loc, send). Shrinkage is empirical Bayes:
+The cell is defined as (slot, loc, steps30pre_bin, send) — adding the
+steps30pre activity bin (4 levels) gives DDQN a momentum signal that
+the original (slot, loc, send) cell key could not encode. Shrinkage is
+empirical Bayes:
     τ = σ²_within / σ²_between
     μ̂_c = (n_c · ȳ_c + τ · μ̂_global) / (n_c + τ)
     σ̂²_c = σ²_within / (n_c + τ)
@@ -44,8 +47,28 @@ import pandas as pd
 MONOLOGUE = Path(__file__).resolve().parents[2]
 
 
-CELL_KEYS = ("slot", "loc", "send")
+CELL_KEYS = ("slot", "loc", "steps30pre_bin", "send")
 TARGET = "steps10"
+
+# steps30pre binning — captures user's recent activity state, which is
+# a key DDQN state feature. Without it the cell EB baseline ignores
+# the user's momentum signal entirely (see ablation discussion).
+# 4 bins chosen to balance cell density (~14 rows/cell median) vs resolution:
+#   0:     sedentary       (steps30pre == 0)          ~36% of rows
+#   1-50:  barely moving                              ~12%
+#   51-200: moving normally                           ~23%
+#   201+:  actively walking                           ~29%
+STEPS30PRE_BIN_EDGES  = [-0.01, 0.5, 50, 200, float("inf")]
+STEPS30PRE_BIN_LABELS = [0, 1, 2, 3]
+
+
+def _add_steps30pre_bin(df: pd.DataFrame) -> pd.DataFrame:
+    """Add the 'steps30pre_bin' column used as a cell-key dimension."""
+    out = df.copy()
+    out["steps30pre_bin"] = pd.cut(
+        out["steps30pre"], bins=STEPS30PRE_BIN_EDGES,
+        labels=STEPS30PRE_BIN_LABELS).astype(int)
+    return out
 
 
 @dataclass
@@ -78,8 +101,8 @@ class EBFit:
 
 
 def fit_eb(real_df: pd.DataFrame) -> EBFit:
-    """Fit empirical-Bayes hierarchical model on (slot, loc, send) cells."""
-    real_df = real_df[real_df["avail"] == True]   # only avail=True is meaningful
+    """Fit empirical-Bayes hierarchical model on (slot, loc, steps30pre_bin, send) cells."""
+    real_df = _add_steps30pre_bin(real_df[real_df["avail"] == True])
     grp = real_df.groupby(list(CELL_KEYS))[TARGET]
     n_c     = grp.size()
     mean_c  = grp.mean()
@@ -107,8 +130,12 @@ def fit_eb(real_df: pd.DataFrame) -> EBFit:
 
 def make_replace(real_df: pd.DataFrame, fit: EBFit,
                   rng: np.random.Generator) -> pd.DataFrame:
-    """Variant A: same rows as real, but reward sampled from posterior."""
-    df = real_df.copy()
+    """Variant A: same rows as real, but reward sampled from posterior.
+
+    The cell key includes steps30pre_bin; we compute it here so the input
+    real_df doesn't need to carry it. The synth output preserves the bin
+    column too (harmless — DDQN's STATE_FEATURES does not include it)."""
+    df = _add_steps30pre_bin(real_df)
     cells = list(zip(*[df[k].values for k in CELL_KEYS]))
     new_steps = np.array([fit.sample(c, rng) for c in cells])
     df[TARGET] = new_steps
@@ -173,7 +200,7 @@ def main():
     k = max(1, round(len(ref) / len(real)))
     print(f"  ref synth rows: {len(ref)} → oversample multiplier k = {k}")
 
-    print("\n[fit] empirical-Bayes shrinkage on (slot, loc, send) cells:")
+    print("\n[fit] empirical-Bayes shrinkage on (slot, loc, steps30pre_bin, send) cells:")
     fit = fit_eb(real)
 
     out_root = Path(args.out_dir)
