@@ -64,7 +64,7 @@ from sklearn.preprocessing import MinMaxScaler
 from src import config as cfg
 
 # Reuse the EXACT networks / FQE / MDP helpers from the training pipeline.
-from policy_utility import (
+from src.evaluation.policy_utility import (
     QNet,
     NUM_ACTIONS,
     K_POLICIES,
@@ -309,22 +309,27 @@ if __name__ == "__main__":
     # BEFORE passing them in (so hr_sin/hr_cos/dosage/reward + label-encoded
     # weather/temp/loc columns exist), exactly as you do before run_kfold.
 
-    real_df = _add_derived_features(pd.read_csv("runs/real_only/data_gen.csv"))
+    # Anchor all paths to this script's directory so it works regardless of cwd
+    # (the module must be launched from monologue/ for `from src import ...` to
+    # resolve, but the data lives under src/evaluation/runs/).
+    runs = os.path.join(os.path.dirname(os.path.abspath(__file__)), "runs")
+
+    real_df = _add_derived_features(pd.read_csv(os.path.join(runs, "real_only/data_gen.csv")))
     # real_df['source_uid'] = real_df['uid']
-    llm_df  = _add_derived_features(pd.read_csv("runs/llm/synthetic_data.csv"))
-    eb_df   = _add_derived_features(pd.read_csv("runs/eb/synthetic_data.csv"))
+    llm_df  = _add_derived_features(pd.read_csv(os.path.join(runs, "llm/synthetic_data.csv")))
+    eb_df   = _add_derived_features(pd.read_csv(os.path.join(runs, "eb/synthetic_data.csv")))
     # eb_df['source_uid'] = eb_df['uid'] - 1000
 
     configs = [
-        {"name": "real-only", "ddqn_dir": "runs/real_only/per_fold_ddqn",
+        {"name": "real-only", "ddqn_dir": os.path.join(runs, "real_only/per_fold_ddqn"),
          "synth_df": None,   "synth_only": False},
-        {"name": "real+EB",   "ddqn_dir": "runs/eb/abl_with_synth_a0/per_fold_ddqn",
+        {"name": "real+EB",   "ddqn_dir": os.path.join(runs, "eb/abl_with_synth_a0/per_fold_ddqn"),
          "synth_df": eb_df,  "synth_only": False},
-        {"name": "EB-only",   "ddqn_dir": "runs/eb/abl_synth_only_a0/per_fold_ddqn",
+        {"name": "EB-only",   "ddqn_dir": os.path.join(runs, "eb/abl_synth_only_a0/per_fold_ddqn"),
          "synth_df": eb_df,  "synth_only": True},
-        {"name": "real+LLM",  "ddqn_dir": "runs/llm/abl_with_synth_a0/per_fold_ddqn",
+        {"name": "real+LLM",  "ddqn_dir": os.path.join(runs, "llm/abl_with_synth_a0/per_fold_ddqn"),
          "synth_df": llm_df, "synth_only": False},
-        {"name": "LLM-only",  "ddqn_dir": "runs/llm/abl_synth_only_a0/per_fold_ddqn",
+        {"name": "LLM-only",  "ddqn_dir": os.path.join(runs, "llm/abl_synth_only_a0/per_fold_ddqn"),
          "synth_df": llm_df, "synth_only": True},
     ]
-    run_eval_unified(real_df, configs, out_dir="runs/unified_eval")
+    run_eval_unified(real_df, configs, out_dir=os.path.join(runs, "unified_eval"))
